@@ -1,0 +1,97 @@
+"""Creature separation: stop long lizard bodies from passing through each other.
+
+Each lizard is a long chain, so treating it as a single circle only keeps the
+*heads* apart while the bodies still cross. Instead we sample several points along
+every spine (head, quarters, tail) with their local body radius and push creatures
+apart wherever *any* two samples overlap. A spatial hash over the samples keeps it
+near-linear.
+
+The accumulated push is applied to the creature's head (which drags the whole body
+via the follow-the-leader chain), capped and eased so a tangled pile untangles over
+a few frames instead of snapping. Affected spines are re-resolved so the drawn body
+matches its corrected head the same frame.
+"""
+
+import math
+import random
+
+from . import config as C
+
+CELL = 80          # world units; ~ two body samples touching
+SQUISH = 0.9       # <1 lets squishy bodies sink into each other a touch
+EASE = 0.6         # fraction of the correction applied per step (less jitter)
+FRIENDLY = ('player', 'friend')   # allies pass through each other (no clunky bumping)
+
+
+def _samples(creatures):
+    out = []
+    for c in creatures:
+        js = c.spine.joints
+        rs = c.spine.radii
+        m = len(js)
+        for i in {0, m // 4, m // 2, (3 * m) // 4, m - 1}:
+            j = js[i]
+            out.append((c, j.x, j.y, rs[i] * SQUISH))
+    return out
+
+
+def separate(creatures):
+    if len(creatures) < 2:
+        return
+
+    for c in creatures:
+        c._px = 0.0
+        c._py = 0.0
+
+    samples = _samples(creatures)
+    grid = {}
+    for si, (c, x, y, r) in enumerate(samples):
+        grid.setdefault((int(x // CELL), int(y // CELL)), []).append(si)
+
+    for si, (c, x, y, r) in enumerate(samples):
+        gx, gy = int(x // CELL), int(y // CELL)
+        for ox in (-1, 0, 1):
+            for oy in (-1, 0, 1):
+                bucket = grid.get((gx + ox, gy + oy))
+                if not bucket:
+                    continue
+                for sj in bucket:
+                    if sj <= si:                 # each sample pair once
+                        continue
+                    o, x2, y2, r2 = samples[sj]
+                    if o is c:                   # ignore self-overlap
+                        continue
+                    # allies don't collide with each other -> battles stay fluid
+                    if c.kind in FRIENDLY and o.kind in FRIENDLY:
+                        continue
+                    dx = x - x2
+                    dy = y - y2
+                    min_d = r + r2
+                    d2 = dx * dx + dy * dy
+                    if d2 >= min_d * min_d:
+                        continue
+                    if d2 > 1e-6:
+                        dist = math.sqrt(d2)
+                        nx, ny, ov = dx / dist, dy / dist, min_d - dist
+                    else:
+                        a = random.uniform(0, C.TAU)
+                        nx, ny, ov = math.cos(a), math.sin(a), min_d
+                    wc = o.max_r / (c.max_r + o.max_r)   # bigger yields less
+                    wo = 1.0 - wc
+                    c._px += nx * ov * wc
+                    c._py += ny * ov * wc
+                    o._px -= nx * ov * wo
+                    o._py -= ny * ov * wo
+
+    for c in creatures:
+        px, py = c._px, c._py
+        if px == 0.0 and py == 0.0:
+            continue
+        mag = math.hypot(px, py)
+        cap = c.max_r * 1.5                       # don't teleport out of a pile
+        if mag > cap:
+            px *= cap / mag
+            py *= cap / mag
+        c.pos.x = min(max(c.pos.x + px * EASE, c.max_r), C.WORLD_W - c.max_r)
+        c.pos.y = min(max(c.pos.y + py * EASE, c.max_r), C.WORLD_H - c.max_r)
+        c.spine.resolve(c.pos)
