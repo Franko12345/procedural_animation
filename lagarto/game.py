@@ -5,6 +5,7 @@ escalating predator waves and draws everything (background, shadows, entities,
 particles, HUD, game-over).
 """
 
+import math
 import random
 from pygame import Vector2
 import pygame
@@ -15,6 +16,10 @@ from .spine import build_radii
 from .lizard import Player, AILizard
 from . import species
 from . import evolution
+from . import audio
+from . import icons
+from . import ui
+from . import progression
 from . import palette
 from . import weapons
 from . import charms as charmlib
@@ -25,9 +30,14 @@ from .world import World
 from .collision import separate
 from .rounds import RoundManager
 
-def _dial(surf, center, r, frac, color, font, label, t):
-    """Radial cooldown dial: fills up as the ability recharges, pulses when ready."""
-    ready = frac >= 0.999
+def _dial(surf, center, r, frac, color, font, label, t, enabled=True):
+    """Radial cooldown dial: fills as the ability recharges, pulses when ready.
+
+    ``enabled=False`` (not enough energy) greys the whole thing out.
+    """
+    ready = frac >= 0.999 and enabled
+    if not enabled:
+        color = (78, 82, 104)
     pygame.draw.circle(surf, (34, 38, 54), center, r)
     if frac > 0:
         pts = [center]
@@ -37,7 +47,7 @@ def _dial(surf, center, r, frac, color, font, label, t):
         if len(pts) >= 3:
             pygame.draw.polygon(surf, color, pts)
     if ready:
-        pulse = 0.35 + 0.25 * (0.5 + 0.5 * __import__('math').sin(t * 6))
+        pulse = 0.35 + 0.25 * (0.5 + 0.5 * math.sin(t * 6))
         palette.glow(surf, center, r * 2.2, color, pulse)
     pygame.draw.circle(surf, (96, 102, 136) if not ready else color, center, r, 2)
     im = font.render(label, True, (206, 208, 226) if ready else (130, 134, 160))
@@ -65,7 +75,10 @@ def _vignette(surf):
 
 
 class Game:
-    def __init__(self, num_players, controllers, font, bigfont):
+    def __init__(self, num_players, controllers, font, bigfont, meta=None, mode='normal'):
+        self.mode = mode                     # 'normal' (ends at the final boss) | 'endless'
+        self.meta = meta if meta is not None else progression.load()
+        self.run_banked = False
         self.font = font
         self.bigfont = bigfont
         self.cam = Camera()
@@ -78,7 +91,9 @@ class Game:
         for i in range(num_players):
             off = Vector2(-80 if i == 0 else 80, 0)
             colorset = C.COL_PLAYER if i == 0 else C.COL_PLAYER2
-            self.players.append(Player(Vector2(cx, cy) + off, controllers[i], colorset, i))
+            pl = Player(Vector2(cx, cy) + off, controllers[i], colorset, i)
+            progression.apply_to_player(self.meta, pl)     # permanent upgrades
+            self.players.append(pl)
 
         self.enemies = []
         self.friends = []
@@ -97,6 +112,8 @@ class Game:
         self.combo_timer = 0.0
         self.combo_flash = 0.0
         self.pollen = 0
+        self.hitstop = 0.0        # freeze frames on heavy impacts
+        self.flash = 0.0          # brief white screen flash
         self.camp = None
         self.rounds = RoundManager(self)
         self.cards = []
@@ -123,6 +140,13 @@ class Game:
     def shake(self, m):
         self.cam.add_shake(m)
 
+    def punch(self, freeze=0.06, shake=6, flash=0.0):
+        """Impact feedback: brief freeze + shake (+ optional screen flash)."""
+        self.hitstop = max(self.hitstop, freeze)
+        self.cam.add_shake(shake)
+        if flash:
+            self.flash = max(self.flash, flash)
+
     def add_score(self, n):
         self.score += int(n * self.combo_mult())
 
@@ -135,7 +159,8 @@ class Game:
         self.combo_flash = 1.0
 
     def add_pollen(self, n):
-        self.pollen += int(n * self.combo_mult())
+        mult = max((getattr(p, 'pollen_mult', 1.0) for p in self.players), default=1.0)
+        self.pollen += int(n * self.combo_mult() * mult)
 
     def alive_players(self):
         return [p for p in self.players if not p.dead]
@@ -197,6 +222,7 @@ class Game:
         self.cards = evolution.roll_cards(player, 3)
         self.card_idx = 0
         self.state = 'levelup'
+        audio.play('levelup')
         self.fx.popup(player.pos, f"NIVEL {player.level}!", C.COL_WHITE)
         self.fx.ring(player.pos, player.colorset[0])
         self.shake(4)
@@ -215,6 +241,7 @@ class Game:
         else:
             p.apply_mutation(card, self)
         p.pending_levelups = max(0, p.pending_levelups - 1)
+        audio.play('evolve')
         self.fx.popup(p.pos, card.name, card.color)
         self.cards = []
         self.state = 'play'          # step() re-enters if more level-ups are queued
@@ -266,15 +293,16 @@ class Game:
             for pl in g.players:
                 if pl.dead:
                     continue
-                avail = [c for c in charmlib.CHARMS if c not in pl.charms_owned]
+                avail = [c for c in charmlib.CHARMS if c not in pl.charms_owned
+                         and progression.unlocked(self.meta, 'charm', c)]
                 if avail:
                     pl.gain_charm(random.choice(avail), g)
         return [
-            dict(name='Nectar de Cura', desc='+40 vida', cost=12, hue=140, fn=heal),
-            dict(name='Vitalidade', desc='+20 vida maxima', cost=28, hue=5, fn=vitality),
-            dict(name='Vigor', desc='+15% dano das armas', cost=32, hue=0, fn=might),
-            dict(name='Charm', desc='adaptacao p/ um slot', cost=30, hue=280, fn=charm),
-            dict(name='Ovo de Amigo', desc='invoca um aliado', cost=24, hue=270, fn=egg),
+            dict(name='Nectar de Cura', desc='+40 vida', cost=12, hue=140, icon='health', fn=heal),
+            dict(name='Vitalidade', desc='+20 vida maxima', cost=28, hue=5, icon='health', fn=vitality),
+            dict(name='Vigor', desc='+15% dano das armas', cost=32, hue=0, icon='might', fn=might),
+            dict(name='Charm', desc='adaptacao p/ um slot', cost=30, hue=280, icon='nectar', fn=charm),
+            dict(name='Ovo de Amigo', desc='invoca um aliado', cost=24, hue=270, icon='legs', fn=egg),
         ]
 
     def camp_equip(self, cid):
@@ -287,6 +315,7 @@ class Game:
         it = self.camp['shop'][i]
         if self.pollen >= it['cost']:
             self.pollen -= it['cost']
+            audio.play('buy')
             it['fn'](self)
             it['cost'] = int(it['cost'] * 1.6)
             self.camp['msg'] = it['name']
@@ -382,6 +411,7 @@ class Game:
     # ---- eating / growth ------------------------------------------------ #
     def eat(self, player, target):
         target.dead = True
+        audio.play('eat', 0.7)
         color = getattr(target, 'color', C.COL_BUG)
         self.fx.burst(target.pos, color, 16, 220)
         self.fx.spark_burst(target.pos, color, 10, 300)
@@ -460,9 +490,15 @@ class Game:
 
         self._collisions()
         self.rounds.update(dt)
-        if self.rounds.state == 'cleared':          # open the camp (route + shop)
-            self._enter_camp()
+        if self.rounds.state == 'cleared':
+            if getattr(self.rounds, 'is_final', False):
+                self.state = 'victory'              # final boss down -> run won
+                audio.play('victory')
+                self._bank_run(won=True)
+            else:
+                self._enter_camp()                  # otherwise: camp (route + shop)
         self.fx.update(dt)
+        self.flash = max(0.0, self.flash - dt * 3.2)
         self.world.update(dt)
         if self.combo_timer > 0:
             self.combo_timer -= dt
@@ -483,6 +519,16 @@ class Game:
 
         if not self.alive_players():
             self.state = 'over'
+            self._bank_run()
+
+    def _bank_run(self, won=False):
+        """Convert the finished run into permanent DNA (once)."""
+        if self.run_banked:
+            return
+        self.run_banked = True
+        self.won = won
+        self.dna_gained = progression.finish_run(self.meta, self.score,
+                                                 self.rounds.wave, self.kills, won=won)
 
     def _revive(self):
         for p in self.players:
@@ -517,6 +563,7 @@ class Game:
                         e.apply_poison(2.5, 2.5)
                     e.take_hit(self, safe_norm(e.pos - p.pos), 3)
                     if e.dead:
+                        self.punch(0.07, 8)          # dash-kill: crunchy freeze
                         # stealing a body part is now a rare treat, not every kill
                         if grant and random.random() < 0.12:
                             p.grant_part(grant, self)
@@ -563,15 +610,23 @@ class Game:
                 pr.draw(surf, self.cam)
         self.world.draw_ambient(surf, self.cam)
         self.fx.draw(surf, self.cam, self.font)
+        if self.flash > 0:
+            fl = pygame.Surface((C.WIDTH, C.HEIGHT), pygame.SRCALPHA)
+            fl.fill((255, 255, 255, int(150 * min(1.0, self.flash))))
+            surf.blit(fl, (0, 0))
         _vignette(surf)
         if self.state == 'play':
             self._draw_offscreen(surf)
-        self.rounds.draw_banner(surf, self.font, self.bigfont)
-        self._draw_hud(surf)
+        self.rounds.draw_boss_bar(surf, self.font, self.bigfont)
+        if self.state not in ('victory', 'over'):
+            self.rounds.draw_banner(surf, self.font, self.bigfont)
+            self._draw_hud(surf)
         if self.state == 'levelup':
             self._draw_levelup(surf)
         elif self.state == 'camp':
             self._draw_camp(surf)
+        elif self.state == 'victory':
+            self._draw_victory(surf)
         elif self.state == 'over':
             self._draw_over(surf)
 
@@ -618,25 +673,27 @@ class Game:
             dy = xy + 16
             dash_frac = 1.0 - clamp(p.dash_cd / max(0.001, p.dash_cooldown), 0, 1)
             _dial(surf, (x + 14, dy + 14), 13, dash_frac, p.colorset[0],
-                  self.font, "DASH", self.time)
-            t_ready = 1.0 if (p.tongue_t == 0 and p.energy >= 8) else \
-                (clamp(p.energy / 8.0, 0, 1) if p.tongue_t == 0 else 0.0)
-            _dial(surf, (x + 92, dy + 14), 13, t_ready, (235, 90, 120),
-                  self.font, "LINGUA", self.time)
+                  self.font, "DASH", self.time, enabled=p.energy >= C.DASH_COST)
+            t_frac = 0.0 if p.tongue_t > 0 else 1.0
+            _dial(surf, (x + 92, dy + 14), 13, t_frac, (235, 90, 120),
+                  self.font, "LINGUA", self.time, enabled=p.energy >= C.TONGUE_COST)
 
             if p.down:
                 surf.blit(self.font.render(f"CAIDO {p.revive:0.0f}s - toque p/ reviver",
                                            True, C.COL_ENEMY), (x, dy + 34))
-            # equipped weapons (chip + level), VS-style
-            wy = xy + 16
+            # equipped weapons live in the bottom corners so they never collide
+            # with the health/energy bars or the cooldown dials
+            wy = C.HEIGHT - 34
             for wi, (wid, lvl) in enumerate(p.weapons.items()):
                 w = weapons.WEAPONS[wid]
-                c = (x + 11 + wi * 30, wy + 11)
-                pygame.draw.circle(surf, w.color, c, 11)
-                pygame.draw.circle(surf, palette.lighten(w.color, 0.4), c, 11, 2)
-                pygame.draw.circle(surf, C.COL_INK, c, 11, 1)
-                ln = self.font.render(str(lvl), True, C.COL_INK)
-                surf.blit(ln, (c[0] - ln.get_width() // 2, c[1] - ln.get_height() // 2))
+                cxw = (x + 18 + wi * 46) if i == 0 else (x + bw - 18 - wi * 46)
+                c = (cxw, wy)
+                icons.draw(surf, wid, c, 14, w.color)
+                ln = self.font.render(str(lvl), True, C.COL_WHITE)
+                lp = (c[0] + 13, c[1] + 11)
+                pygame.draw.circle(surf, C.COL_INK, lp, 9)
+                pygame.draw.circle(surf, w.color, lp, 9, 1)
+                surf.blit(ln, (lp[0] - ln.get_width() // 2, lp[1] - ln.get_height() // 2))
 
         s = self.bigfont.render(str(self.score), True, C.COL_HUD)
         surf.blit(s, (C.WIDTH // 2 - s.get_width() // 2, 10))
@@ -686,10 +743,9 @@ class Game:
             pygame.draw.rect(surf, (30, 32, 52), rect, border_radius=16)
             edge = card.color if sel else (70, 72, 96)
             pygame.draw.rect(surf, edge, rect, 4 if sel else 2, border_radius=16)
-            # colour chip
-            pygame.draw.circle(surf, card.color, (rect.centerx, y + 70), 34)
-            pygame.draw.circle(surf, palette.lighten(card.color, 0.4),
-                               (rect.centerx, y + 70), 34, 3)
+            # procedural icon for the weapon/mutation
+            icons.draw(surf, getattr(card, 'icon', None), (rect.centerx, y + 70),
+                       30, card.color)
             name = self.bigfont.render(card.name, True, C.COL_WHITE)
             if name.get_width() > cw - 20:
                 name = self.font.render(card.name, True, C.COL_WHITE)
@@ -775,10 +831,11 @@ class Game:
                 palette.glow(surf, rect.center, 90, palette.vibrant(it['hue'], 0.8, 1.0), 0.3)
             pygame.draw.rect(surf, edge, rect, 4 if focused else (3 if afford else 2),
                              border_radius=12)
-            pygame.draw.circle(surf, palette.vibrant(it['hue'], 0.8, 1.0), (rect.centerx, y + 34), 20)
-            nm = self.font.render(it['name'], True, C.COL_WHITE)
+            icons.draw(surf, it.get('icon'), (rect.centerx, y + 34), 19,
+                       palette.vibrant(it['hue'], 0.8, 1.0))
+            nm = self.font.render(ui.fit(self.font, it['name'], cw - 16), True, C.COL_WHITE)
             surf.blit(nm, (rect.centerx - nm.get_width() // 2, y + 62))
-            ds = self.font.render(it['desc'], True, (190, 190, 210))
+            ds = self.font.render(ui.fit(self.font, it['desc'], cw - 16), True, (190, 190, 210))
             surf.blit(ds, (rect.centerx - ds.get_width() // 2, y + 84))
             cc = (250, 214, 90) if afford else (150, 120, 60)
             cost = self.font.render(f"{it['cost']}  polen", True, cc)
@@ -804,7 +861,8 @@ class Game:
             pygame.draw.rect(surf, (26, 30, 44), box, border_radius=10)
             pygame.draw.rect(surf, col, box, 2, border_radius=10)
             lab = charmlib.CHARMS[cid].name if cid else '-'
-            surf.blit(self.font.render(f"{nm}: {lab}", True, (218, 218, 232)), (bx + 10, 336))
+            txt = ui.fit(self.font, f"{nm}: {lab}", box.width - 20)
+            surf.blit(self.font.render(txt, True, (218, 218, 232)), (bx + 10, 336))
         self._charm_rects = []
         chx, chy = cx - 300, 376
         for cid in p0.charms_owned:
@@ -815,8 +873,8 @@ class Game:
             equipped = (p0.charm_slots.get(ch.slot) == cid)
             pygame.draw.rect(surf, (30, 34, 50), rect, border_radius=8)
             pygame.draw.rect(surf, ch.color, rect, 3 if equipped else 1, border_radius=8)
-            pygame.draw.circle(surf, ch.color, (chx + 14, chy + 15), 7)
-            surf.blit(self.font.render(ch.name, True, (222, 222, 234)), (chx + 26, chy + 6))
+            icons.draw(surf, cid, (chx + 15, chy + 15), 9, ch.color, glow=False)
+            surf.blit(self.font.render(ch.name, True, (222, 222, 234)), (chx + 28, chy + 6))
             chx += w + 8
             if chx > cx + 290:
                 chx, chy = cx - 300, chy + 34
@@ -853,6 +911,45 @@ class Game:
             bt = self.font.render(bonus_txt[r['bonus']], True, bonus_col[r['bonus']])
             surf.blit(bt, (rect.centerx - bt.get_width() // 2, ry + 104))
 
+    def _draw_victory(self, surf):
+        """Run beaten: celebratory summary + the DNA banked (endless now unlocked)."""
+        ov = pygame.Surface((C.WIDTH, C.HEIGHT), pygame.SRCALPHA)
+        ov.fill((8, 22, 16, 190))
+        surf.blit(ov, (0, 0))
+        cx = C.WIDTH // 2
+        pulse = 0.5 + 0.5 * math.sin(self.time * 3)
+        palette.glow(surf, (cx, 190), 300, (120, 250, 170), 0.28 + 0.16 * pulse)
+        t = self.bigfont.render("VITORIA!", True, (150, 255, 190))
+        surf.blit(t, (cx - t.get_width() // 2, 158))
+        sub = self.font.render(f"voce derrotou o chefe primordial na onda {self.rounds.wave}",
+                               True, (206, 236, 220))
+        surf.blit(sub, (cx - sub.get_width() // 2, 214))
+
+        rows = [
+            ("score", f"{self.score}"),
+            ("abates", f"{self.kills}"),
+            ("nivel", f"{self.players[0].level}"),
+            ("armas", f"{len(self.players[0].weapons)}"),
+        ]
+        y = 268
+        for label, val in rows:
+            li = self.font.render(label, True, (168, 200, 184))
+            vi = self.bigfont.render(val, True, C.COL_WHITE)
+            surf.blit(li, (cx - 150, y + 8))
+            surf.blit(vi, (cx + 150 - vi.get_width(), y))
+            y += 46
+
+        gained = getattr(self, 'dna_gained', 0)
+        d = self.bigfont.render(f"+{gained} DNA", True, (140, 240, 170))
+        surf.blit(d, (cx - d.get_width() // 2, y + 14))
+        bonus = self.font.render(f"(inclui bonus de vitoria +{progression.WIN_BONUS})",
+                                 True, (150, 210, 180))
+        surf.blit(bonus, (cx - bonus.get_width() // 2, y + 58))
+        unl = self.font.render("MODO INFINITO DESBLOQUEADO no menu", True, (245, 220, 120))
+        surf.blit(unl, (cx - unl.get_width() // 2, y + 88))
+        h = self.font.render("Enter: jogar de novo    Esc: menu", True, (200, 214, 206))
+        surf.blit(h, (cx - h.get_width() // 2, y + 124))
+
     def _draw_over(self, surf):
         ov = pygame.Surface((C.WIDTH, C.HEIGHT), pygame.SRCALPHA)
         ov.fill((10, 8, 20, 180))
@@ -860,6 +957,18 @@ class Game:
         t = self.bigfont.render("FIM DE JOGO", True, C.COL_ENEMY)
         surf.blit(t, (C.WIDTH // 2 - t.get_width() // 2, C.HEIGHT // 2 - 80))
         s = self.bigfont.render(f"Score {self.score}", True, C.COL_HUD)
-        surf.blit(s, (C.WIDTH // 2 - s.get_width() // 2, C.HEIGHT // 2 - 20))
+        surf.blit(s, (C.WIDTH // 2 - s.get_width() // 2, C.HEIGHT // 2 - 24))
+        # run summary + DNA banked
+        cy = C.HEIGHT // 2 + 22
+        line = self.font.render(
+            f"onda {self.rounds.wave}   abates {self.kills}   nivel {self.players[0].level}",
+            True, (198, 200, 220))
+        surf.blit(line, (C.WIDTH // 2 - line.get_width() // 2, cy))
+        gained = getattr(self, 'dna_gained', 0)
+        d = self.bigfont.render(f"+{gained} DNA", True, (140, 240, 170))
+        surf.blit(d, (C.WIDTH // 2 - d.get_width() // 2, cy + 30))
+        tot = self.font.render(f"DNA total: {self.meta['dna']}   (gaste no menu > EVOLUCAO)",
+                               True, (170, 210, 185))
+        surf.blit(tot, (C.WIDTH // 2 - tot.get_width() // 2, cy + 76))
         h = self.font.render("Enter: jogar de novo    Esc: menu", True, (200, 200, 220))
-        surf.blit(h, (C.WIDTH // 2 - h.get_width() // 2, C.HEIGHT // 2 + 40))
+        surf.blit(h, (C.WIDTH // 2 - h.get_width() // 2, cy + 110))

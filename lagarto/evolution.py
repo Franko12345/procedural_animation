@@ -19,6 +19,7 @@ class Mutation:
         self.color = palette.vibrant(hue, 0.8, 1.0)
         self.apply = apply
         self.weight = weight
+        self.icon = mid                 # procedural icon id (see icons.py)
 
 
 def _m(mid, name, desc, hue, fn, weight=1.0):
@@ -83,6 +84,7 @@ class WeaponCard:
         from . import weapons
         w = weapons.WEAPONS[wid]
         self.wid = wid
+        self.icon = wid                 # procedural icon id (see icons.py)
         self.color = w.color
         self.weight = 1.6                        # weapons show up a bit more
         if gaining:
@@ -103,8 +105,12 @@ class WeaponCard:
 
 def _weapon_cards(player):
     from . import weapons
+    from . import progression
+    meta = getattr(player, 'meta', None)
     cards = []
     for wid, w in weapons.WEAPONS.items():
+        if meta is not None and not progression.unlocked(meta, 'weapon', wid):
+            continue                          # locked behind meta-progression
         if wid in player.weapons:
             lvl = player.weapons[wid]
             if lvl < w.maxlevel():

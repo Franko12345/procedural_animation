@@ -12,11 +12,14 @@ from .mathutil import clamp, lerp, vfrom_angle
 
 
 class Camera:
-    def __init__(self):
+    def __init__(self, center=None):
         self.pos = Vector2(C.WORLD_W / 2, C.WORLD_H / 2)
         self.zoom = 1.0
         self.shake_mag = 0.0
         self.shake_off = Vector2()
+        # where world-space `pos` lands on screen; menus use this to render a
+        # live creature inside a panel instead of the middle of the screen.
+        self.center = center or (C.WIDTH / 2, C.HEIGHT / 2)
 
     def follow(self, players, dt):
         alive = [p for p in players if not p.dead]
@@ -45,13 +48,15 @@ class Camera:
         self.shake_mag = min(self.shake_mag + m, 26)
 
     def w2s(self, world):
-        x = (world[0] - self.pos.x) * self.zoom + C.WIDTH / 2 + self.shake_off.x
-        y = (world[1] - self.pos.y) * self.zoom + C.HEIGHT / 2 + self.shake_off.y
+        cx, cy = self.center
+        x = (world[0] - self.pos.x) * self.zoom + cx + self.shake_off.x
+        y = (world[1] - self.pos.y) * self.zoom + cy + self.shake_off.y
         return (int(x), int(y))
 
     def s2w(self, screen):
-        x = (screen[0] - C.WIDTH / 2 - self.shake_off.x) / self.zoom + self.pos.x
-        y = (screen[1] - C.HEIGHT / 2 - self.shake_off.y) / self.zoom + self.pos.y
+        cx, cy = self.center
+        x = (screen[0] - cx - self.shake_off.x) / self.zoom + self.pos.x
+        y = (screen[1] - cy - self.shake_off.y) / self.zoom + self.pos.y
         return Vector2(x, y)
 
     def visible(self, pos, margin=80):

@@ -12,6 +12,7 @@ from pygame import Vector2
 import pygame
 
 from . import config as C
+from . import audio
 from . import palette
 from . import parts
 from . import weapons
@@ -287,6 +288,7 @@ class Player(Lizard):
         self.area_mult = 1.0         # aura/range size
         self.cooldown_mult = 1.0     # <1 = faster
         self.amount = 0              # +projectiles / +orbitals
+        self.pollen_mult = 1.0       # from meta-progression (Colheita)
         self.weapons = {}            # weapon id -> level
         self.weapon_state = {}       # weapon id -> per-weapon state
         self.gain_weapon('cuspe')    # everyone starts with the acid spit
@@ -428,12 +430,13 @@ class Player(Lizard):
             game.fx.trail(self.pos, self.color)
         self.dash_cd = max(0.0, self.dash_cd - dt)
 
-        if c.dash_edge and self.dash_cd <= 0 and self.energy > 14:
+        if c.dash_edge and self.dash_cd <= 0 and self.energy >= C.DASH_COST:
             move = c.move if c.move.length_squared() > 0.1 else self.facing
             self.vel = safe_norm(move) * self.max_speed * (3.5 if self.wings else 3.0)
             self.dash_time = 0.2 if self.wings else 0.16
             self.dash_cd = self.dash_cooldown * (0.8 if self.wings else 1.0)
-            self.energy -= 14 if self.wings else 18
+            self.energy -= C.DASH_COST if self.wings else C.DASH_COST + 4
+            audio.play('dash')
             game.fx.burst(self.pos, self.color, 14, 200)
             game.fx.spark_burst(self.pos, palette.lighten(self.color, 0.3), 12, 340)
             game.shake(5)
@@ -441,9 +444,9 @@ class Player(Lizard):
         self.steer(c.move, dt, speed_mul)
         self.integrate(dt, on_plant=game.fx.dust)
 
-        if c.tongue_edge and self.tongue_t == 0 and self.energy >= 8:
+        if c.tongue_edge and self.tongue_t == 0 and self.energy >= C.TONGUE_COST:
             self.tongue_t = 0.001
-            self.energy -= 8                                   # tongue costs energy
+            self.energy -= C.TONGUE_COST                       # tongue costs energy
             # auto-aim at the nearest edible OR enemy, whichever is closer
             ed = game.nearest_edible(self.pos, self.tongue_range)
             en = game.nearest_enemy(self.pos, self.tongue_range)
@@ -516,6 +519,7 @@ class AILizard(Lizard):
         self.wander = vfrom_angle(random.uniform(0, 360))
         self.wander_t = 0.0
         self.hp = int(self.genome.hp)
+        self.max_hp = self.hp
         self.species = None
         self.xp_value = 3
         self.score_value = 15
@@ -531,6 +535,10 @@ class AILizard(Lizard):
     def apply_poison(self, dps, dur):
         self.poison_dps = max(self.poison_dps, dps)
         self.poison_t = max(self.poison_t, dur)
+
+    def sync_max_hp(self):
+        """Call after spawn-time hp tweaks so the health bar scale is right."""
+        self.max_hp = max(self.max_hp, self.hp)
 
     def damage(self, game, amount, direction=None):
         """Fractional damage (for auras/orbitals/puddles that tick every frame)."""
@@ -686,6 +694,28 @@ class AILizard(Lizard):
             self.vel += self.wander * self.max_speed * 1.4
         return Vector2()
 
+    def draw(self, surf, cam):
+        super().draw(surf, cam)
+        self._draw_health(surf, cam)
+
+    def _draw_health(self, surf, cam):
+        """Small bar above the head, only while hurt -- keeps the screen clean."""
+        if getattr(self, 'is_boss', False):      # bosses have the big bar up top
+            return
+        mx = max(1, getattr(self, 'max_hp', self.hp))
+        if self.hp >= mx or self.hp <= 0:
+            return
+        f = clamp(self.hp / mx, 0, 1)
+        head = self.spine.joints[0]
+        sp = cam.w2s(head + Vector2(0, -self.max_r * 2.0))
+        w = max(16, int(self.max_r * 2.2 * cam.zoom))
+        h = max(3, int(4 * cam.zoom))
+        x = sp[0] - w // 2
+        col = palette.mix((235, 70, 70), (120, 235, 110), f)
+        pygame.draw.rect(surf, (18, 16, 26), (x - 1, sp[1] - 1, w + 2, h + 2),
+                         border_radius=3)
+        pygame.draw.rect(surf, col, (x, sp[1], int(w * f), h), border_radius=2)
+
     def _contact(self, game, target):
         self.attack_cd = 0.8
         if target.dashing:
@@ -710,6 +740,11 @@ class AILizard(Lizard):
 
     def die(self, game):
         self.dead = True
+        if getattr(self, 'is_boss', False):
+            game.punch(0.22, 20, flash=0.9)      # boss death: big stop + flash
+            game.fx.spark_burst(self.pos, (255, 240, 200), 46, 520)
+            game.fx.ring(self.pos, (255, 200, 140))
+        audio.play('kill', 0.8)
         game.fx.burst(self.pos, self.color, 22, 240)
         game.fx.spark_burst(self.pos, palette.lighten(self.color, 0.4), 18, 380)
         game.fx.ring(self.pos, self.color)

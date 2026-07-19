@@ -8,8 +8,11 @@ runs N frames and exits, for headless self-tests.
 import sys
 import pygame
 
+from . import audio
 from . import config as C
 from . import display
+from . import fonts
+from . import ui
 from . import settings
 from .controllers import (make_controllers, describe_joysticks, Pad, MenuNav,
                           KeyboardMouseController, GamepadController)
@@ -59,24 +62,31 @@ def main():
                           vsync=cfg['vsync'])
     pygame.display.set_caption("Lagarto - procedural animation game")
 
-    font = pygame.font.SysFont("dejavusans", 18)
-    bigfont = pygame.font.SysFont("dejavusans", 34, bold=True)
-    titlefont = pygame.font.SysFont("dejavusans", 64, bold=True)
+    font = fonts.get(18)
+    bigfont = fonts.get(32, bold=True)
+    titlefont = fonts.get(62, bold=True)
+    print(f"[fonte] usando '{fonts.name()}'")
+
+    audio.init(sfx_vol=cfg['sfx_vol'], music_vol=cfg['music_vol'])
 
     joysticks = _init_joysticks()
     clock = pygame.time.Clock()
     nav = MenuNav()          # gamepad navigation for level-up / camp screens
+    fade = ui.Fade()
 
     while True:
         if smoke:
-            num = 1
+            num, mode = 1, 'normal'
         else:
-            num = run_menu(screen, font, bigfont, titlefont, joysticks)
-            if num is None:
+            chosen = run_menu(screen, font, bigfont, titlefont, joysticks)
+            if chosen is None:
                 break
+            num, mode = chosen
 
         controllers = make_controllers(num, joysticks)
-        game = Game(num, controllers, font, bigfont)
+        game = Game(num, controllers, font, bigfont, mode=mode)
+        fade.start(0.35)                     # fade in from the menu
+        prev_state = game.state
         acc = 0.0
         frames = 0
         running = True
@@ -99,8 +109,8 @@ def main():
                     if ev.key == pygame.K_F11:
                         display.toggle_fullscreen()
                         settings.save_display(display)
-                    if game.state == 'over' and ev.key == pygame.K_RETURN:
-                        game = Game(num, controllers, font, bigfont)
+                    if game.state in ('over', 'victory') and ev.key == pygame.K_RETURN:
+                        game = Game(num, controllers, font, bigfont, mode=mode)
                     elif game.state == 'levelup':
                         if ev.key in (pygame.K_1, pygame.K_2, pygame.K_3):
                             game.choose_card(ev.key - pygame.K_1)
@@ -164,8 +174,8 @@ def main():
                         camp['sel'] = min(len(camp['routes']) - 1, camp['sel'] + 1)
                     if nav.confirm:
                         game.camp_pick_route(camp['sel'])
-            elif game.state == 'over' and nav.confirm:
-                game = Game(num, controllers, font, bigfont)
+            elif game.state in ('over', 'victory') and nav.confirm:
+                game = Game(num, controllers, font, bigfont, mode=mode)
 
             keys = pygame.key.get_pressed()
             mouse_btn = pygame.mouse.get_pressed()
@@ -174,13 +184,30 @@ def main():
 
             acc += frame_dt
             steps = 0
-            while acc >= C.DT and steps < C.MAX_STEPS:
+            if game.hitstop > 0:                 # freeze frames: draw but don't simulate
+                game.hitstop -= frame_dt
+                acc = min(acc, C.DT)
+            while game.hitstop <= 0 and acc >= C.DT and steps < C.MAX_STEPS:
                 game.step(C.DT)
                 acc -= C.DT
                 steps += 1
             game.cam.follow(game.players, frame_dt)
 
+            boss = getattr(game.rounds, 'boss', None)
+            if game.state == 'victory':
+                audio.set_music('victory')
+            elif game.state == 'camp':
+                audio.set_music('calm')
+            elif boss is not None and not boss.dead:
+                audio.set_music('boss')          # dynamic track for boss rounds
+            else:
+                audio.set_music('combat')
+            if game.state != prev_state:     # fade whenever the screen changes
+                fade.start(0.22)
+                prev_state = game.state
+            fade.update(frame_dt)
             game.draw(screen)
+            fade.draw(screen)
             display.present()
 
             if smoke and frames >= smoke:

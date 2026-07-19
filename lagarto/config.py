@@ -13,6 +13,12 @@ WORLD_W, WORLD_H = 3200, 3200
 SIM_HZ = 60
 DT = 1.0 / SIM_HZ
 MAX_STEPS = 5            # cap sim steps per frame -> avoids the "spiral of death"
+
+# --- ability energy costs (shared by the logic and the HUD dials) ---------- #
+RUN_FINAL_WAVE = 20      # modo normal: onda do chefe final (vitoria)
+
+DASH_COST = 14
+TONGUE_COST = 8
 RENDER_FPS = 120
 
 TAU = math.tau

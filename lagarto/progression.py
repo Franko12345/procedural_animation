@@ -1,0 +1,174 @@
+"""Meta-progression: DNA earned across runs buys permanent upgrades and unlocks.
+
+Saved next to the options in ``~/.lagarto/save.json``. Like the settings file it is
+best-effort: a missing or corrupt save just starts a fresh profile, so the game
+always boots.
+
+Two kinds of spending (Vampire-Survivors style):
+  * **UPGRADES** -- permanent stat levels applied to every future run.
+  * **UNLOCKS**  -- charms/weapons added to the pools a run can roll from.
+"""
+
+import json
+import os
+
+from . import settings
+
+
+# ---- permanent stat upgrades (id -> definition) --------------------------- #
+UPGRADES = {
+    'vitality':  dict(name='Vitalidade', desc='+12 vida maxima por nivel',
+                      hue=5, max_level=5, cost=lambda l: 30 + 25 * l),
+    'might':     dict(name='Potencia', desc='+6% dano das armas por nivel',
+                      hue=0, max_level=5, cost=lambda l: 40 + 30 * l),
+    'haste':     dict(name='Cadencia', desc='-4% recarga das armas por nivel',
+                      hue=190, max_level=5, cost=lambda l: 40 + 30 * l),
+    'agility':   dict(name='Agilidade', desc='+4% velocidade por nivel',
+                      hue=130, max_level=4, cost=lambda l: 35 + 25 * l),
+    'growth':    dict(name='Crescimento', desc='+8% XP por nivel',
+                      hue=50, max_level=4, cost=lambda l: 35 + 25 * l),
+    'harvest':   dict(name='Colheita', desc='+10% polen por nivel',
+                      hue=45, max_level=4, cost=lambda l: 30 + 20 * l),
+}
+
+# ---- unlocks (id -> what it adds to the run pools) ------------------------ #
+UNLOCKS = {
+    'weapon_enxame':   dict(name='Enxame', desc='libera a arma Enxame', cost=80,
+                            kind='weapon', target='enxame', hue=55),
+    'weapon_acido':    dict(name='Poca de Acido', desc='libera a arma Acido', cost=90,
+                            kind='weapon', target='acido', hue=95),
+    'charm_asas':      dict(name='Asas de Besouro', desc='libera o charm Asas', cost=70,
+                            kind='charm', target='asas', hue=200),
+    'charm_glandula':  dict(name='Glandula de Esporos', desc='libera o charm Esporos',
+                            cost=70, kind='charm', target='glandula', hue=135),
+}
+
+WIN_BONUS = 150          # DNA extra por vencer a run
+
+DEFAULT = {'dna': 0, 'upgrades': {}, 'unlocks': [], 'best_score': 0, 'runs': 0,
+           'beat_game': False, 'wins': 0}
+
+
+def path():
+    return os.path.join(os.path.dirname(settings.path()), 'save.json')
+
+
+def load():
+    data = dict(DEFAULT)
+    data['upgrades'] = {}
+    data['unlocks'] = []
+    try:
+        with open(path(), 'r', encoding='utf-8') as f:
+            raw = json.load(f)
+        if isinstance(raw, dict):
+            data['dna'] = max(0, int(raw.get('dna', 0)))
+            data['best_score'] = max(0, int(raw.get('best_score', 0)))
+            data['runs'] = max(0, int(raw.get('runs', 0)))
+            data['beat_game'] = bool(raw.get('beat_game', False))
+            data['wins'] = max(0, int(raw.get('wins', 0)))
+            ups = raw.get('upgrades', {})
+            if isinstance(ups, dict):
+                for k, v in ups.items():
+                    if k in UPGRADES:
+                        data['upgrades'][k] = max(0, min(int(v), UPGRADES[k]['max_level']))
+            unl = raw.get('unlocks', [])
+            if isinstance(unl, list):
+                data['unlocks'] = [u for u in unl if u in UNLOCKS]
+    except Exception:
+        pass                      # missing/corrupt -> fresh profile
+    return data
+
+
+def save(data):
+    try:
+        os.makedirs(os.path.dirname(path()), exist_ok=True)
+        tmp = path() + '.tmp'
+        with open(tmp, 'w', encoding='utf-8') as f:
+            json.dump({k: data.get(k, v) for k, v in DEFAULT.items()}, f, indent=1)
+        os.replace(tmp, path())
+        return True
+    except Exception:
+        return False
+
+
+# ---- queries -------------------------------------------------------------- #
+def level(data, uid):
+    return int(data.get('upgrades', {}).get(uid, 0))
+
+
+def upgrade_cost(data, uid):
+    spec = UPGRADES[uid]
+    lvl = level(data, uid)
+    return None if lvl >= spec['max_level'] else int(spec['cost'](lvl))
+
+
+def buy_upgrade(data, uid):
+    cost = upgrade_cost(data, uid)
+    if cost is None or data['dna'] < cost:
+        return False
+    data['dna'] -= cost
+    data.setdefault('upgrades', {})[uid] = level(data, uid) + 1
+    save(data)
+    return True
+
+
+def buy_unlock(data, uid):
+    spec = UNLOCKS.get(uid)
+    if not spec or uid in data['unlocks'] or data['dna'] < spec['cost']:
+        return False
+    data['dna'] -= spec['cost']
+    data['unlocks'].append(uid)
+    save(data)
+    return True
+
+
+def unlocked(data, kind, target):
+    """Is this weapon/charm available? Anything without an UNLOCKS entry is free."""
+    for uid, spec in UNLOCKS.items():
+        if spec['kind'] == kind and spec['target'] == target:
+            return uid in data['unlocks']
+    return True
+
+
+# ---- run integration ------------------------------------------------------ #
+def apply_to_player(data, player):
+    """Bake the permanent upgrades into a freshly-created player."""
+    player.meta = data                       # lets card/charm pools check unlocks
+    lv = lambda k: level(data, k)                                   # noqa: E731
+    if lv('vitality'):
+        player.max_health += 12 * lv('vitality')
+        player.health = player.max_health
+    if lv('might'):
+        player.might *= 1.0 + 0.06 * lv('might')
+    if lv('haste'):
+        player.cooldown_mult *= (1.0 - 0.04) ** lv('haste')
+    if lv('agility'):
+        f = 1.0 + 0.04 * lv('agility')
+        player.max_speed *= f
+        player.speed_mult *= f
+    if lv('growth'):
+        player.xp_mult *= 1.0 + 0.08 * lv('growth')
+    player.pollen_mult = 1.0 + 0.10 * lv('harvest')
+
+
+def dna_for_run(score, wave, kills):
+    """How much DNA a finished run is worth."""
+    return int(score / 90 + wave * 4 + kills * 0.4)
+
+
+def finish_run(data, score, wave, kills, won=False):
+    """Bank a finished run. Winning pays a bonus and unlocks endless mode."""
+    gained = dna_for_run(score, wave, kills)
+    if won:
+        gained += WIN_BONUS
+        data['beat_game'] = True
+        data['wins'] = data.get('wins', 0) + 1
+    data['dna'] += gained
+    data['runs'] += 1
+    data['best_score'] = max(data['best_score'], int(score))
+    save(data)
+    return gained
+
+
+def endless_unlocked(data):
+    return bool(data.get('beat_game'))

@@ -18,9 +18,17 @@ follow-the-leader). Esse arquivo e `pygamebase.py` ficam **intactos como referê
 python lizard_game.py             # jogar (abre o menu)
 python lizard_game.py --smoke 90  # self-test headless: roda N frames e sai
 ```
-Dependências: `pygame`, `numpy` (numpy é legado dos arquivos de referência; o jogo
-usa `math` + `pygame.Vector2`). Teste headless: prefixe `SDL_VIDEODRIVER=dummy
-SDL_AUDIODRIVER=dummy`.
+```bash
+python build.py                   # gera executavel unico em dist/ (precisa pyinstaller)
+```
+**Windows:** o PyInstaller **não faz cross-compile**. Rode o `build.py` no Windows, ou use
+o CI: `.github/workflows/build.yml` compila **Windows + Linux** a cada push e anexa os
+binários a um Release quando você empurra uma tag `v*`.
+Dependências (`requirements.txt`): **`pygame-ce`** (community edition — mesma API e já
+traz o `mixer`, necessário p/ som), `numpy` (numpy = **síntese de áudio**; os
+loops quentes usam `math` + `pygame.Vector2`). Teste headless: prefixe
+`SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy`. **O jogo não usa nenhum arquivo de
+asset** — arte, ícones, som e música são todos gerados em código.
 
 ## Arquitetura (pacote `lagarto/`)
 
@@ -28,7 +36,13 @@ Um módulo por responsabilidade — mantenha assim; não volte para arquivo úni
 
 | Módulo | Responsabilidade |
 |---|---|
-| `config.py` | Constantes (janela/mundo, timing, **paleta vívida**). Ajuste de cores/balanço começa aqui. |
+| `config.py` | Constantes (janela/mundo, timing, **paleta vívida**, custos de energia). Ajuste de cores/balanço começa aqui. |
+| `display.py` | **Surface lógica fixa** + escala 1x/2x/3x + tela cheia com letterbox; `present()` faz smoothscale; `to_logical(pos)` mapeia o mouse (essencial p/ cliques). |
+| `settings.py` | `~/.lagarto/settings.json` (tela cheia/escala/vsync/volumes). Tolerante a arquivo corrompido. |
+| `fonts.py` | Escolhe a melhor fonte instalada (Noto Sans etc.) com cache por tamanho. |
+| `ui.py` | Kit visual: `panel`, `chip`, `list_menu`, `tabs`, `paragraph`, `footer`. |
+| `icons.py` | **Ícones procedurais** (armas/mutações/charms) desenhados em código — usados em cartas, HUD, loja, charms e compêndio. |
+| `audio.py` | **Som sintetizado com numpy**: 12 SFX + 3 trilhas generativas (calma/combate/chefe). Degrada p/ mudo se não houver mixer. |
 | `mathutil.py` | Helpers de vetor/ângulo (`math` + `Vector2`, **não numpy** nos loops quentes). |
 | `palette.py` | Cor HSV (`vibrant`, `random_in_family`), lighten/darken/mix, e **glow aditivo cacheado** (`glow`, `BLEND_RGB_ADD`) p/ o rim/brilho. |
 | `genome.py` | **`Genome`**: criatura = números (tamanho, nº de pernas, olhos, chifres, cauda, cor HSV, hp, behavior, diet). Núcleo (RujiK). `random_variation` p/ variedade. |
@@ -46,7 +60,8 @@ Um módulo por responsabilidade — mantenha assim; não volte para arquivo úni
 | `collision.py` | **Separação** de corpos: amostra pontos ao longo das espinhas + spatial hash → criaturas não se atravessam. |
 | `controllers.py` | Abstração de input: `KeyboardMouseController`, `KeyboardController`, `GamepadController`. |
 | `game.py` | `Game`: mundo, spawns por espécie, ondas, projéteis, colisões, XP/evolução, HUD, vinheta, game over. |
-| `menu.py` | Tela inicial (1/2 jogadores) com demo ao vivo sobre o mundo. |
+| `menu.py` | **Hub**: jogar (1/2), opções (tela cheia/escala/vsync/volumes), controles, **bestiário** (criatura procedural viva + lore) e **compêndio** (armas/evoluções/charms), tudo navegável por teclado/mouse/**gamepad**. |
+| `progression.py` | **Meta-progressão**: DNA persistente em `~/.lagarto/save.json` → `UPGRADES` (stats permanentes) e `UNLOCKS` (armas/charms entram no pool). `apply_to_player` no início da run; `finish_run` credita DNA. |
 | `app.py` | Setup da janela + loop principal com **timestep fixo**. |
 
 `lizard_game.py` é só um launcher: `from lagarto.app import main`.
@@ -97,8 +112,14 @@ Lagarto = 4 elementos: **Intent** (cabeça aponta), **Action** (pernas dão o pa
 - **Língua com auto-mira**: mira sozinha no alvo mais próximo no alcance
   (`game.nearest_edible` — sem cone) e **custa energia** (8). Dispensa mouse.
 - **P2** (coop): gamepad (sticks + A/X) se detectado, senão setas + IJKL + RCtrl/RShift.
-- **Janela**: `pygame.SCALED | RESIZABLE` (resolução lógica fixa, mouse mapeado
-  automaticamente); **F11** alterna tela cheia; a janela é arrastável p/ redimensionar.
+- **Janela** (`display.py`): tudo é desenhado numa **surface lógica fixa**
+  (`C.WIDTH×C.HEIGHT`) e escalada (smoothscale) p/ a janela; presets **1x/2x/3x**,
+  tela cheia com **letterbox**, **F11** alterna. Qualquer clique/mira precisa passar por
+  `display.to_logical(pos)` — senão desalinha quando escalado.
+- **Gamepad**: usa a **API GameController do SDL** quando disponível (mapeamento correto
+  por device, DualSense/Xbox), com fallback p/ eixos crus + hat. **Hot-plug** funciona.
+  `MenuNav` converte stick/dpad em eventos de menu (com repeat) — navega menu, cartas de
+  level-up e acampamento.
 - **Menu-hub** (`menu.py`): lista navegável (setas/mouse) sobre lagartos animados —
   1/2 jogadores, **Opções** (tela cheia), **Controles**, Sair. (Bestiário e navegador
   de upgrades: a fazer.)
@@ -159,12 +180,52 @@ Gungeon (core + halo aditivo + trail) em `projectile.py`.
 placas = **escamas em chevron**, chifres tapered curvos, cauda clava/ferrão, nadadeiras.
 Evoluir (`grant_part`/`apply_mutation`) solta burst + sparks + anéis (DaFluffyPotato).
 
-## Gameloop / objetivo
+## Gameloop / objetivo (Bullet Heaven / Survivor-like)
 
-Explorar → comer insetos/frutas → **crescer a cauda** (junta a mais) e energia →
-chocar ovos vira **amigos** que seguem e lutam. **Ondas** de predadores escalam.
-Dash atravessa e mata predador; ser atingido tira coração; cair = "down" (parceiro
-revive tocando); todos caídos = fim de jogo. **Score** = comida + abates + crescimento.
+Ataque é **automático** (armas); você só move/desvia/posiciona. Round temático →
+inimigos pingam de ninhos → limpar → **acampamento** (loja de pólen + charms + rota) →
+próximo round. XP sobe nível → **3 cartas** (arma nova / +nível de arma / passiva).
+Comer/dash-matar portadores pode conceder partes (raro). Cair = "down" (parceiro revive
+tocando); todos caídos = fim. **Score/pólen** escalam com o **combo**.
+
+## Modos de jogo
+
+- **NORMAL**: a run **termina** no chefe final da onda `config.RUN_FINAL_WAVE` (20) —
+  `rounds.is_final` faz o chefe nascer maior ("PRIMORDIAL", ~2x a vida) e derrotá-lo leva
+  ao estado **`victory`** (tela com resumo + **bônus de +150 DNA**).
+- **INFINITO**: destravado **após a primeira vitória** (`progression.beat_game`); ignora a
+  onda final e escala para sempre. O menu mostra o item esmaecido enquanto travado.
+- `Game(..., mode='normal'|'endless')`; `menu.run_menu` devolve **`(nº jogadores, modo)`**.
+
+## Chefes e meta-progressão
+
+- **Chefe a cada `rounds.BOSS_EVERY` (5) ondas**: `_spawn_boss()` pega uma espécie do
+  tema, **reconstrói o corpo em escala ~2.3x**, dá muita vida, `glow_body` e um nome
+  (`CUSPIDOR ALFA`). O round **só limpa quando o chefe cai**; `draw_boss_bar` mostra a
+  barra grande no topo e a **música muda para `boss`** (`app.py`).
+- **DNA** é creditado ao morrer (`game._bank_run` → `progression.finish_run`, mostrado na
+  tela de fim). Gasta-se no menu em **EVOLUCAO (DNA)**: upgrades permanentes (vida, dano,
+  cadência, velocidade, XP, pólen) e **unlocks** que liberam armas/charms no pool da run
+  (`progression.unlocked` filtra `evolution._weapon_cards`, a loja e os drops de ninho).
+
+## Juice / feel
+
+- **Hit-stop**: `game.punch(freeze, shake, flash)` — o loop de `app.py` **pula os passos de
+  simulação** enquanto `game.hitstop > 0` (continua desenhando). Usado em dash-kill (0.07s),
+  dano no jogador (0.05s) e **morte de chefe** (0.22s + flash branco).
+- **Transições**: `ui.Fade` (fade curto) ao entrar numa run e a cada troca de estado
+  (play ↔ camp ↔ levelup ↔ victory/over) e entre telas do menu.
+- `ui.fit(font, texto, largura)` trunca texto com "..." para nada vazar das caixas.
+
+## Ícones e áudio (gerados em código)
+
+- `icons.py`: cada arma/mutação/charm tem um desenhador procedural; `icons.draw(surf,
+  id, centro, raio, cor)`. Ids batem com `weapons.WEAPONS`, `evolution.MUTATIONS`
+  (`Mutation.icon`) e `charms.CHARMS`. Fallback = disco, então id novo nunca quebra.
+- `audio.py`: `init()` sintetiza **19 SFX** (3 variações de pitch cada; inclui um por
+  arquétipo de arma: `w_spit`/`w_homing`/`w_web`/`w_aura`/`w_orbit`/`w_puddle`) + 4 loops
+  generativos; `play(nome, vol)` e `set_music('calm'|'combat'|'boss'|'victory')`. **Se o pygame
+  não tiver `mixer`, tudo vira no-op** e o jogo roda mudo (verificado).
 
 ## Decisões de performance (Python) — mantenha
 
@@ -174,7 +235,8 @@ revive tocando); todos caídos = fim de jogo. **Score** = comida + abates + cres
 - **Culling** por `Camera.visible` em criaturas, flora e partículas.
 - Partículas **pooled** com teto (`FX.MAX`); sombras e cores de tile **cacheadas**.
 - Orçamento de entidades (insetos/presas repopulam por probabilidade, com limite).
-- Custo medido: ~0.2ms step + ~1.1ms draw por frame (larga folga).
+- Custo medido: ~0.5ms step + ~3.3ms draw por frame com round cheio (larga folga).
+- `display.present()` usa **smoothscale** (arte vetorial fica nítida ao escalar).
 
 ## Pronto para online (não implementado ainda)
 

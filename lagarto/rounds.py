@@ -13,6 +13,7 @@ import random
 from pygame import Vector2
 import pygame
 
+from . import audio
 from . import config as C
 from . import palette
 from . import species
@@ -32,6 +33,7 @@ THEMES = {
                        budget=1.05, cap=8),
 }
 THEME_KEYS = list(THEMES.keys())
+BOSS_EVERY = 5          # a boss round every N waves
 
 
 class SpawnMark:
@@ -50,6 +52,7 @@ class SpawnMark:
         if self.t >= self.delay:
             e = species.make(self.species_key, self.pos)
             e.hp += self.hp_bonus
+            e.sync_max_hp()
             e.max_speed *= self.speed_mul
             game.enemies.append(e)
             game.fx.ring(self.pos, e.color)
@@ -103,7 +106,9 @@ class Nest:
                 from . import charms as CH
                 p = game.nearest_player(self.pos) or (game.players[0] if game.players else None)
                 if p and not p.dead:
-                    avail = [c for c in CH.CHARMS if c not in p.charms_owned]
+                    from . import progression as PR
+                    avail = [c for c in CH.CHARMS if c not in p.charms_owned
+                             and PR.unlocked(game.meta, 'charm', c)]
                     if avail:
                         cid = random.choice(avail)
                         p.gain_charm(cid, game)
@@ -146,18 +151,28 @@ class RoundManager:
         self.budget = 0
         self.nests = []
         self.marks = []
+        self.boss = None
+        self.is_boss_round = False
+        self.is_final = False
 
     # ---- lifecycle ------------------------------------------------------ #
     def start_round(self, theme=None):
         self.wave += 1
         g = self.game
+        self.boss = None
+        self.is_final = (self.game.mode == 'normal' and self.wave >= C.RUN_FINAL_WAVE)
+        self.is_boss_round = self.is_final or (self.wave % BOSS_EVERY == 0)
         self.theme = theme or self._next_theme or self._pick_theme()
         self._next_theme = None
         spec = THEMES[self.theme]
         self.budget = int((4 + self.wave * 1.6) * spec['budget'])
+        if self.is_boss_round:
+            self.budget = max(3, self.budget // 2)     # fewer mobs, one huge threat
         self.state = 'combat'
         self.banner_t = 2.2
         self.marks = []
+        if self.is_boss_round:
+            self._spawn_boss()
         # place nests near the players
         center = g.alive_players()[0].pos if g.alive_players() \
             else Vector2(C.WORLD_W / 2, C.WORLD_H / 2)
@@ -170,6 +185,46 @@ class RoundManager:
             self.nests.append(Nest(pos, 6 + self.wave * 2, spec['pool']))
         g.wave = self.wave
 
+    def _spawn_boss(self):
+        """A giant, glowing variant of a themed species: the round's centrepiece."""
+        g = self.game
+        pool = THEMES[self.theme]['pool']
+        key = random.choice(pool)
+        center = g.alive_players()[0].pos if g.alive_players() \
+            else Vector2(C.WORLD_W / 2, C.WORLD_H / 2)
+        pos = center + vfrom_angle(random.uniform(0, 360), 620)
+        pos.x = clamp(pos.x, 100, C.WORLD_W - 100)
+        pos.y = clamp(pos.y, 100, C.WORLD_H - 100)
+
+        boss = species.make(key, pos)
+        gen = boss.genome
+        gen.size *= 2.3                      # rebuild the body at boss scale
+        gen.sat = min(1.0, gen.sat + 0.15)
+        boss.__init__(pos, 'enemy', genome=gen)
+        boss.species = key
+        tier = self.wave // BOSS_EVERY
+        if self.is_final:
+            gen.size *= 1.35                 # the final boss towers over the rest
+            boss.__init__(pos, 'enemy', genome=gen)
+            boss.species = key
+        boss.hp = int((90 + 55 * tier) * (2.0 if self.is_final else 1.0))
+        boss.max_hp = boss.hp
+        boss.is_boss = True
+        boss.glow_body = True                # bosses get the player-grade glow
+        boss.xp_value = 40 + 15 * tier
+        boss.score_value = 500 + 200 * tier
+        boss.grants = species.SPECIES[key]['grants']
+        boss.max_speed *= 0.82               # big and heavy
+        name, _ = species.info(key)
+        boss.boss_name = f"{name} PRIMORDIAL" if self.is_final else f"{name} ALFA"
+        g.enemies.append(boss)
+        self.boss = boss
+        g.fx.ring(pos, (255, 90, 90))
+        g.fx.burst(pos, (255, 120, 90), 34, 320)
+        g.shake(12)
+        audio.play('nest')
+        return boss
+
     def _pick_theme(self):
         if self.wave <= 1:
             return 'invasao'
@@ -179,6 +234,8 @@ class RoundManager:
         return sum(1 for e in self.game.enemies if not e.dead)
 
     def cleared(self):
+        if self.boss is not None and not self.boss.dead:
+            return False                     # the boss must fall first
         return (self.budget <= 0 and self._alive_enemies() == 0
                 and not self.marks) or \
                (all(n.dead for n in self.nests) and self._alive_enemies() == 0
@@ -242,6 +299,27 @@ class RoundManager:
         for m in self.marks:
             if cam.visible(m.pos, 60):
                 m.draw(surf, cam)
+
+    def draw_boss_bar(self, surf, font, bigfont):
+        """Big health bar at the top while the round's boss is alive."""
+        b = self.boss
+        if b is None or b.dead:
+            return
+        w, h = 620, 20
+        x = C.WIDTH // 2 - w // 2
+        y = 122                     # below the score/wave HUD line
+        f = clamp(b.hp / max(1, b.max_hp), 0, 1)
+        name = getattr(b, 'boss_name', 'CHEFE')
+        im = bigfont.render(name, True, (255, 120, 120))
+        surf.blit(im, (C.WIDTH // 2 - im.get_width() // 2, y - 40))
+        pygame.draw.rect(surf, (40, 20, 26), (x, y, w, h), border_radius=10)
+        if f > 0:
+            col = palette.mix((255, 60, 60), (255, 170, 80), f)
+            pygame.draw.rect(surf, col, (x, y, int(w * f), h), border_radius=10)
+            palette.glow(surf, (x + int(w * f), y + h // 2), 26, col, 0.5)
+        pygame.draw.rect(surf, (16, 12, 18), (x, y, w, h), 3, border_radius=10)
+        pips = font.render(f"{int(b.hp)}/{b.max_hp}", True, (255, 220, 220))
+        surf.blit(pips, (C.WIDTH // 2 - pips.get_width() // 2, y + 1))
 
     def draw_banner(self, surf, font, bigfont):
         if self.banner_t > 0 and self.state == 'combat':

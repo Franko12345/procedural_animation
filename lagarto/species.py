@@ -59,6 +59,39 @@ SPECIES = {
 PREY_SPECIES = [k for k, v in SPECIES.items() if v['role'] == 'prey']
 ENEMY_SPECIES = [k for k, v in SPECIES.items() if v['role'] == 'enemy']
 
+# Display name + lore for the bestiary screen (kept apart so the tables stay lean).
+LORE = {
+    'grazer':  ('PASTADOR', 'Herbivoro placido que rumina flores. Foge de tudo que se '
+                            'move rapido. Alimento farto para quem sabe caçar.'),
+    'critter': ('BICHINHO', 'Pequeno e nervoso, corre em zigue-zague. Pouca carne, mas '
+                            'facil de abocanhar quando se esta com fome.'),
+    'frog':    ('SAPO', 'Anfibio saltador: nunca anda em linha reta, so pula. Dificil '
+                        'de acertar em movimento, mas indefeso quando pousa.'),
+    'fish':    ('PEIXE', 'Nada em cardume nas aguas do pantano. Suas nadadeiras ondulam '
+                         'mesmo fora d agua. Presa dos que ousam entrar no lago.'),
+    'runner':  ('CORREDOR', 'Predador magro e veloz que ataca em bando. Sozinho e fraco; '
+                            'em enxame, cerca a presa antes que ela perceba.'),
+    'tank':    ('COURACADO', 'Massa lenta coberta de placas osseas. Aguenta muito castigo '
+                             'e empurra tudo pela frente. Comer um concede sua carapaca.'),
+    'snake':   ('SERPENTE', 'Corpo longo sem pernas que desliza em curvas. Persegue sem '
+                            'descanso e e dificil de encurralar.'),
+    'horned':  ('CHIFRUDO', 'Investe de cabeca baixa com dois chifres curvos. Devorar um '
+                            'faz nascerem chifres no seu proprio cranio.'),
+    'spiky':   ('ESPINHENTO', 'Coberto de espinhos dorsais que se eriçam ao atacar. '
+                              'Abate-lo pode transplantar seus espinhos para voce.'),
+    'spider':  ('ARANHA', 'Oito pernas radiais que a sustentam em qualquer terreno. '
+                          'Telegrafa o bote e salta. Comer uma faz brotar mais pernas.'),
+    'spitter': ('CUSPIDOR', 'Mantem distancia e lança veneno a jato. Prepara o cuspe '
+                            'antes de disparar — da para desviar de quem repara.'),
+    'scorpion': ('ESCORPIAO', 'Arrasta um ferrao curvo na cauda que envenena e retarda. '
+                              'Quem sobrevive ao ferrao pode herda-lo.'),
+}
+
+
+def info(key):
+    """(display name, lore) for the bestiary; falls back to the raw id."""
+    return LORE.get(key, (key.upper(), ''))
+
 
 def make(species_key, pos, rng=_random):
     """Build a jittered instance of ``species_key`` at ``pos``."""
@@ -71,4 +104,5 @@ def make(species_key, pos, rng=_random):
     c.score_value = spec['score']
     c.grants = spec['grants']
     c.hp = max(1, int(round(g.hp)))
+    c.sync_max_hp()
     return c

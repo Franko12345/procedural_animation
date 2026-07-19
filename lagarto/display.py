@@ -100,14 +100,18 @@ def handle_resize():
 
 
 def present():
-    """Scale the logical surface onto the window and flip."""
+    """Scale the logical surface onto the window and flip.
+
+    The art is vector-ish (polygons, circles, anti-aliased text), so we use
+    ``smoothscale`` -- nearest-neighbour made scaled-up text look jagged.
+    """
     x, y, w, h = _rect
     if (x, y) != (0, 0):
         _screen.fill((0, 0, 0))              # letterbox bars
     if _scaled is None:
         _screen.blit(_logical, (x, y))
     else:
-        pygame.transform.scale(_logical, (w, h), _scaled)
+        pygame.transform.smoothscale(_logical, (w, h), _scaled)
         _screen.blit(_scaled, (x, y))
     pygame.display.flip()
 

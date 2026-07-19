@@ -1,0 +1,9 @@
+# Lagarto - runtime dependencies
+# The game generates all art/audio in code, so there are no asset packages.
+# pygame-ce is the community edition: same API, actively maintained, and it ships
+# with the mixer built in (plain `pygame` builds sometimes lack it -> silent game).
+pygame-ce>=2.5       # window, input, drawing, audio mixer
+numpy>=1.24          # audio synthesis (and legacy reference scripts)
+
+# Optional, only to build the standalone executable (python build.py):
+# pyinstaller>=6.0

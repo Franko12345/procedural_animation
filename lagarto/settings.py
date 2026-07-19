@@ -9,7 +9,8 @@ same folder later.
 import json
 import os
 
-DEFAULTS = {'fullscreen': False, 'scale': 2, 'vsync': True}
+DEFAULTS = {'fullscreen': False, 'scale': 2, 'vsync': True,
+            'sfx_vol': 0.7, 'music_vol': 0.45}
 
 
 def _dir():
@@ -34,6 +35,11 @@ def load():
         pass                       # missing/corrupt -> defaults
     if data['scale'] not in (1, 2, 3):
         data['scale'] = DEFAULTS['scale']
+    for k in ('sfx_vol', 'music_vol'):
+        try:
+            data[k] = min(1.0, max(0.0, float(data[k])))
+        except Exception:
+            data[k] = DEFAULTS[k]
     return data
 
 
@@ -49,7 +55,14 @@ def save(data):
         return False
 
 
-def save_display(display_mod):
-    return save({'fullscreen': display_mod.is_fullscreen(),
-                 'scale': display_mod.get_scale(),
-                 'vsync': display_mod.get_vsync()})
+def save_display(display_mod, audio_mod=None):
+    data = {'fullscreen': display_mod.is_fullscreen(),
+            'scale': display_mod.get_scale(),
+            'vsync': display_mod.get_vsync()}
+    if audio_mod is not None:
+        sfx, music = audio_mod.volumes()
+        data['sfx_vol'], data['music_vol'] = sfx, music
+    else:
+        cur = load()
+        data['sfx_vol'], data['music_vol'] = cur['sfx_vol'], cur['music_vol']
+    return save(data)

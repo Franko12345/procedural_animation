@@ -13,6 +13,7 @@ from pygame import Vector2
 import pygame
 
 from . import config as C
+from . import audio
 from . import palette
 from .mathutil import safe_norm, vfrom_angle, clamp
 from .projectile import spit as mk_spit, web as mk_web, Projectile
@@ -97,6 +98,7 @@ class Cuspe(Weapon):
                 effect='poison' if player.venom else None, speed=330, radius=6,
                 hostile=False))
         game.fx.spark_burst(mouth, self.color, 3, 130)
+        audio.play('w_spit', 0.30)
 
 
 class Ferrao(Weapon):
@@ -125,6 +127,7 @@ class Ferrao(Weapon):
             pr.homing = True
             game.spawn_projectile(pr)
         game.fx.spark_burst(mouth, self.color, 3, 150)
+        audio.play('w_homing', 0.28)
 
 
 class Teia(Weapon):
@@ -152,6 +155,7 @@ class Teia(Weapon):
             off = (k - (n - 1) / 2) * 16
             aim = mouth + base.rotate(off) * 300
             game.spawn_projectile(mk_web(mouth, aim, self.color, speed=200))
+        audio.play('w_web', 0.24)
 
 
 # --------------------------------------------------------------------------- #
@@ -352,6 +356,7 @@ class Acido(Weapon):
             pos = base + vfrom_angle(random.uniform(0, 360), random.uniform(0, 60))
             game.spawn_puddle(Puddle(pos, lv['r'] * player.area_mult,
                                      lv['dmg'] * player.might, lv['life'], self.hue))
+        audio.play('w_puddle', 0.26)
 
 
 WEAPONS = {w.id: w for w in [Cuspe(), Ferrao(), Teia(), Esporos(),

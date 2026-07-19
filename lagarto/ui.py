@@ -111,9 +111,48 @@ def paragraph(surf, font, text, x, y, width, color=DIM, lh=24):
     return y + len(wrap(font, text, width)) * lh
 
 
+def fit(font, text, width, ellipsis='...'):
+    """Shorten `text` until it fits `width` pixels (keeps UI text inside its box)."""
+    if font.size(text)[0] <= width:
+        return text
+    while text and font.size(text + ellipsis)[0] > width:
+        text = text[:-1]
+    return text.rstrip() + ellipsis
+
+
 def footer(surf, font, text):
     im = font.render(text, True, (168, 172, 198))
     surf.blit(im, (C.WIDTH // 2 - im.get_width() // 2, C.HEIGHT - 40))
+
+
+class Fade:
+    """Short cross-screen fade. `start()` blacks out, then it lifts on its own."""
+
+    def __init__(self, dur=0.28):
+        self.dur = dur
+        self.t = 0.0
+
+    def start(self, dur=None):
+        self.dur = dur or self.dur
+        self.t = self.dur
+
+    @property
+    def active(self):
+        return self.t > 0
+
+    def update(self, dt):
+        self.t = max(0.0, self.t - dt)
+
+    def draw(self, surf):
+        if self.t <= 0:
+            return
+        # ease out: fully opaque at the start of the transition, clear at the end
+        a = int(235 * min(1.0, (self.t / self.dur) ** 0.8))
+        if a <= 0:
+            return
+        s = pygame.Surface((C.WIDTH, C.HEIGHT), pygame.SRCALPHA)
+        s.fill((8, 8, 16, a))
+        surf.blit(s, (0, 0))
 
 
 def veil(surf, alpha=120, color=(12, 10, 24)):
