@@ -23,6 +23,23 @@ CRIT_MULT = 2.0          # dano ao acertar a cabeca (ponto fraco)
 AGGRO_TIME = 5.0         # segundos que um aliado segura o aggro apos bater
 FRIEND_LIFE = 45.0       # aliados sao temporarios (segundos)
 
+# --- ritmo das telas de jogo (level-up / acampamento) ---------------------- #
+UI_VEIL = 0.20           # fade do fundo escuro antes de qualquer conteudo
+UI_STAGGER = 0.075       # atraso entre um item e o proximo no dropdown
+UI_DROP = 0.30           # duracao da queda de cada item
+UI_READY = 0.36          # so aceita escolha depois disso (evita clique acidental)
+# absorcao da escolha pelo jogador: centraliza -> segura -> voa pro lagarto
+PICK_CENTER = 0.40       # chega ao centro da tela
+PICK_HOLD = 0.56         # fica parado no centro ate aqui (da tempo de ler)
+PICK_END = 0.86          # atinge o jogador -> efeito aplicado
+PICK_ROUTE_END = 0.50    # rotas: versao curta (so expande e avanca)
+
+# dano de UM dash (antes o dash reaplicava 3 por frame = ~30 por investida)
+DASH_DAMAGE = 5
+
+# colisao macia: atravessar inimigo custa ate 55% da velocidade em vez de te empurrar
+CONTACT_DRAG = 0.55
+
 DASH_COST = 14
 TONGUE_COST = 8
 RENDER_FPS = 120
@@ -41,6 +58,7 @@ COL_FRIEND  = (168, 120, 255)
 COL_BUG     = (255, 96, 224)
 COL_FRUIT   = (255, 122, 66)
 COL_EGG     = (245, 245, 224)
+COL_POLLEN  = (250, 214, 90)     # moeda da run (bolsa no camp, particulas de compra)
 COL_WHITE   = (250, 250, 255)
 COL_INK     = (16, 14, 26)
 COL_HUD     = (240, 240, 252)

@@ -48,6 +48,21 @@ def chip(surf, font, text, x, y, color, filled=False):
     return r
 
 
+def drop_in(t, i=0, stagger=0.07, dur=0.26, rise=30.0):
+    """Staggered "drop down + fade in" entry for one item of a screen.
+
+    ``t`` is a clock that starts at 0 when the screen opens; ``i`` is the item's
+    index, so entries cascade instead of all landing at once. Returns
+    ``(offset_y, alpha)`` -- add the offset to the item's resting y and use the
+    alpha (0-1) to fade it in. Every screen shares this so the game has one
+    single entry feel.
+    """
+    lt = (t - i * stagger) / (dur if dur > 1e-4 else 1e-4)
+    lt = 0.0 if lt < 0.0 else (1.0 if lt > 1.0 else lt)
+    ease = 1 - (1 - lt) ** 3                  # ease-out cubic: fast in, soft landing
+    return -(1 - ease) * rise, ease
+
+
 def list_menu(surf, font, items, sel, top, accent, t=0.0, width=440, gap=56):
     """Vertical list with an animated selection highlight. Returns item rects."""
     cx = C.WIDTH // 2

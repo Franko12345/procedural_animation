@@ -111,7 +111,7 @@ def main():
                         settings.save_display(display)
                     if game.state in ('over', 'victory') and ev.key == pygame.K_RETURN:
                         game = Game(num, controllers, font, bigfont, mode=mode)
-                    elif game.state == 'levelup':
+                    elif game.state == 'levelup' and not game.pick:
                         if ev.key in (pygame.K_1, pygame.K_2, pygame.K_3):
                             game.choose_card(ev.key - pygame.K_1)
                         elif ev.key in (pygame.K_LEFT, pygame.K_a):
@@ -120,7 +120,7 @@ def main():
                             game.card_idx = min(len(game.cards) - 1, game.card_idx + 1)
                         elif ev.key in (pygame.K_RETURN, pygame.K_SPACE):
                             game.choose_card(game.card_idx)
-                    elif game.state == 'camp' and game.camp:
+                    elif game.state == 'camp' and game.camp and not game.pick:
                         if ev.key in (pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4, pygame.K_5):
                             game.camp_buy(ev.key - pygame.K_1)
                         elif ev.key in (pygame.K_LEFT, pygame.K_a):
@@ -129,7 +129,7 @@ def main():
                             game.camp['sel'] = min(len(game.camp['routes']) - 1, game.camp['sel'] + 1)
                         elif ev.key in (pygame.K_RETURN, pygame.K_SPACE):
                             game.camp_pick_route(game.camp['sel'])
-                if ev.type == pygame.MOUSEBUTTONDOWN:
+                if ev.type == pygame.MOUSEBUTTONDOWN and not game.pick:
                     # window pixels -> logical pixels (the surface is scaled)
                     mp = display.to_logical(ev.pos)
                     if game.state == 'levelup':
@@ -149,7 +149,9 @@ def main():
 
             # gamepad navigation for the upgrade/camp screens (mirrors the keyboard)
             nav.poll(joysticks, frame_dt)
-            if game.state == 'levelup' and game.cards:
+            if game.pick:                    # a choice is being absorbed: hands off
+                pass
+            elif game.state == 'levelup' and game.cards:
                 if nav.left:
                     game.card_idx = max(0, game.card_idx - 1)
                 if nav.right:
@@ -202,8 +204,12 @@ def main():
                 audio.set_music('boss')          # dynamic track for boss rounds
             else:
                 audio.set_music('combat')
-            if game.state != prev_state:     # fade whenever the screen changes
-                fade.start(0.22)
+            if game.state != prev_state:
+                # play/level-up/camp animate themselves in and out (veil + dropdown +
+                # absorption), so a blackout there would hide the impact we just built
+                soft = ('play', 'levelup', 'camp')
+                if not (prev_state in soft and game.state in soft):
+                    fade.start(0.22)
                 prev_state = game.state
             fade.update(frame_dt)
             game.draw(screen)

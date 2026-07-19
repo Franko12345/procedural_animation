@@ -40,7 +40,7 @@ Um módulo por responsabilidade — mantenha assim; não volte para arquivo úni
 | `display.py` | **Surface lógica fixa** + escala 1x/2x/3x + tela cheia com letterbox; `present()` faz smoothscale; `to_logical(pos)` mapeia o mouse (essencial p/ cliques). |
 | `settings.py` | `~/.lagarto/settings.json` (tela cheia/escala/vsync/volumes). Tolerante a arquivo corrompido. |
 | `fonts.py` | Escolhe a melhor fonte instalada (Noto Sans etc.) com cache por tamanho. |
-| `ui.py` | Kit visual: `panel`, `chip`, `list_menu`, `tabs`, `paragraph`, `footer`. |
+| `ui.py` | Kit visual: `panel`, `chip`, `list_menu`, `tabs`, `paragraph`, `footer`, `fit`, `Fade` e **`drop_in`** (entrada escalonada — use em toda tela nova). |
 | `icons.py` | **Ícones procedurais** (armas/mutações/charms) desenhados em código — usados em cartas, HUD, loja, charms e compêndio. |
 | `audio.py` | **Som sintetizado com numpy**: 12 SFX + 3 trilhas generativas (calma/combate/chefe). Degrada p/ mudo se não houver mixer. |
 | `mathutil.py` | Helpers de vetor/ângulo (`math` + `Vector2`, **não numpy** nos loops quentes). |
@@ -146,8 +146,23 @@ dash e devolve energia), **língua-chicote** (mira no mais próximo entre comida
 inimigo leva dano + é puxado; custa energia), **habilidade ativa** (a fazer no camp).
 **Combo/streak** (`game.combo`): matar sobe o multiplicador (decai se você foge).
 
+**Dano do dash — um acerto por investida.** `_collisions` roda **todo frame**, então
+enquanto `p.dashing` (0,16 s ≈ 10 frames) o mesmo inimigo era atingido 10x: **30 de dano
+por dash em vez de 3** (60 com crítico de cabeça) — era a causa real de "os inimigos
+morrem fácil demais", não o balanço de vida. `Player.dash_hits` (set, limpo ao iniciar o
+dash) garante **um acerto por alvo por dash**; dano em `C.DASH_DAMAGE` (5, crítico 10;
+ninho leva 2x). **Ao mexer em dano de contato, cheque sempre se a fonte é por-frame.**
+
 **Colisão:** aliados (`kind ∈ {player,friend}`) **não colidem entre si** (`collision.py`
 `FRIENDLY`) — batalhas fluidas; inimigos ainda colidem normalmente.
+
+**Contato jogador↔inimigo é MACIO** (feedback: ser empurrado por todo inimigo parecia
+pinball). O jogador **nunca é deslocado**: atravessa, **empurra o inimigo** (push cheio,
+sem peso por tamanho) e paga em **velocidade**. `collision.separate` acumula a
+profundidade de sobreposição em `creature.clog`; `Player.update` normaliza por `max_r*1.2`,
+suaviza (`clog_f`, `approach` 9/s) e aplica `C.CONTACT_DRAG` (0.55) — pico de ~60% da
+velocidade quando enterrado, **ignorado durante o dash** (atravessar é a graça).
+*Inimigo↔inimigo continua com separação dura* — sem isso volta o bug de empilhar.
 
 ## Ondas em rounds (`rounds.py`) + Acampamento
 
@@ -159,10 +174,38 @@ os ninhos (dash/cuspe) corta o fluxo. `game.rounds.draw_world`/`draw_banner`.
 
 **Acampamento** (estado `camp`, entre rounds): ao limpar (`rounds.state=='cleared'`) o
 `game._enter_camp()` abre uma tela com **loja do besouro** (gasta **pólen** — moeda da
-run ganha por kill × combo, `game.add_pollen` — em cura/vida/vigor/frenesi/ovo de amigo;
-custo sobe a cada compra) + **escolha de rota** (3 portas = tema da próxima onda + bônus
-cura/pólen/carta). Escolher a rota chama `rounds.request_next(theme)`. Input em `app.py`
-(1-5 compra, setas+ENTER/clique escolhe a rota). Desenho: `game._draw_camp`.
+run ganha por kill × combo, `game.add_pollen` — em cura/vida/vigor/charm/ovo de amigo;
+custo sobe a cada compra; **charm custa 150** por ser permanente e forte) + **escolha de
+rota** (3 portas = tema da próxima onda + bônus cura/pólen/carta). Escolher a rota chama
+`rounds.request_next(theme)`. Input em `app.py` (1-5 compra, setas+ENTER/clique escolhe a
+rota). Desenho: `game._draw_camp`.
+
+## Telas de jogo: entrada animada + absorção da escolha
+
+Level-up e acampamento **não aparecem de uma vez**. Relógio: `self.ui_t`, zerado em
+`_enter_levelup`/`_enter_camp` e avançado no ramo `state != 'play'` de `game.step` (passo
+fixo → independe de FPS). Dials em `config.py` (`UI_VEIL`/`UI_STAGGER`/`UI_DROP`/`PICK_*`).
+- **Fase 1** (`_veil`, 0–0,20 s): o fundo escurece.
+- **Fase 2** (`ui.drop_in(t, i, ...) -> (offset_y, alpha)`): cada painel **desce
+  escalonado** com fade. `menu._menu_list` usa o mesmo helper — um único "feel".
+- **Absorção** (`self.pick`): escolher **não aplica nada na hora**. As outras opções
+  desbotam/encolhem, a escolhida vai ao centro (acima do lagarto — a câmera centraliza o
+  jogador, centralizar a carta também não deixaria trajeto), segura para leitura, e
+  **voa para dentro do jogador** com rastro. No impacto: `punch()` (**screenshake** +
+  hit-stop + flash) + burst/anéis + som — e **só então** `_apply_card`/`_apply_buy`/
+  `_apply_route`. Input bloqueado via `game.ui_busy()` + guardas de `game.pick` em `app.py`.
+- Transições `play↔levelup↔camp` **não usam `ui.Fade`** (o blackout escondia o impacto).
+
+**Partículas nestas telas:** `fx` é desenhado junto com o mundo, ou seja **por baixo do
+véu** (que corta ~80% do brilho). `game._ui_fx(layer)` redesenha as partículas **por cima
+dos painéis** enquanto há `pick` ou `ui_fx > 0` (pós-brilho de 1,1 s, porque a rajada de
+impacto nasce no frame em que `pick` já virou `None`). Compras usam `C.COL_POLLEN` — o
+pólen gasto explode da barraca, vira um cometa dourado e estoura no lagarto com o som
+`buy` (o chime foi movido do clique para o impacto).
+
+**Perf destas telas:** painéis são cacheados (`game._panel`, chave = estado do painel);
+o véu usa surface opaca + `set_alpha` (SRCALPHA por-pixel custava ~6 ms/frame); a camada
+de shake só é composta **quando há shake** (`_ui_dest`), senão desenha direto na tela.
 
 ## Modelo de dano (barra de vida)
 
@@ -232,8 +275,11 @@ demais no chão*. Ajustes feitos — **estes números são o lugar para mexer**:
 - Usado por **todas** as fontes de dano: dash (`game._collisions`), projéteis
   (`_update_projectiles`) e auras/orbitais/poças (`weapons._enemies_in`).
 - **Cabeça = crítico** (`config.CRIT_MULT`) com spark dourado + popup "CRITICO!"
-  (`game.crit_fx`), e um **anel de mira** desenhado na cabeça dos inimigos
-  (`AILizard._draw_weakpoint`) mostrando onde vale a pena acertar.
+  (`game.crit_fx`).
+- **Destaque da cabeça** (`AILizard._draw_weakpoint`): um **halo suave** da cor do corpo
+  clareada, desenhado **antes** do corpo (por isso `draw()` chama antes de `super().draw`)
+  — brilha em volta da silhueta sem cobrir os olhos. *Já foi uma retícula/alvo: parecia UI
+  colada na criatura. Mantenha orgânico — cor/brilho, nunca marcas de mira.*
 
 ## Vida visível
 

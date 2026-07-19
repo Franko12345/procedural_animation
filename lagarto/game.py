@@ -11,7 +11,7 @@ from pygame import Vector2
 import pygame
 
 from . import config as C
-from .mathutil import clamp, vfrom_angle, safe_norm
+from .mathutil import clamp, ease_out, lerp, vfrom_angle, safe_norm
 from .spine import build_radii
 from .lizard import Player, AILizard
 from . import species
@@ -119,6 +119,17 @@ class Game:
         self.cards = []
         self.card_idx = 0
         self.levelup_player = None
+        self.ui_t = 0.0           # clock for the level-up / camp entry animation
+        self.pick = None          # a choice being absorbed by the player (see _step_pick)
+        self.ui_fx = 0.0          # keeps fx drawn over the veil just after an impact
+        self._uilayer = None      # scratch surface so screen shake can move the whole UI
+        self._veilsurf = None
+        self._veilcol = None
+        self._panels = {}         # rendered card/shop/route panels, keyed by their state
+        self._card_rects = []
+        self._shop_rects = []
+        self._route_rects = []
+        self._charm_rects = []
 
         for _ in range(46):
             self.pickups.append(Bug(self._rand_world()))
@@ -228,26 +239,122 @@ class Game:
         self.cards = evolution.roll_cards(player, 3)
         self.card_idx = 0
         self.state = 'levelup'
+        self.ui_t = 0.0
+        self.pick = None
+        self._panels.clear()
         audio.play('levelup')
         self.fx.popup(player.pos, f"NIVEL {player.level}!", C.COL_WHITE)
         self.fx.ring(player.pos, player.colorset[0])
         self.shake(4)
 
+    # ---- choosing: pick -> absorption animation -> effect ---------------- #
+    def ui_busy(self):
+        """True while a screen is still animating in or absorbing a choice."""
+        return self.pick is not None or self.ui_t < C.UI_READY
+
+    def _start_pick(self, kind, index, rect, color, dur, item=None):
+        self.pick = dict(kind=kind, index=index, item=item, color=color,
+                         rect=pygame.Rect(rect), t=0.0, dur=dur, sparked=False)
+        audio.play('ui')
+        self.punch(freeze=0.0, shake=3)      # small kick as it leaves the slot
+        if kind == 'shop':
+            # the pollen you just spent bursts out of the stall
+            slot = self.cam.s2w(rect.center)
+            self.fx.burst(slot, C.COL_POLLEN, 18, 260)
+            self.fx.spark_burst(slot, palette.lighten(C.COL_POLLEN, 0.35), 14, 340)
+            self.fx.burst(slot, color, 14, 200)
+            self.fx.ring(slot, C.COL_POLLEN)
+
+    def _pick_player(self):
+        return self.levelup_player or (self.players[0] if self.players else None)
+
+    def _pick_pose(self):
+        """Where the chosen item is *right now*: (screen pos, scale, alpha)."""
+        pk = self.pick
+        # present it *above* the lizard, not dead centre -- the camera keeps the
+        # player centred, so centring the card too would leave nothing to fly along
+        mid = Vector2(C.WIDTH / 2, C.HEIGHT / 2 - 150)
+        t = pk['t']
+        start = Vector2(pk['rect'].center)
+        if pk['kind'] == 'route':            # short version: just swells in place
+            f = ease_out(min(1.0, t / max(pk['dur'], 1e-4)))
+            return start, 1.0 + 0.18 * f, 1.0
+        if t < C.PICK_CENTER:                # slide to the middle of the screen
+            f = ease_out(t / C.PICK_CENTER)
+            return start.lerp(mid, f), lerp(1.0, 1.22, f), 1.0
+        if t < C.PICK_HOLD:                  # hold, so you can read what you got
+            return mid, 1.22, 1.0
+        f = clamp((t - C.PICK_HOLD) / max(C.PICK_END - C.PICK_HOLD, 1e-4), 0, 1)
+        f = f * f                            # accelerate into the lizard
+        p = self._pick_player()
+        tgt = Vector2(self.cam.w2s(p.pos)) if p else mid
+        return mid.lerp(tgt, f), lerp(1.22, 0.10, f), lerp(1.0, 0.4, f)
+
+    def _step_pick(self, dt):
+        pk = self.pick
+        pk['t'] += dt
+        if pk['kind'] != 'route':
+            pos = self.cam.s2w(self._pick_pose()[0])
+            shop = pk['kind'] == 'shop'
+            if pk['t'] >= C.PICK_HOLD:        # comet trail on the way to the player
+                self.fx.trail(pos, pk['color'])
+                if shop:                      # purchases fly in a thicker, golden comet
+                    self.fx.trail(pos, C.COL_POLLEN)
+                    self.fx.spark_burst(pos, C.COL_POLLEN, 2, 150)
+            elif shop and pk['t'] < C.PICK_CENTER:
+                # sparkles while it drifts up out of the stall
+                self.fx.trail(pos, C.COL_POLLEN)
+        if pk['t'] >= pk['dur']:
+            self._finish_pick()
+
+    def _finish_pick(self):
+        """Impact: the choice lands *in* the player -- only now does it take effect."""
+        pk = self.pick
+        self.pick = None
+        self.ui_fx = 1.1          # the impact burst must survive the veil too
+        p = self._pick_player()
+        if p is not None and pk['kind'] != 'route':
+            self.fx.burst(p.pos, pk['color'], 26, 260)
+            self.fx.spark_burst(p.pos, palette.lighten(pk['color'], 0.4), 18, 380)
+            self.fx.ring(p.pos, pk['color'])
+            self.fx.ring(p.pos, palette.lighten(pk['color'], 0.5))
+            self.punch(freeze=0.09, shake=12, flash=0.10)
+            audio.play('evolve')
+            if pk['kind'] == 'shop':
+                # a purchase lands with a golden pop on top of the item's own colour
+                self.fx.burst(p.pos, C.COL_POLLEN, 30, 320)
+                self.fx.spark_burst(p.pos, C.COL_POLLEN, 24, 460)
+                self.fx.spark_burst(p.pos, C.COL_WHITE, 10, 260)
+                self.fx.ring(p.pos, C.COL_POLLEN)
+                if pk['item']:
+                    self.fx.popup(p.pos, pk['item']['name'], C.COL_POLLEN)
+                audio.play('buy')
+        if pk['kind'] == 'card':
+            self._apply_card(pk['item'])
+        elif pk['kind'] == 'shop':
+            self._apply_buy(pk['index'])
+        elif pk['kind'] == 'route':
+            self._apply_route(pk['index'])
+
     def choose_card(self, i):
-        if self.state != 'levelup' or not self.cards:
+        if self.state != 'levelup' or not self.cards or self.ui_busy():
             return
         i = max(0, min(len(self.cards) - 1, i))
-        card = self.cards[i]
-        p = self.levelup_player
+        self.card_idx = i
+        rect = (self._card_rects[i] if i < len(self._card_rects)
+                else pygame.Rect(C.WIDTH // 2 - 120, C.HEIGHT // 2 - 150, 240, 300))
+        self._start_pick('card', i, rect, self.cards[i].color, C.PICK_END,
+                         item=self.cards[i])
+
+    def _apply_card(self, card):
+        p = self._pick_player()
+        if p is None:
+            return
         if getattr(card, 'is_weapon', False):
             card.apply(p, self)
-            self.fx.burst(p.pos, card.color, 22, 250)
-            self.fx.spark_burst(p.pos, palette.lighten(card.color, 0.4), 14, 320)
-            self.fx.ring(p.pos, card.color)
         else:
             p.apply_mutation(card, self)
         p.pending_levelups = max(0, p.pending_levelups - 1)
-        audio.play('evolve')
         self.fx.popup(p.pos, card.name, card.color)
         self.cards = []
         self.state = 'play'          # step() re-enters if more level-ups are queued
@@ -266,6 +373,9 @@ class Game:
         self._shop_rects = []
         self._charm_rects = []
         self.state = 'camp'
+        self.ui_t = 0.0
+        self.pick = None
+        self._panels.clear()
         for p in self.players:
             if not p.dead:
                 p.health = min(p.max_health, p.health + p.max_health * 0.12)
@@ -309,27 +419,51 @@ class Game:
             dict(name='Nectar de Cura', desc='+40 vida', cost=12, hue=140, icon='health', fn=heal),
             dict(name='Vitalidade', desc='+20 vida maxima', cost=28, hue=5, icon='health', fn=vitality),
             dict(name='Vigor', desc='+15% dano das armas', cost=32, hue=0, icon='might', fn=might),
-            dict(name='Charm', desc='adaptacao p/ um slot', cost=30, hue=280, icon='nectar', fn=charm),
+            # charms sao permanentes e fortes -> tem que doer no bolso (era 30)
+            dict(name='Charm', desc='adaptacao p/ um slot', cost=150, hue=280, icon='nectar', fn=charm),
             dict(name='Ovo de Amigo', desc='aliado temporario', cost=40, hue=270, icon='legs', fn=egg),
         ]
 
     def camp_equip(self, cid):
+        if self.ui_busy():
+            return
         if self.players and not self.players[0].dead:
             self.players[0].equip_charm(cid)
 
     def camp_buy(self, i):
+        if not self.camp or i < 0 or i >= len(self.camp['shop']) or self.ui_busy():
+            return
+        it = self.camp['shop'][i]
+        if self.pollen < it['cost']:
+            return
+        # pay now (so the price can't be spent twice mid-animation), grant on impact
+        self.pollen -= it['cost']
+        self.camp['shop_sel'] = i
+        # the 'buy' chime belongs on the impact, not here -- see _finish_pick
+        rect = (self._shop_rects[i] if i < len(self._shop_rects)
+                else pygame.Rect(C.WIDTH // 2 - 88, 164, 176, 132))
+        self._start_pick('shop', i, rect, palette.vibrant(it['hue'], 0.8, 1.0),
+                         C.PICK_END, item=it)
+
+    def _apply_buy(self, i):
         if not self.camp or i < 0 or i >= len(self.camp['shop']):
             return
         it = self.camp['shop'][i]
-        if self.pollen >= it['cost']:
-            self.pollen -= it['cost']
-            audio.play('buy')
-            it['fn'](self)
-            it['cost'] = int(it['cost'] * 1.6)
-            self.camp['msg'] = it['name']
-            self.camp['msg_t'] = 1.4
+        it['fn'](self)
+        it['cost'] = int(it['cost'] * 1.6)
+        self.camp['msg'] = it['name']
+        self.camp['msg_t'] = 1.4
 
     def camp_pick_route(self, i):
+        if not self.camp or self.ui_busy():
+            return
+        i = max(0, min(len(self.camp['routes']) - 1, i))
+        self.camp['sel'] = i
+        rect = (self._route_rects[i] if i < len(self._route_rects)
+                else pygame.Rect(C.WIDTH // 2 - 125, 496, 250, 140))
+        self._start_pick('route', i, rect, C.COL_ENEMY, C.PICK_ROUTE_END)
+
+    def _apply_route(self, i):
         if not self.camp:
             return
         r = self.camp['routes'][max(0, min(len(self.camp['routes']) - 1, i))]
@@ -472,6 +606,12 @@ class Game:
     # ---- main step ------------------------------------------------------ #
     def step(self, dt):
         if self.state != 'play':
+            # the UI screens have their own clock so the entry animation runs on
+            # the same fixed timestep as everything else (FPS-independent)
+            self.ui_t += dt
+            self.ui_fx = max(0.0, self.ui_fx - dt)
+            if self.pick:
+                self._step_pick(dt)
             self.fx.update(dt)
             return
         # a queued level-up pauses the action for a card pick
@@ -572,12 +712,17 @@ class Game:
             for e in self.enemies:
                 if e.dead:
                     continue
-                where = e.hit_test(p.pos, p.max_r) if p.dashing else None
+                # one hit per enemy per dash: _collisions runs every frame, so
+                # without dash_hits a single 0.16s dash landed ~10 hits (30 dmg)
+                if not p.dashing or e in p.dash_hits:
+                    continue
+                where = e.hit_test(p.pos, p.max_r)
                 if where:
+                    p.dash_hits.add(e)
                     grant = getattr(e, 'grants', None)
                     if p.venom:
                         e.apply_poison(2.5, 2.5)
-                    dmg = 3
+                    dmg = C.DASH_DAMAGE
                     if where == 'head':                 # weak point
                         dmg = int(round(dmg * C.CRIT_MULT))
                         self.crit_fx(e.spine.joints[0])
@@ -593,8 +738,12 @@ class Game:
             # dashing through a nest damages it
             if p.dashing:
                 for n in self.rounds.nests:
-                    if not n.dead and p.pos.distance_to(n.pos) < p.max_r + n.max_r:
-                        n.take_hit(self, 3)
+                    if n.dead or n in p.dash_hits:
+                        continue
+                    if p.pos.distance_to(n.pos) < p.max_r + n.max_r:
+                        p.dash_hits.add(n)
+                        # a nest is a big stationary target: a full body slam lands
+                        n.take_hit(self, C.DASH_DAMAGE * 2)
                         self.shake(5)
 
     # ---- draw ----------------------------------------------------------- #
@@ -738,15 +887,106 @@ class Game:
             pygame.draw.rect(surf, col, (cx - bw // 2, 74 + img.get_height() + 2, int(bw * f), 5),
                              border_radius=3)
 
+    # ---- UI screen compositing ------------------------------------------ #
+    def _layer(self):
+        """Scratch full-screen surface: the UI is drawn here, then blitted with the
+        shake offset, so a `punch()` kicks the *whole screen* -- the world behind
+        is frozen on these screens, so shaking the camera alone reads as nothing."""
+        if self._uilayer is None:
+            self._uilayer = pygame.Surface((C.WIDTH, C.HEIGHT), pygame.SRCALPHA)
+        self._uilayer.fill((0, 0, 0, 0))
+        return self._uilayer
+
+    def _ui_fx(self, layer):
+        """Particles are drawn with the world, i.e. *under* the veil, which mutes
+        them ~80%. Around a choice, redraw them on top of the panels so the trail
+        and the impact burst actually read."""
+        if self.pick or self.ui_fx > 0:
+            self.fx.draw(layer, self.cam, self.font)
+
+    def _ui_dest(self, surf):
+        """Where the screen's content should be drawn.
+
+        Compositing through the scratch layer costs a full-screen per-pixel-alpha
+        blit (~4 ms), so only pay it while a shake is actually displacing the UI;
+        the rest of the time draw straight to the screen.
+        """
+        if abs(self.cam.shake_off.x) < 0.5 and abs(self.cam.shake_off.y) < 0.5:
+            return surf
+        return self._layer()
+
+    def _blit_ui(self, surf, layer):
+        if layer is not surf:
+            surf.blit(layer, (int(self.cam.shake_off.x), int(self.cam.shake_off.y)))
+
+    @staticmethod
+    def _blit_card(dst, src, center, scale=1.0, alpha=1.0):
+        """Blit a pre-rendered panel centred, scaled and faded (used by the entry
+        animation and by the absorption)."""
+        if alpha <= 0.01:
+            return
+        w = max(1, int(src.get_width() * scale))
+        h = max(1, int(src.get_height() * scale))
+        im = src if (w, h) == src.get_size() else pygame.transform.smoothscale(src, (w, h))
+        if alpha < 1.0:
+            im = im.copy()
+            im.set_alpha(int(255 * alpha))
+        dst.blit(im, (int(center[0] - w / 2), int(center[1] - h / 2)))
+
+    def _panel(self, key, build):
+        """Panels are redrawn only when their state changes -- rebuilding three
+        text-heavy cards every frame cost ~8 ms on the paused screens."""
+        s = self._panels.get(key)
+        if s is None:
+            s = self._panels[key] = build()
+        return s
+
+    def _veil(self, surf, color, target_alpha):
+        """Background dim that fades in first -- phase 1 of every screen."""
+        f = clamp(self.ui_t / C.UI_VEIL, 0, 1)
+        # plain surface + set_alpha, NOT an SRCALPHA fill: the per-pixel-alpha
+        # full-screen blit was costing ~8 ms a frame on these screens
+        if self._veilsurf is None or self._veilcol != color:
+            self._veilsurf = pygame.Surface((C.WIDTH, C.HEIGHT))
+            self._veilsurf.fill(color)
+            self._veilcol = color
+        self._veilsurf.set_alpha(int(target_alpha * f))
+        surf.blit(self._veilsurf, (0, 0))
+        return f
+
+    def _card_surface(self, card, i, sel):
+        """One level-up card, drawn at the origin so it can be moved/scaled freely."""
+        cw, ch = 240, 300
+        s = pygame.Surface((cw, ch), pygame.SRCALPHA)
+        box = pygame.Rect(0, 0, cw, ch)
+        pygame.draw.rect(s, (30, 32, 52), box, border_radius=16)
+        edge = card.color if sel else (70, 72, 96)
+        pygame.draw.rect(s, edge, box, 4 if sel else 2, border_radius=16)
+        icons.draw(s, getattr(card, 'icon', None), (cw // 2, 70), 30, card.color)
+        name = self.bigfont.render(card.name, True, C.COL_WHITE)
+        if name.get_width() > cw - 20:
+            name = self.font.render(card.name, True, C.COL_WHITE)
+        s.blit(name, (cw // 2 - name.get_width() // 2, 130))
+        for li, line in enumerate(ui.wrap(self.font, card.desc, cw - 30)):
+            im = self.font.render(line, True, (200, 200, 216))
+            s.blit(im, (cw // 2 - im.get_width() // 2, 180 + li * 24))
+        key = self.font.render(f"[{i + 1}]", True, card.color)
+        s.blit(key, (cw // 2 - key.get_width() // 2, ch - 34))
+        return s
+
     def _draw_levelup(self, surf):
-        ov = pygame.Surface((C.WIDTH, C.HEIGHT), pygame.SRCALPHA)
-        ov.fill((8, 10, 20, 200))
-        surf.blit(ov, (0, 0))
-        title = self.bigfont.render("EVOLUIR", True, C.COL_WHITE)
-        surf.blit(title, (C.WIDTH // 2 - title.get_width() // 2, 96))
-        sub = self.font.render("escolha uma mutacao  -  1/2/3, setas+ENTER ou clique",
-                               True, (190, 190, 210))
-        surf.blit(sub, (C.WIDTH // 2 - sub.get_width() // 2, 140))
+        f = self._veil(surf, (8, 10, 20), 200)
+        layer = self._ui_dest(surf)
+        # heading rides in with the veil, before the cards
+        toff, talpha = ui.drop_in(self.ui_t, 0, 0.0, C.UI_VEIL, rise=22.0)
+        if talpha > 0.01:
+            title = self.bigfont.render("EVOLUIR", True, C.COL_WHITE)
+            sub = self.font.render("escolha uma mutacao  -  1/2/3, setas+ENTER ou clique",
+                                   True, (190, 190, 210))
+            for im, ty in ((title, 96), (sub, 140)):
+                im = im.copy()
+                im.set_alpha(int(255 * talpha))
+                layer.blit(im, (C.WIDTH // 2 - im.get_width() // 2, int(ty + toff)))
 
         n = len(self.cards)
         cw, ch, gap = 240, 300, 34
@@ -754,37 +994,32 @@ class Game:
         x0 = C.WIDTH // 2 - total // 2
         y = C.HEIGHT // 2 - ch // 2 + 20
         self._card_rects = []
+        chosen = self.pick if (self.pick and self.pick['kind'] == 'card') else None
         for i, card in enumerate(self.cards):
-            x = x0 + i * (cw + gap)
-            rect = pygame.Rect(x, y, cw, ch)
+            rect = pygame.Rect(x0 + i * (cw + gap), y, cw, ch)
             self._card_rects.append(rect)
-            sel = (i == self.card_idx)
-            pygame.draw.rect(surf, (30, 32, 52), rect, border_radius=16)
-            edge = card.color if sel else (70, 72, 96)
-            pygame.draw.rect(surf, edge, rect, 4 if sel else 2, border_radius=16)
-            # procedural icon for the weapon/mutation
-            icons.draw(surf, getattr(card, 'icon', None), (rect.centerx, y + 70),
-                       30, card.color)
-            name = self.bigfont.render(card.name, True, C.COL_WHITE)
-            if name.get_width() > cw - 20:
-                name = self.font.render(card.name, True, C.COL_WHITE)
-            surf.blit(name, (rect.centerx - name.get_width() // 2, y + 130))
-            # wrap description
-            words = card.desc.split()
-            line, ly = "", y + 180
-            for w in words:
-                test = (line + " " + w).strip()
-                if self.font.size(test)[0] > cw - 30:
-                    im = self.font.render(line, True, (200, 200, 216))
-                    surf.blit(im, (rect.centerx - im.get_width() // 2, ly))
-                    ly += 24; line = w
-                else:
-                    line = test
-            if line:
-                im = self.font.render(line, True, (200, 200, 216))
-                surf.blit(im, (rect.centerx - im.get_width() // 2, ly))
-            key = self.font.render(f"[{i + 1}]", True, card.color)
-            surf.blit(key, (rect.centerx - key.get_width() // 2, y + ch - 34))
+            sel = (i == self.card_idx) or (chosen is not None and chosen['index'] == i)
+            src = self._panel(('card', i, sel), lambda c=card, i=i, s=sel:
+                              self._card_surface(c, i, s))
+            if chosen is None:
+                off, alpha = ui.drop_in(self.ui_t, i, C.UI_STAGGER, C.UI_DROP, rise=46.0)
+                self._blit_card(layer, src, (rect.centerx, rect.centery + off),
+                                1.0, alpha)
+            elif chosen['index'] != i:
+                # the ones you didn't take shrink away
+                g = clamp(chosen['t'] / 0.18, 0, 1)
+                self._blit_card(layer, src, rect.center, 1.0 - 0.25 * g, 1.0 - g)
+        if chosen is not None:
+            pos, scale, alpha = self._pick_pose()
+            ci = chosen['index']
+            src = self._panel(('card', ci, True),
+                              lambda: self._card_surface(self.cards[ci], ci, True))
+            palette.glow(layer, (int(pos.x), int(pos.y)), int(120 * scale + 30),
+                         chosen['color'], 0.30 + 0.30 * (1 - alpha))
+            self._blit_card(layer, src, pos, scale, alpha)
+        self._ui_fx(layer)
+        self._blit_ui(surf, layer)
+        return f
 
     def _draw_offscreen(self, surf):
         """Edge arrows pointing at enemies (and nests) you can't see -> find stragglers."""
@@ -813,122 +1048,192 @@ class Game:
             if shown >= 22:
                 break
 
+    def _shop_surface(self, it, i, focused):
+        """One beetle-shop item, drawn at the origin (see _card_surface)."""
+        cw, chh = 176, 132
+        s = pygame.Surface((cw, chh), pygame.SRCALPHA)
+        box = pygame.Rect(0, 0, cw, chh)
+        afford = self.pollen >= it['cost']
+        pygame.draw.rect(s, (34, 38, 56) if focused else (28, 32, 46), box, border_radius=12)
+        edge = palette.vibrant(it['hue'], 0.8, 1.0) if afford else (70, 72, 92)
+        if focused:
+            edge = C.COL_WHITE
+        pygame.draw.rect(s, edge, box, 4 if focused else (3 if afford else 2),
+                         border_radius=12)
+        icons.draw(s, it.get('icon'), (cw // 2, 34), 19, palette.vibrant(it['hue'], 0.8, 1.0))
+        nm = self.font.render(ui.fit(self.font, it['name'], cw - 16), True, C.COL_WHITE)
+        s.blit(nm, (cw // 2 - nm.get_width() // 2, 62))
+        ds = self.font.render(ui.fit(self.font, it['desc'], cw - 16), True, (190, 190, 210))
+        s.blit(ds, (cw // 2 - ds.get_width() // 2, 84))
+        cc = C.COL_POLLEN if afford else (150, 120, 60)
+        cost = self.font.render(f"{it['cost']}  polen", True, cc)
+        s.blit(cost, (cw // 2 - cost.get_width() // 2, 106))
+        s.blit(self.font.render(f"[{i + 1}]", True, edge), (8, 6))
+        return s
+
+    def _route_surface(self, r, sel, focused):
+        rw, rh = 250, 140
+        s = pygame.Surface((rw, rh), pygame.SRCALPHA)
+        box = pygame.Rect(0, 0, rw, rh)
+        bonus_txt = {'cura': 'entra com vida cheia', 'polen': '+25 polen',
+                     'carta': 'carta de evolucao'}
+        bonus_col = {'cura': (120, 240, 140), 'polen': C.COL_POLLEN,
+                     'carta': (150, 130, 245)}
+        pygame.draw.rect(s, (28, 32, 50) if focused else (24, 28, 42), box, border_radius=14)
+        pygame.draw.rect(s, C.COL_ENEMY if sel else (70, 72, 92), box,
+                         4 if focused else (3 if sel else 2), border_radius=14)
+        lbl = self.bigfont.render(r['label'], True, C.COL_ENEMY)
+        if lbl.get_width() > rw - 16:
+            lbl = self.font.render(r['label'], True, C.COL_ENEMY)
+        s.blit(lbl, (rw // 2 - lbl.get_width() // 2, 26))
+        s.blit(self.font.render("proxima onda", True, (180, 180, 200)), (rw // 2 - 46, 74))
+        bt = self.font.render(bonus_txt[r['bonus']], True, bonus_col[r['bonus']])
+        s.blit(bt, (rw // 2 - bt.get_width() // 2, 104))
+        return s
+
+    def _label(self, layer, text, x, y, off, alpha, color=(200, 200, 220)):
+        if alpha <= 0.01:
+            return
+        im = self.font.render(text, True, color)
+        if alpha < 1.0:
+            im = im.copy()
+            im.set_alpha(int(255 * alpha))
+        layer.blit(im, (int(x), int(y + off)))
+
     def _draw_camp(self, surf):
-        ov = pygame.Surface((C.WIDTH, C.HEIGHT), pygame.SRCALPHA)
-        ov.fill((10, 14, 22, 205))
-        surf.blit(ov, (0, 0))
+        self._veil(surf, (10, 14, 22), 205)
+        layer = self._ui_dest(surf)   # a scratch layer only while shaking
         cx = C.WIDTH // 2
-        t = self.bigfont.render("ACAMPAMENTO", True, C.COL_WHITE)
-        surf.blit(t, (cx - t.get_width() // 2, 40))
-        # pollen purse
-        pol = self.bigfont.render(str(self.pollen), True, (250, 214, 90))
-        pygame.draw.circle(surf, (250, 214, 90), (cx - 70, 96), 12)
-        pygame.draw.circle(surf, (200, 160, 40), (cx - 70, 96), 12, 2)
-        surf.blit(self.font.render("POLEN", True, (210, 210, 226)), (cx - 54, 88))
-        surf.blit(pol, (cx + 12, 78))
+        bought = self.pick if (self.pick and self.pick['kind'] == 'shop') else None
+        taken = self.pick if (self.pick and self.pick['kind'] == 'route') else None
+
+        # ---- header + pollen purse (rides in with the veil) ---- #
+        hoff, halpha = ui.drop_in(self.ui_t, 0, 0.0, C.UI_VEIL, rise=22.0)
+        if halpha > 0.01:
+            head = pygame.Surface((C.WIDTH, 130), pygame.SRCALPHA)
+            t = self.bigfont.render("ACAMPAMENTO", True, C.COL_WHITE)
+            head.blit(t, (cx - t.get_width() // 2, 40))
+            pol = self.bigfont.render(str(self.pollen), True, C.COL_POLLEN)
+            pygame.draw.circle(head, C.COL_POLLEN, (cx - 70, 96), 12)
+            pygame.draw.circle(head, (200, 160, 40), (cx - 70, 96), 12, 2)
+            head.blit(self.font.render("POLEN", True, (210, 210, 226)), (cx - 54, 88))
+            head.blit(pol, (cx + 12, 78))
+            if halpha < 1.0:
+                head.set_alpha(int(255 * halpha))
+            layer.blit(head, (0, int(hoff)))
 
         # ---- shop (beetle merchant) ---- #
-        surf.blit(self.font.render("LOJA DO BESOURO  (1-5 ou clique)", True, (200, 200, 220)),
-                  (cx - 300, 138))
-        self._shop_rects = []
         shop = self.camp['shop']
         cw, gap = 176, 14
-        total = len(shop) * cw + (len(shop) - 1) * gap
-        x0 = cx - total // 2
+        x0 = cx - (len(shop) * cw + (len(shop) - 1) * gap) // 2
         y = 164
+        self._shop_rects = []
+        soff, salpha = ui.drop_in(self.ui_t, 1, C.UI_STAGGER, C.UI_DROP, rise=40.0)
+        self._label(layer, "LOJA DO BESOURO  (1-5 ou clique)", cx - 300, 138, soff, salpha)
         for i, it in enumerate(shop):
-            x = x0 + i * (cw + gap)
-            rect = pygame.Rect(x, y, cw, 132)
+            rect = pygame.Rect(x0 + i * (cw + gap), y, cw, 132)
             self._shop_rects.append(rect)
-            afford = self.pollen >= it['cost']
+            if bought is not None and bought['index'] == i:
+                continue                      # drawn last, mid-absorption
             focused = (self.camp.get('focus') == 'shop' and self.camp.get('shop_sel') == i)
-            pygame.draw.rect(surf, (34, 38, 56) if focused else (28, 32, 46),
-                             rect, border_radius=12)
-            edge = palette.vibrant(it['hue'], 0.8, 1.0) if afford else (70, 72, 92)
-            if focused:
-                edge = C.COL_WHITE
-                palette.glow(surf, rect.center, 90, palette.vibrant(it['hue'], 0.8, 1.0), 0.3)
-            pygame.draw.rect(surf, edge, rect, 4 if focused else (3 if afford else 2),
-                             border_radius=12)
-            icons.draw(surf, it.get('icon'), (rect.centerx, y + 34), 19,
-                       palette.vibrant(it['hue'], 0.8, 1.0))
-            nm = self.font.render(ui.fit(self.font, it['name'], cw - 16), True, C.COL_WHITE)
-            surf.blit(nm, (rect.centerx - nm.get_width() // 2, y + 62))
-            ds = self.font.render(ui.fit(self.font, it['desc'], cw - 16), True, (190, 190, 210))
-            surf.blit(ds, (rect.centerx - ds.get_width() // 2, y + 84))
-            cc = (250, 214, 90) if afford else (150, 120, 60)
-            cost = self.font.render(f"{it['cost']}  polen", True, cc)
-            surf.blit(cost, (rect.centerx - cost.get_width() // 2, y + 106))
-            key = self.font.render(f"[{i + 1}]", True, edge)
-            surf.blit(key, (x + 8, y + 6))
-        if self.camp.get('msg'):
+            off, alpha = ui.drop_in(self.ui_t, 1 + i * 0.4, C.UI_STAGGER, C.UI_DROP,
+                                    rise=40.0)
+            if bought is not None:            # the ones you passed on dim away
+                alpha *= 1.0 - clamp(bought['t'] / 0.18, 0, 1) * 0.8
+            if focused and alpha > 0.5:
+                palette.glow(layer, (rect.centerx, int(rect.centery + off)), 90,
+                             palette.vibrant(it['hue'], 0.8, 1.0), 0.3 * alpha)
+            src = self._panel(('shop', i, focused, it['cost'], self.pollen >= it['cost']),
+                              lambda it=it, i=i, f=focused: self._shop_surface(it, i, f))
+            self._blit_card(layer, src, (rect.centerx, rect.centery + off), 1.0, alpha)
+        if self.camp.get('msg') and bought is None and salpha > 0.9:
             m = self.font.render(f"comprado: {self.camp['msg']}", True, (120, 240, 140))
-            surf.blit(m, (x0, y + 116))
+            layer.blit(m, (x0, y + 116))
 
         # ---- charms loadout ---- #
         p0 = self.players[0]
-        surf.blit(self.font.render("CHARMS  (clique um charm p/ equipar no slot)", True,
-                                   (200, 200, 220)), (cx - 300, 306))
-        slots = [('head', 'CABECA'), ('back', 'COSTAS'), ('tail', 'CAUDA')]
-        sw = 168
-        sx0 = cx - (len(slots) * sw + (len(slots) - 1) * 12) // 2
-        for si, (slot, nm) in enumerate(slots):
-            bx = sx0 + si * (sw + 12)
-            box = pygame.Rect(bx, 328, sw, 40)
-            cid = p0.charm_slots.get(slot)
-            col = charmlib.CHARMS[cid].color if cid else (62, 64, 88)
-            pygame.draw.rect(surf, (26, 30, 44), box, border_radius=10)
-            pygame.draw.rect(surf, col, box, 2, border_radius=10)
-            lab = charmlib.CHARMS[cid].name if cid else '-'
-            txt = ui.fit(self.font, f"{nm}: {lab}", box.width - 20)
-            surf.blit(self.font.render(txt, True, (218, 218, 232)), (bx + 10, 336))
+        coff, calpha = ui.drop_in(self.ui_t, 3, C.UI_STAGGER, C.UI_DROP, rise=40.0)
         self._charm_rects = []
-        chx, chy = cx - 300, 376
-        for cid in p0.charms_owned:
-            ch = charmlib.CHARMS[cid]
-            w = self.font.size(ch.name)[0] + 34
-            rect = pygame.Rect(chx, chy, w, 30)
-            self._charm_rects.append((rect, cid))
-            equipped = (p0.charm_slots.get(ch.slot) == cid)
-            pygame.draw.rect(surf, (30, 34, 50), rect, border_radius=8)
-            pygame.draw.rect(surf, ch.color, rect, 3 if equipped else 1, border_radius=8)
-            icons.draw(surf, cid, (chx + 15, chy + 15), 9, ch.color, glow=False)
-            surf.blit(self.font.render(ch.name, True, (222, 222, 234)), (chx + 28, chy + 6))
-            chx += w + 8
-            if chx > cx + 290:
-                chx, chy = cx - 300, chy + 34
+        if calpha > 0.01:
+            self._label(layer, "CHARMS  (clique um charm p/ equipar no slot)",
+                        cx - 300, 306, coff, calpha)
+            block = pygame.Surface((C.WIDTH, 140), pygame.SRCALPHA)
+            slots = [('head', 'CABECA'), ('back', 'COSTAS'), ('tail', 'CAUDA')]
+            sw = 168
+            sx0 = cx - (len(slots) * sw + (len(slots) - 1) * 12) // 2
+            for si, (slot, nm) in enumerate(slots):
+                bx = sx0 + si * (sw + 12)
+                box = pygame.Rect(bx, 0, sw, 40)          # block starts at y=328
+                cid = p0.charm_slots.get(slot)
+                col = charmlib.CHARMS[cid].color if cid else (62, 64, 88)
+                pygame.draw.rect(block, (26, 30, 44), box, border_radius=10)
+                pygame.draw.rect(block, col, box, 2, border_radius=10)
+                lab = charmlib.CHARMS[cid].name if cid else '-'
+                txt = ui.fit(self.font, f"{nm}: {lab}", box.width - 20)
+                block.blit(self.font.render(txt, True, (218, 218, 232)), (bx + 10, 8))
+            chx, chy = cx - 300, 48
+            for cid in p0.charms_owned:
+                ch = charmlib.CHARMS[cid]
+                w = self.font.size(ch.name)[0] + 34
+                rect = pygame.Rect(chx, chy, w, 30)
+                self._charm_rects.append((rect.move(0, 328), cid))
+                equipped = (p0.charm_slots.get(ch.slot) == cid)
+                pygame.draw.rect(block, (30, 34, 50), rect, border_radius=8)
+                pygame.draw.rect(block, ch.color, rect, 3 if equipped else 1, border_radius=8)
+                icons.draw(block, cid, (chx + 15, chy + 15), 9, ch.color, glow=False)
+                block.blit(self.font.render(ch.name, True, (222, 222, 234)),
+                           (chx + 28, chy + 6))
+                chx += w + 8
+                if chx > cx + 290:
+                    chx, chy = cx - 300, chy + 34
+            if calpha < 1.0:
+                block.set_alpha(int(255 * calpha))
+            layer.blit(block, (0, int(328 + coff)))
 
         # ---- routes (choose the next round) ---- #
-        surf.blit(self.font.render("ESCOLHA A ROTA  (setas+ENTER ou clique) -> avanca",
-                                   True, (200, 200, 220)), (cx - 300, 470))
+        roff, ralpha = ui.drop_in(self.ui_t, 4, C.UI_STAGGER, C.UI_DROP, rise=40.0)
+        self._label(layer, "ESCOLHA A ROTA  (setas+ENTER ou clique) -> avanca",
+                    cx - 300, 470, roff, ralpha)
         self._route_rects = []
         routes = self.camp['routes']
         rw, rgap = 250, 26
-        rtotal = len(routes) * rw + (len(routes) - 1) * rgap
-        rx0 = cx - rtotal // 2
+        rx0 = cx - (len(routes) * rw + (len(routes) - 1) * rgap) // 2
         ry = 496
-        bonus_txt = {'cura': 'entra com vida cheia', 'polen': '+25 polen', 'carta': 'carta de evolucao'}
-        bonus_col = {'cura': (120, 240, 140), 'polen': (250, 214, 90), 'carta': (150, 130, 245)}
         for i, r in enumerate(routes):
-            x = rx0 + i * (rw + rgap)
-            rect = pygame.Rect(x, ry, rw, 140)
+            rect = pygame.Rect(rx0 + i * (rw + rgap), ry, rw, 140)
             self._route_rects.append(rect)
             sel = (i == self.camp['sel'])
             focused = sel and self.camp.get('focus', 'route') == 'route'
-            pygame.draw.rect(surf, (28, 32, 50) if focused else (24, 28, 42),
-                             rect, border_radius=14)
-            if focused:
-                palette.glow(surf, rect.center, 130, C.COL_ENEMY, 0.28)
-            pygame.draw.rect(surf, C.COL_ENEMY if sel else (70, 72, 92),
-                             rect, 4 if focused else (3 if sel else 2), border_radius=14)
-            lbl = self.bigfont.render(r['label'], True, C.COL_ENEMY)
-            if lbl.get_width() > rw - 16:
-                lbl = self.font.render(r['label'], True, C.COL_ENEMY)
-            surf.blit(lbl, (rect.centerx - lbl.get_width() // 2, ry + 26))
-            surf.blit(self.font.render("proxima onda", True, (180, 180, 200)),
-                      (rect.centerx - 46, ry + 74))
-            bt = self.font.render(bonus_txt[r['bonus']], True, bonus_col[r['bonus']])
-            surf.blit(bt, (rect.centerx - bt.get_width() // 2, ry + 104))
+            off, alpha = ui.drop_in(self.ui_t, 4 + i * 0.4, C.UI_STAGGER, C.UI_DROP,
+                                    rise=40.0)
+            scale = 1.0
+            if taken is not None:
+                g = clamp(taken['t'] / max(taken['dur'], 1e-4), 0, 1)
+                if taken['index'] == i:       # the door you walk through swells + flares
+                    scale = 1.0 + 0.18 * ease_out(g)
+                    palette.glow(layer, (rect.centerx, int(rect.centery + off)),
+                                 int(150 * scale), C.COL_ENEMY, 0.28 + 0.5 * g)
+                else:
+                    alpha *= 1.0 - g
+            elif focused and alpha > 0.5:
+                palette.glow(layer, (rect.centerx, int(rect.centery + off)), 130,
+                             C.COL_ENEMY, 0.28 * alpha)
+            src = self._panel(('route', i, sel, focused),
+                              lambda r=r, s=sel, f=focused: self._route_surface(r, s, f))
+            self._blit_card(layer, src, (rect.centerx, rect.centery + off), scale, alpha)
+
+        # ---- the item being absorbed, on top of everything ---- #
+        if bought is not None:
+            pos, scale, alpha = self._pick_pose()
+            it = shop[bought['index']]
+            src = self._panel(('shop', bought['index'], True, it['cost'],
+                               self.pollen >= it['cost']),
+                              lambda: self._shop_surface(it, bought['index'], True))
+            palette.glow(layer, (int(pos.x), int(pos.y)), int(100 * scale + 30),
+                         bought['color'], 0.30 + 0.30 * (1 - alpha))
+            self._blit_card(layer, src, pos, scale, alpha)
+        self._ui_fx(layer)
+        self._blit_ui(surf, layer)
 
     def _draw_victory(self, surf):
         """Run beaten: celebratory summary + the DNA banked (endless now unlocked)."""

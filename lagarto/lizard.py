@@ -287,6 +287,11 @@ class Player(Lizard):
         self.food = 0
         self.dash_time = 0.0
         self.dash_cd = 0.0
+        # everything this dash already hit -- collisions run every frame, so
+        # without this one dash lands ~10 hits on whatever it overlaps
+        self.dash_hits = set()
+        self.clog = 0.0           # how buried in enemy bodies we are (collision.py)
+        self.clog_f = 0.0         # smoothed, so the drag eases in/out
         self.tongue_t = 0.0
         self.tongue_target = None
         self.aim = Vector2(1, 0)
@@ -448,17 +453,29 @@ class Player(Lizard):
         c = self.ctrl
         self.aim = safe_norm(c.aim_world - self.pos)
 
+        # Soft collision: pushing through enemies costs speed instead of shoving you
+        # around (collision.py fills `clog` with the overlap depth). Eased so it
+        # doesn't stutter, and ignored mid-dash -- ploughing through is the point.
+        # clog is a sum of overlap depths; it peaks around max_r when you are truly
+        # buried in a body, so that is the scale that maps to "fully bogged down"
+        target_clog = clamp(self.clog / max(self.max_r * 1.2, 1.0), 0.0, 1.0)
+        self.clog_f = approach(self.clog_f, target_clog, 9, dt)
+        drag = 1.0 - C.CONTACT_DRAG * self.clog_f
+
         speed_mul = 1.0
         if self.dash_time > 0:
             self.dash_time -= dt
             speed_mul = 3.4 if self.wings else 2.9
+            drag = 1.0
             game.fx.trail(self.pos, self.color)
+        speed_mul *= drag
         self.dash_cd = max(0.0, self.dash_cd - dt)
 
         if c.dash_edge and self.dash_cd <= 0 and self.energy >= C.DASH_COST:
             move = c.move if c.move.length_squared() > 0.1 else self.facing
             self.vel = safe_norm(move) * self.max_speed * (3.5 if self.wings else 3.0)
             self.dash_time = 0.2 if self.wings else 0.16
+            self.dash_hits.clear()          # fresh dash -> everyone is hittable again
             self.dash_cd = self.dash_cooldown * (0.8 if self.wings else 1.0)
             self.energy -= C.DASH_COST if self.wings else C.DASH_COST + 4
             audio.play('dash')
@@ -745,31 +762,30 @@ class AILizard(Lizard):
         return Vector2()
 
     def _draw_weakpoint(self, surf, cam):
-        """Mark the head: it is the weak point (crit) and where aiming pays off."""
+        """Mark the head: it is the weak point (crit) and where aiming pays off.
+
+        A crosshair read as UI stuck on the creature. This is purely organic
+        instead: a warm halo that breathes *behind* the head, so it glows out
+        around the silhouette without painting over the eyes.
+        """
         if self.kind != 'enemy' or getattr(self, 'is_boss', False):
             return
         head = self.spine.joints[0]
         if not cam.visible(head, 40):
             return
         sp = cam.w2s(head)
-        r = max(4, int(self.max_r * 0.85 * cam.zoom))
+        r = max(6, int(self.spine.radii[0] * 2.1 * cam.zoom))
         pulse = 0.55 + 0.45 * math.sin(self.wobble * 2.4)
-        col = (255, 210, 120)
-        palette.glow(surf, sp, r * 1.5, col, 0.18 + 0.16 * pulse)
-        pygame.draw.circle(surf, col, sp, r, max(1, int(2 * cam.zoom)))
-        # little crosshair ticks so it reads as "aim here"
-        for a in (0, 90, 180, 270):
-            p1 = head + vfrom_angle(a, self.max_r * 0.85)
-            p2 = head + vfrom_angle(a, self.max_r * 1.15)
-            pygame.draw.line(surf, col, cam.w2s(p1), cam.w2s(p2), max(1, int(2 * cam.zoom)))
+        palette.glow(surf, sp, r, palette.lighten(self.color, 0.5),
+                     0.30 + 0.16 * pulse)
 
     def draw(self, surf, cam):
         if self.life is not None and self.life < 5.0:
             # blink faster as the ally is about to leave
             if int(self.life * (12 if self.life < 2 else 6)) % 2 == 0:
                 return
+        self._draw_weakpoint(surf, cam)      # behind the body: reads as a halo
         super().draw(surf, cam)
-        self._draw_weakpoint(surf, cam)
         self._draw_health(surf, cam)
 
     def _draw_health(self, surf, cam):

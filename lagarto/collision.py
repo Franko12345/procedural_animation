@@ -37,11 +37,14 @@ def _samples(creatures):
 
 def separate(creatures):
     if len(creatures) < 2:
+        for c in creatures:
+            c.clog = 0.0            # nothing to touch -> never leave stale drag
         return
 
     for c in creatures:
         c._px = 0.0
         c._py = 0.0
+        c._clog = 0.0
 
     samples = _samples(creatures)
     grid = {}
@@ -76,6 +79,22 @@ def separate(creatures):
                     else:
                         a = random.uniform(0, C.TAU)
                         nx, ny, ov = math.cos(a), math.sin(a), min_d
+                    # SOFT contact for the player: being physically shoved by every
+                    # enemy read as pinball and was the single most frustrating thing
+                    # in playtests. The player is never pushed -- they wade *through*,
+                    # shoving the enemy aside, and pay for it in speed (see
+                    # ``_clog`` -> Player.update).
+                    cp, op = c.kind == 'player', o.kind == 'player'
+                    if cp or op:
+                        if cp:
+                            c._clog += ov
+                            o._px -= nx * ov
+                            o._py -= ny * ov
+                        else:
+                            o._clog += ov
+                            c._px += nx * ov
+                            c._py += ny * ov
+                        continue
                     wc = o.max_r / (c.max_r + o.max_r)   # bigger yields less
                     wo = 1.0 - wc
                     c._px += nx * ov * wc
@@ -84,6 +103,9 @@ def separate(creatures):
                     o._py -= ny * ov * wo
 
     for c in creatures:
+        # how deeply this creature is buried in bodies it doesn't push against;
+        # Player.update turns it into drag instead of a shove
+        c.clog = c._clog
         px, py = c._px, c._py
         if px == 0.0 and py == 0.0:
             continue

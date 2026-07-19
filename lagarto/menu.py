@@ -122,9 +122,9 @@ def _menu_list(screen, font, bigfont, items, sel, top, accent, anim=None, t=0.0)
 
     for i, label in enumerate(items):
         # staggered drop-in: each row starts a bit after the previous one
-        lt = max(0.0, min(1.0, (at - i * 0.045) / 0.26))
-        ease = 1 - (1 - lt) ** 3                       # ease-out cubic
-        y = top + i * gap - (1 - ease) * 26            # slides down into place
+        off, ease = ui.drop_in(at, i, stagger=0.045, dur=0.26, rise=26.0)
+        lt = ease
+        y = top + i * gap + off                        # slides down into place
         rect = pygame.Rect(cx - w // 2, int(top + i * gap), w, gap - 10)
         rects.append((i, rect))
         if lt <= 0:
