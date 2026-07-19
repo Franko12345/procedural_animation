@@ -64,7 +64,7 @@ MUTATIONS = [
     _m('plates',  'Carapaca',        'placas de armadura',          260, _plates),
     _m('horns',   'Chifres',         'chifres na cabeca',           20,  _horns, 0.9),
     _m('legs',    'Pernas Extras',   '+2 pernas (mais estavel)',    275, _legs, 0.9),
-    _m('club',    'Cauda-Clava',     'cauda com clava pesada',      15,  _club, 0.7),
+    _m('club',    'Cauda-Clava',     'rabada: +dano e empurrao',    15,  _club, 0.7),
     _m('venom',   'Peconha',         'dash/bote envenena',          105, _venom, 0.8),
     _m('wings',   'Membranas',       'dash mais forte e rapido',    175, _wings, 0.7),
     _m('might',   'Vigor',           '+20% dano das armas',         0,   _might, 1.2),

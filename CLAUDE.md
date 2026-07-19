@@ -106,12 +106,14 @@ Lagarto = 4 elementos: **Intent** (cabeça aponta), **Action** (pernas dão o pa
 
 ## Controles
 
-- **P1**: WASD mover · mouse mirar · clique-esq/ESPAÇO dash · clique-dir/SHIFT língua.
+- **P1**: WASD mover · mouse mirar · clique-esq/ESPAÇO dash · clique-dir/SHIFT língua ·
+  **clique-meio/Q rabada** (golpe de cauda).
   No single-player, um **gamepad também controla o P1** (híbrido — usa o que estiver
   ativo; `KeyboardMouseController(joy)`), então dá pra jogar sem mouse.
 - **Língua com auto-mira**: mira sozinha no alvo mais próximo no alcance
   (`game.nearest_edible` — sem cone) e **custa energia** (8). Dispensa mouse.
-- **P2** (coop): gamepad (sticks + A/X) se detectado, senão setas + IJKL + RCtrl/RShift.
+- **P2** (coop): gamepad (sticks + A/X/**Y**) se detectado, senão setas + IJKL +
+  RCtrl/RShift/**RAlt**.
 - **Janela** (`display.py`): tudo é desenhado numa **surface lógica fixa**
   (`C.WIDTH×C.HEIGHT`) e escalada (smoothscale) p/ a janela; presets **1x/2x/3x**,
   tela cheia com **letterbox**, **F11** alterna. Qualquer clique/mira precisa passar por
@@ -139,12 +141,39 @@ level}` + `Player.weapon_state`; cada frame roda `weapons.WEAPONS[id].tick(...)`
 - **Cartas de level-up** (`evolution.roll_cards`) misturam **cartas de arma** (`WeaponCard`:
   nova ou subir nível) + **passivas** (stats globais/partes). HUD mostra chips das armas
   equipadas com o nível.
-- **Dano fracionado** de auras/orbitais/poças via `AILizard.damage(game, amount)`.
+- **Dano fracionado** de auras/orbitais/poças via `AILizard.damage(game, amount)` — um
+  acumulador que guarda a sobra fracionária. **Ele não é limitador de taxa**: quem chama
+  todo frame *tem* que multiplicar por `dt`, senão entrega 60x. Auditado: esporos, sopro,
+  enxame e poça fazem certo. *As chaves `dmg` de Enxame e Ácido são **dps**, não dano por
+  acerto* — armadilha ao balancear.
+- **Ácido: o multiplicador era empilhamento, não reaplicação.** `Acido.tick` re-consultava
+  `nearest_enemy` dentro do laço **sem o mundo avançar**, então todas as poças caíam no
+  mesmo alvo (espalhamento de 60 px contra raio ~80 → sobreposição quase total), e a vida
+  da poça era maior que o cooldown. Dava ~57 dps efetivos contra 18 do esporos. Hoje as
+  poças miram **inimigos distintos** e `life` é menor que antes. Medido no alvo único
+  (nível 5): ácido 18,6 · esporos 23,4 · enxame 18,5.
 
 Extras manuais: **dash** (contato + i-frames + **chain**: matar com dash recarrega o
 dash e devolve energia), **língua-chicote** (mira no mais próximo entre comida/inimigo;
 inimigo leva dano + é puxado; custa energia), **habilidade ativa** (a fazer no camp).
 **Combo/streak** (`game.combo`): matar sobe o multiplicador (decai se você foge).
+
+**Rabada (`Player._whip_hit`)** — golpe de cauda manual, botão próprio (**meio do mouse /
+Q**, P2 **RAlt**, gamepad **Y**). Custa `C.WHIP_COST`, cooldown `Player.whip_cooldown`.
+- **Como a cauda se move**: a espinha é follow-the-leader e `spine.resolve` **reescreve
+  todas as juntas todo frame** (e `collision.separate` re-resolve depois) — *deslocar junta
+  não funciona, é apagado no mesmo frame*. Em vez disso o golpe dá um **impulso lateral na
+  velocidade do jogador**, e a cauda chicoteia sozinha pelo follow-through. O lado é
+  escolhido pelo produto vetorial com o inimigo mais próximo (senão alterna).
+- **Hitbox = as juntas reais** (`spine.joints[-3:]`) com alcance explícito `max_r*1.15`
+  (o `radii` da ponta é ~0.22*max_r, pequeno demais). O que você vê é o que acerta;
+  cabeça do inimigo ainda dá crítico.
+- **`whip_hits`** (set, limpo no disparo) = **um acerto por alvo por golpe**, mesmo padrão
+  de `dash_hits`. Sem isso o bug de dano-por-frame volta.
+- **Modificadores da cauda** (era tudo cosmético antes): `club` → `WHIP_CLUB_MULT` de dano
+  + `WHIP_KNOCK_CLUB` de empurrão + shake maior; `sting` → `apply_poison`. *Nota: o ferrão
+  dos **inimigos** aplica `apply_slow`, o do jogador envenena — divergência proposital.*
+- `take_hit` **atribui** `vel`, então o empurrão extra vem **depois** da chamada.
 
 **Dano do dash — um acerto por investida.** `_collisions` roda **todo frame**, então
 enquanto `p.dashing` (0,16 s ≈ 10 frames) o mesmo inimigo era atingido 10x: **30 de dano
@@ -177,8 +206,22 @@ os ninhos (dash/cuspe) corta o fluxo. `game.rounds.draw_world`/`draw_banner`.
 run ganha por kill × combo, `game.add_pollen` — em cura/vida/vigor/charm/ovo de amigo;
 custo sobe a cada compra; **charm custa 150** por ser permanente e forte) + **escolha de
 rota** (3 portas = tema da próxima onda + bônus cura/pólen/carta). Escolher a rota chama
-`rounds.request_next(theme)`. Input em `app.py` (1-5 compra, setas+ENTER/clique escolhe a
-rota). Desenho: `game._draw_camp`.
+`rounds.request_next(theme)`. Desenho: `game._draw_camp`.
+
+**Navegação do camp — um modelo só para teclado e gamepad** (`app._camp_nav`). Antes eles
+discordavam: o pad tinha um flip binário loja↔rota e as setas do teclado **ignoravam o
+`focus`** (mexiam sempre na rota); e **charms só davam para equipar com o mouse** —
+`camp_equip` tinha um único call site. Hoje as áreas seguem a ordem da tela:
+**loja → charms → rota** (a de charms some quando você não tem nenhum).
+- **Charms em grade, uma coluna por slot** (`C.CHARM_SLOTS`): cada charm aparece **sob o
+  cabeçalho do seu próprio slot**, o que deixa óbvio o que ele substitui. Esquerda/direita
+  troca de coluna (pulando slots vazios), cima/baixo anda na coluna e **só sai da grade
+  nas pontas** (`game.camp_move_charm` devolve `False` aí).
+- `camp_equip(cid)` recebe **id**, não índice — diferente de `camp_buy`/`camp_pick_route`.
+  `game.camp_equip_cursor()` resolve coluna+linha → `cid`.
+- **Espaço vertical é apertado**: sobram 142 px entre os charms (y=328) e o label das rotas
+  (y=470), e o slot `back` tem 4 charms. Ao mexer no layout, teste com **todos os charms**,
+  não com o caso vazio.
 
 ## Telas de jogo: entrada animada + absorção da escolha
 
@@ -327,7 +370,38 @@ demais no chão*. Ajustes feitos — **estes números são o lugar para mexer**:
 - Partículas **pooled** com teto (`FX.MAX`); sombras e cores de tile **cacheadas**.
 - Orçamento de entidades (insetos/presas repopulam por probabilidade, com limite).
 - Custo medido: ~0.5ms step + ~3.3ms draw por frame com round cheio (larga folga).
-- `display.present()` usa **smoothscale** (arte vetorial fica nítida ao escalar).
+- `display.present()` usa **smoothscale** (arte vetorial fica nítida ao escalar). É
+  **CPU**: 2,2 ms/frame no 2x, 3,8 ms no 3x — por isso a taxa de render importa tanto.
+
+### `RENDER_FPS = SIM_HZ` — não aumente
+
+A simulação é fixa em `SIM_HZ` e **o desenho não interpola entre estados**. Renderizar
+acima disso só **redesenha frames idênticos**: era 120 contra 60 de simulação, ou seja
+**2x o custo de `draw` + `smoothscale` + `flip` por zero ganho visual** (a GPU do usuário
+ficava em 100% com consumo baixo — muito flip, pouco trabalho útil). Se um dia quiser
+render acima da simulação, precisa **implementar interpolação** antes.
+
+### `palette.glow` — a chave do cache TEM que ser grossa
+
+`_GLOW_CACHE` guarda um `Surface` por `(raio, cor)`. Os três eixos são **contínuos na
+prática**: o raio encolhe com a vida da partícula e escala com o zoom; a intensidade é uma
+senoide pulsante em vários dos ~29 call sites; e **cada criatura nasce com cor aleatória**,
+que os bursts de `fx` herdam. Sem quantizar, o cache **crescia sem limite** — medido:
+459 → 1843 entradas e **24,6 → 115,7 MB** de surfaces em ~7 min de jogo (RSS 364 → 470 MB),
+o que fazia sessões longas travarem. Hoje:
+- `_quantise_radius` (degraus 2/4/8 px conforme o tamanho) + cor em **4 bits/canal**
+  (`& 0xF0`) aplicada **depois** de dobrar a intensidade → pulsos e cores parecidas
+  colapsam no mesmo sprite (o gradiente aditivo esconde o banding);
+- **teto `_GLOW_MAX = 900`** com `clear()` ao estourar (mais previsível que LRU).
+- Resultado medido: a curva **fica plana** (~35-47 MB, estável). **Ao adicionar um glow
+  novo, não reintroduza intensidade/raio contínuos como chave.**
+
+### Nada de `Surface` de tela cheia por frame
+
+`ui._tint(surf, cor, alpha)` é o único caminho para escurecer/clarear a tela inteira:
+reusa **uma surface cacheada por cor** com `set_alpha` (blit mais rápido que alpha
+por-pixel). Usado por `ui.Fade`, `ui.veil`, o véu das telas de jogo (`game._veil`) e o
+flash branco. Alocar `Surface(SRCALPHA)` a cada frame custava ~6 ms **e** gerava lixo.
 
 ## Pronto para online (não implementado ainda)
 

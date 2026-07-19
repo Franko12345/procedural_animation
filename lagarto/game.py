@@ -123,8 +123,6 @@ class Game:
         self.pick = None          # a choice being absorbed by the player (see _step_pick)
         self.ui_fx = 0.0          # keeps fx drawn over the veil just after an impact
         self._uilayer = None      # scratch surface so screen shake can move the whole UI
-        self._veilsurf = None
-        self._veilcol = None
         self._panels = {}         # rendered card/shop/route panels, keyed by their state
         self._card_rects = []
         self._shop_rects = []
@@ -368,7 +366,7 @@ class Game:
         routes = [dict(theme=k, bonus=bonuses[i % 3], label=THEMES[k]['banner'])
                   for i, k in enumerate(picks)]
         self.camp = dict(routes=routes, shop=self._roll_shop(), sel=0,
-                         focus='route', shop_sel=0)
+                         focus='route', shop_sel=0, charm_col=0, charm_row=0)
         self._route_rects = []
         self._shop_rects = []
         self._charm_rects = []
@@ -429,6 +427,50 @@ class Game:
             return
         if self.players and not self.players[0].dead:
             self.players[0].equip_charm(cid)
+
+    # ---- charm grid: one column per slot, walked by keyboard/gamepad -------- #
+    def camp_charms(self, col):
+        """Owned charms in slot column ``col``, in the order they are drawn."""
+        if not self.players:
+            return []
+        col = max(0, min(len(C.CHARM_SLOTS) - 1, col))
+        slot = C.CHARM_SLOTS[col][0]
+        return [c for c in self.players[0].charms_owned
+                if charmlib.CHARMS[c].slot == slot]
+
+    def camp_has_charms(self):
+        return any(self.camp_charms(i) for i in range(len(C.CHARM_SLOTS)))
+
+    def camp_move_charm(self, dcol, drow):
+        """Walk the grid. Returns True if the cursor actually moved, so the caller
+        knows whether up/down should instead leave the charm area."""
+        if not self.camp:
+            return False
+        n = len(C.CHARM_SLOTS)
+        col = self.camp.get('charm_col', 0)
+        row = self.camp.get('charm_row', 0)
+        if dcol:
+            for _ in range(n):              # skip slots with nothing owned yet
+                col = (col + dcol) % n
+                if self.camp_charms(col):
+                    break
+            row = 0
+        elif drow:
+            owned = self.camp_charms(col)
+            if not (0 <= row + drow < len(owned)):
+                return False                # at an end -> let focus move on
+            row += drow
+        self.camp['charm_col'] = col
+        self.camp['charm_row'] = max(0, min(row, len(self.camp_charms(col)) - 1))
+        return True
+
+    def camp_equip_cursor(self):
+        if not self.camp:
+            return
+        owned = self.camp_charms(self.camp.get('charm_col', 0))
+        row = self.camp.get('charm_row', 0)
+        if 0 <= row < len(owned):
+            self.camp_equip(owned[row])
 
     def camp_buy(self, i):
         if not self.camp or i < 0 or i >= len(self.camp['shop']) or self.ui_busy():
@@ -780,9 +822,7 @@ class Game:
         self.world.draw_ambient(surf, self.cam)
         self.fx.draw(surf, self.cam, self.font)
         if self.flash > 0:
-            fl = pygame.Surface((C.WIDTH, C.HEIGHT), pygame.SRCALPHA)
-            fl.fill((255, 255, 255, int(150 * min(1.0, self.flash))))
-            surf.blit(fl, (0, 0))
+            ui._tint(surf, (255, 255, 255), int(150 * min(1.0, self.flash)))
         _vignette(surf)
         if self.state == 'play':
             self._draw_offscreen(surf)
@@ -839,12 +879,17 @@ class Game:
                              (x, xy, int(bw * clamp(p.xp / p.xp_to_next, 0, 1)), 5), border_radius=3)
             # ability cooldown dials (dash / tongue) -> readable "can I act?" feedback
             dy = xy + 16
+            # three dials in a 216px panel: 78px pitch overflowed, so 11px radius
+            # on a 68px pitch, with short labels
             dash_frac = 1.0 - clamp(p.dash_cd / max(0.001, p.dash_cooldown), 0, 1)
-            _dial(surf, (x + 14, dy + 14), 13, dash_frac, p.colorset[0],
+            _dial(surf, (x + 12, dy + 14), 11, dash_frac, p.colorset[0],
                   self.font, "DASH", self.time, enabled=p.energy >= C.DASH_COST)
             t_frac = 0.0 if p.tongue_t > 0 else 1.0
-            _dial(surf, (x + 92, dy + 14), 13, t_frac, (235, 90, 120),
-                  self.font, "LINGUA", self.time, enabled=p.energy >= C.TONGUE_COST)
+            _dial(surf, (x + 80, dy + 14), 11, t_frac, (235, 90, 120),
+                  self.font, "LING", self.time, enabled=p.energy >= C.TONGUE_COST)
+            w_frac = 1.0 - clamp(p.whip_cd / max(0.001, p.whip_cooldown), 0, 1)
+            _dial(surf, (x + 148, dy + 14), 11, w_frac, (250, 190, 90),
+                  self.font, "RABO", self.time, enabled=p.energy >= C.WHIP_COST)
 
             if p.down:
                 surf.blit(self.font.render(f"CAIDO {p.revive:0.0f}s - toque p/ reviver",
@@ -943,15 +988,10 @@ class Game:
 
     def _veil(self, surf, color, target_alpha):
         """Background dim that fades in first -- phase 1 of every screen."""
-        f = clamp(self.ui_t / C.UI_VEIL, 0, 1)
         # plain surface + set_alpha, NOT an SRCALPHA fill: the per-pixel-alpha
         # full-screen blit was costing ~8 ms a frame on these screens
-        if self._veilsurf is None or self._veilcol != color:
-            self._veilsurf = pygame.Surface((C.WIDTH, C.HEIGHT))
-            self._veilsurf.fill(color)
-            self._veilcol = color
-        self._veilsurf.set_alpha(int(target_alpha * f))
-        surf.blit(self._veilsurf, (0, 0))
+        f = clamp(self.ui_t / C.UI_VEIL, 0, 1)
+        ui._tint(surf, color, int(target_alpha * f))
         return f
 
     def _card_surface(self, card, i, sel):
@@ -1155,37 +1195,43 @@ class Game:
         coff, calpha = ui.drop_in(self.ui_t, 3, C.UI_STAGGER, C.UI_DROP, rise=40.0)
         self._charm_rects = []
         if calpha > 0.01:
-            self._label(layer, "CHARMS  (clique um charm p/ equipar no slot)",
+            focus_ch = self.camp.get('focus') == 'charms'
+            self._label(layer, "CHARMS  (setas/controle ou clique p/ equipar)",
                         cx - 300, 306, coff, calpha)
-            block = pygame.Surface((C.WIDTH, 140), pygame.SRCALPHA)
-            slots = [('head', 'CABECA'), ('back', 'COSTAS'), ('tail', 'CAUDA')]
+            block = pygame.Surface((C.WIDTH, 145), pygame.SRCALPHA)
+            # One column per slot, owned charms listed under their own slot header:
+            # makes it obvious what a charm replaces, and gives up/down + left/right
+            # a real grid to walk (see app.py camp nav).
             sw = 168
-            sx0 = cx - (len(slots) * sw + (len(slots) - 1) * 12) // 2
-            for si, (slot, nm) in enumerate(slots):
+            sx0 = cx - (len(C.CHARM_SLOTS) * sw + (len(C.CHARM_SLOTS) - 1) * 12) // 2
+            for si, (slot, nm) in enumerate(C.CHARM_SLOTS):
                 bx = sx0 + si * (sw + 12)
-                box = pygame.Rect(bx, 0, sw, 40)          # block starts at y=328
+                box = pygame.Rect(bx, 0, sw, 32)          # block starts at y=328
                 cid = p0.charm_slots.get(slot)
                 col = charmlib.CHARMS[cid].color if cid else (62, 64, 88)
                 pygame.draw.rect(block, (26, 30, 44), box, border_radius=10)
                 pygame.draw.rect(block, col, box, 2, border_radius=10)
                 lab = charmlib.CHARMS[cid].name if cid else '-'
-                txt = ui.fit(self.font, f"{nm}: {lab}", box.width - 20)
-                block.blit(self.font.render(txt, True, (218, 218, 232)), (bx + 10, 8))
-            chx, chy = cx - 300, 48
-            for cid in p0.charms_owned:
-                ch = charmlib.CHARMS[cid]
-                w = self.font.size(ch.name)[0] + 34
-                rect = pygame.Rect(chx, chy, w, 30)
-                self._charm_rects.append((rect.move(0, 328), cid))
-                equipped = (p0.charm_slots.get(ch.slot) == cid)
-                pygame.draw.rect(block, (30, 34, 50), rect, border_radius=8)
-                pygame.draw.rect(block, ch.color, rect, 3 if equipped else 1, border_radius=8)
-                icons.draw(block, cid, (chx + 15, chy + 15), 9, ch.color, glow=False)
-                block.blit(self.font.render(ch.name, True, (222, 222, 234)),
-                           (chx + 28, chy + 6))
-                chx += w + 8
-                if chx > cx + 290:
-                    chx, chy = cx - 300, chy + 34
+                txt = ui.fit(self.font, f"{nm}: {lab}", box.width - 16)
+                block.blit(self.font.render(txt, True, (218, 218, 232)), (bx + 8, 6))
+                owned = [c for c in p0.charms_owned
+                         if charmlib.CHARMS[c].slot == slot]
+                for ri, ccid in enumerate(owned):
+                    ch = charmlib.CHARMS[ccid]
+                    rect = pygame.Rect(bx, 38 + ri * 25, sw, 24)
+                    self._charm_rects.append((rect.move(0, 328), ccid))
+                    equipped = (p0.charm_slots.get(slot) == ccid)
+                    cur = (focus_ch and self.camp.get('charm_col') == si
+                           and self.camp.get('charm_row') == ri)
+                    pygame.draw.rect(block, (38, 44, 64) if cur else (30, 34, 50),
+                                     rect, border_radius=7)
+                    edge = C.COL_WHITE if cur else ch.color
+                    pygame.draw.rect(block, edge, rect, 3 if (equipped or cur) else 1,
+                                     border_radius=7)
+                    icons.draw(block, ccid, (bx + 14, rect.centery), 8, ch.color, glow=False)
+                    im = self.font.render(ui.fit(self.font, ch.name, sw - 40), True,
+                                          (222, 222, 234))
+                    block.blit(im, (bx + 26, rect.centery - im.get_height() // 2))
             if calpha < 1.0:
                 block.set_alpha(int(255 * calpha))
             layer.blit(block, (0, int(328 + coff)))

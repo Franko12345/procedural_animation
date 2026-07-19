@@ -28,6 +28,8 @@ UI_VEIL = 0.20           # fade do fundo escuro antes de qualquer conteudo
 UI_STAGGER = 0.075       # atraso entre um item e o proximo no dropdown
 UI_DROP = 0.30           # duracao da queda de cada item
 UI_READY = 0.36          # so aceita escolha depois disso (evita clique acidental)
+# slots de charm na ordem em que aparecem no acampamento (colunas da grade)
+CHARM_SLOTS = (('head', 'CABECA'), ('back', 'COSTAS'), ('tail', 'CAUDA'))
 # absorcao da escolha pelo jogador: centraliza -> segura -> voa pro lagarto
 PICK_CENTER = 0.40       # chega ao centro da tela
 PICK_HOLD = 0.56         # fica parado no centro ate aqui (da tempo de ler)
@@ -42,7 +44,17 @@ CONTACT_DRAG = 0.55
 
 DASH_COST = 14
 TONGUE_COST = 8
-RENDER_FPS = 120
+
+# rabada: golpe de cauda. A clava aumenta o dano e o empurrao; o ferrao envenena.
+WHIP_COST = 10
+WHIP_DAMAGE = 6
+WHIP_CLUB_MULT = 1.6     # dano com cauda-clava
+WHIP_KNOCK = 170         # empurrao base (a clava usa WHIP_KNOCK_CLUB)
+WHIP_KNOCK_CLUB = 460
+# A simulacao e fixa em SIM_HZ e o desenho NAO interpola entre estados, entao
+# renderizar acima de SIM_HZ so redesenha frames identicos: era 120, ou seja 2x o
+# custo de draw + smoothscale + flip (a GPU ficava em 100%) por zero ganho visual.
+RENDER_FPS = SIM_HZ
 
 TAU = math.tau
 

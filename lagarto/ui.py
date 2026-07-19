@@ -140,6 +140,27 @@ def footer(surf, font, text):
     surf.blit(im, (C.WIDTH // 2 - im.get_width() // 2, C.HEIGHT - 40))
 
 
+_TINT = {}
+
+
+def _tint(surf, color, alpha):
+    """Full-screen colour wash, reusing one cached surface per colour.
+
+    Allocating a fresh SRCALPHA screen every frame (which fades/veils/flashes all
+    used to do) is both slow and allocation churn; a plain surface with
+    ``set_alpha`` is also a faster blit path than per-pixel alpha.
+    """
+    if alpha <= 0:
+        return
+    s = _TINT.get(color)
+    if s is None:
+        s = pygame.Surface((C.WIDTH, C.HEIGHT))
+        s.fill(color)
+        _TINT[color] = s
+    s.set_alpha(min(255, int(alpha)))
+    surf.blit(s, (0, 0))
+
+
 class Fade:
     """Short cross-screen fade. `start()` blacks out, then it lifts on its own."""
 
@@ -165,12 +186,8 @@ class Fade:
         a = int(235 * min(1.0, (self.t / self.dur) ** 0.8))
         if a <= 0:
             return
-        s = pygame.Surface((C.WIDTH, C.HEIGHT), pygame.SRCALPHA)
-        s.fill((8, 8, 16, a))
-        surf.blit(s, (0, 0))
+        _tint(surf, (8, 8, 16), a)
 
 
 def veil(surf, alpha=120, color=(12, 10, 24)):
-    s = pygame.Surface((C.WIDTH, C.HEIGHT), pygame.SRCALPHA)
-    s.fill((*color, alpha))
-    surf.blit(s, (0, 0))
+    _tint(surf, color, alpha)

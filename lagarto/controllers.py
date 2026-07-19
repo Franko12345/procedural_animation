@@ -67,6 +67,10 @@ def pad_tongue(joy):
     return _btn(joy, 2) or _btn(joy, 1) or _btn(joy, 4)   # X / B / LB
 
 
+def pad_whip(joy):
+    return _btn(joy, 3)                          # Y
+
+
 class Pad:
     """A gamepad.
 
@@ -137,6 +141,11 @@ class Pad:
             return (self._cb(pygame.CONTROLLER_BUTTON_X)
                     or self._cb(pygame.CONTROLLER_BUTTON_LEFTSHOULDER))
         return pad_tongue(self.joy)
+
+    def whip(self):
+        if self.ctrl:
+            return self._cb(pygame.CONTROLLER_BUTTON_Y)
+        return pad_whip(self.joy)
 
     # -- menu navigation -- #
     def confirm(self):
@@ -220,13 +229,16 @@ class Controller:
         self.aim_world = Vector2(1, 0)
         self.dash_edge = False
         self.tongue_edge = False
+        self.whip_edge = False
         self._pd = False
         self._pt = False
+        self._pw = False
 
-    def _edges(self, dash, tongue):
+    def _edges(self, dash, tongue, whip=False):
         self.dash_edge = dash and not self._pd
         self.tongue_edge = tongue and not self._pt
-        self._pd, self._pt = dash, tongue
+        self.whip_edge = whip and not self._pw
+        self._pd, self._pt, self._pw = dash, tongue, whip
 
     def poll(self, keys, mouse_btn, cam, player_pos):
         raise NotImplementedError
@@ -248,6 +260,7 @@ class KeyboardMouseController(Controller):
 
         dash = bool(mouse_btn[0]) or keys[pygame.K_SPACE]
         tongue = bool(mouse_btn[2]) or keys[pygame.K_LSHIFT]
+        whip = bool(mouse_btn[1]) or keys[pygame.K_q]      # middle mouse / Q
         # the window is a scaled copy of the logical surface -> map the cursor back
         self.aim_world = cam.s2w(display.mouse_logical())
 
@@ -260,8 +273,9 @@ class KeyboardMouseController(Controller):
                 self.aim_world = player_pos + aim * 200
             dash = dash or self.joy.dash()
             tongue = tongue or self.joy.tongue()
+            whip = whip or self.joy.whip()
         self.move = m
-        self._edges(dash, tongue)
+        self._edges(dash, tongue, whip)
 
 
 class KeyboardController(Controller):
@@ -282,7 +296,7 @@ class KeyboardController(Controller):
         if a.length_squared() < 0.1:
             a = m if m.length_squared() > 0.1 else Vector2(1, 0)
         self.aim_world = player_pos + safe_norm(a) * 200
-        self._edges(keys[pygame.K_RCTRL], keys[pygame.K_RSHIFT])
+        self._edges(keys[pygame.K_RCTRL], keys[pygame.K_RSHIFT], keys[pygame.K_RALT])
 
 
 class GamepadController(Controller):
@@ -299,7 +313,7 @@ class GamepadController(Controller):
             self.aim_world = player_pos + aim * 200
         elif self.move.length_squared() > 0.1:
             self.aim_world = player_pos + self.move * 200
-        self._edges(self.joy.dash(), self.joy.tongue())
+        self._edges(self.joy.dash(), self.joy.tongue(), self.joy.whip())
 
 
 def make_controllers(num_players, joysticks):

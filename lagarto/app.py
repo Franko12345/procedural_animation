@@ -47,6 +47,49 @@ def _reattach(controllers, joysticks):
             c.joy = joysticks[0] if joysticks else (c.joy if isinstance(c, GamepadController) else None)
 
 
+def _camp_nav(game, left=False, right=False, up=False, down=False, confirm=False):
+    """One camp navigation model for BOTH keyboard and gamepad.
+
+    They used to disagree: the pad had a focus flip between shop/route while the
+    keyboard arrows always drove the route, and charms were reachable by mouse
+    only. Areas run top-to-bottom the way they are drawn.
+    """
+    camp = game.camp
+    if not camp:
+        return
+    areas = ['shop', 'charms', 'route'] if game.camp_has_charms() else ['shop', 'route']
+    if camp.get('focus') not in areas:
+        camp['focus'] = 'route'
+    if up or down:
+        step = 1 if down else -1
+        # inside the charm grid, up/down walks the column and only leaves at its ends
+        if not (camp['focus'] == 'charms' and game.camp_move_charm(0, step)):
+            i = areas.index(camp['focus'])
+            camp['focus'] = areas[max(0, min(len(areas) - 1, i + step))]
+    f = camp['focus']
+    if f == 'shop':
+        if left:
+            camp['shop_sel'] = max(0, camp['shop_sel'] - 1)
+        if right:
+            camp['shop_sel'] = min(len(camp['shop']) - 1, camp['shop_sel'] + 1)
+        if confirm:
+            game.camp_buy(camp['shop_sel'])
+    elif f == 'charms':
+        if left:
+            game.camp_move_charm(-1, 0)
+        if right:
+            game.camp_move_charm(1, 0)
+        if confirm:
+            game.camp_equip_cursor()
+    else:
+        if left:
+            camp['sel'] = max(0, camp['sel'] - 1)
+        if right:
+            camp['sel'] = min(len(camp['routes']) - 1, camp['sel'] + 1)
+        if confirm:
+            game.camp_pick_route(camp['sel'])
+
+
 def main():
     smoke = 0
     if '--smoke' in sys.argv:
@@ -123,12 +166,14 @@ def main():
                     elif game.state == 'camp' and game.camp and not game.pick:
                         if ev.key in (pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4, pygame.K_5):
                             game.camp_buy(ev.key - pygame.K_1)
-                        elif ev.key in (pygame.K_LEFT, pygame.K_a):
-                            game.camp['sel'] = max(0, game.camp['sel'] - 1)
-                        elif ev.key in (pygame.K_RIGHT, pygame.K_d):
-                            game.camp['sel'] = min(len(game.camp['routes']) - 1, game.camp['sel'] + 1)
-                        elif ev.key in (pygame.K_RETURN, pygame.K_SPACE):
-                            game.camp_pick_route(game.camp['sel'])
+                        else:
+                            _camp_nav(
+                                game,
+                                left=ev.key in (pygame.K_LEFT, pygame.K_a),
+                                right=ev.key in (pygame.K_RIGHT, pygame.K_d),
+                                up=ev.key in (pygame.K_UP, pygame.K_w),
+                                down=ev.key in (pygame.K_DOWN, pygame.K_s),
+                                confirm=ev.key in (pygame.K_RETURN, pygame.K_SPACE))
                 if ev.type == pygame.MOUSEBUTTONDOWN and not game.pick:
                     # window pixels -> logical pixels (the surface is scaled)
                     mp = display.to_logical(ev.pos)
@@ -159,23 +204,8 @@ def main():
                 if nav.confirm:
                     game.choose_card(game.card_idx)
             elif game.state == 'camp' and game.camp:
-                camp = game.camp
-                if nav.up or nav.down:
-                    camp['focus'] = 'shop' if camp.get('focus') == 'route' else 'route'
-                if camp.get('focus') == 'shop':
-                    if nav.left:
-                        camp['shop_sel'] = max(0, camp['shop_sel'] - 1)
-                    if nav.right:
-                        camp['shop_sel'] = min(len(camp['shop']) - 1, camp['shop_sel'] + 1)
-                    if nav.confirm:
-                        game.camp_buy(camp['shop_sel'])
-                else:
-                    if nav.left:
-                        camp['sel'] = max(0, camp['sel'] - 1)
-                    if nav.right:
-                        camp['sel'] = min(len(camp['routes']) - 1, camp['sel'] + 1)
-                    if nav.confirm:
-                        game.camp_pick_route(camp['sel'])
+                _camp_nav(game, left=nav.left, right=nav.right, up=nav.up,
+                          down=nav.down, confirm=nav.confirm)
             elif game.state in ('over', 'victory') and nav.confirm:
                 game = Game(num, controllers, font, bigfont, mode=mode)
 

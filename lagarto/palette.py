@@ -70,15 +70,26 @@ def mix(a, b, t):
 # --------------------------------------------------------------------------- #
 
 _GLOW_CACHE = {}
+_GLOW_MAX = 900          # hard ceiling: see the note in glow() about unbounded growth
+
+
+def _quantise_radius(radius):
+    """Snap the radius to a step that grows with size (invisible, bounds the cache)."""
+    r = int(radius)
+    if r < 2:
+        return 2
+    step = 2 if r < 16 else (4 if r < 48 else 8)
+    return max(2, (r // step) * step)
 
 
 def _glow_sprite(radius, color):
-    radius = int(radius)
-    if radius < 2:
-        radius = 2
     key = (radius, color)
     surf = _GLOW_CACHE.get(key)
     if surf is None:
+        if len(_GLOW_CACHE) >= _GLOW_MAX:
+            # cheaper and more predictable than an LRU; the working set rebuilds
+            # in a few frames and the common keys are hit again immediately
+            _GLOW_CACHE.clear()
         surf = pygame.Surface((radius * 2, radius * 2), pygame.SRCALPHA)
         steps = 10
         for i in range(steps, 0, -1):
@@ -93,11 +104,21 @@ def _glow_sprite(radius, color):
 
 
 def glow(surf, center, radius, color, intensity=1.0):
-    """Additive radial glow. ``intensity`` scales the colour before caching-quantise."""
+    """Additive radial glow, drawn from a cached sprite.
+
+    The cache key MUST be coarse. All three inputs are effectively continuous in
+    practice -- radius shrinks with particle life and scales with camera zoom,
+    intensity is a sine pulse at many call sites, and every creature spawns with a
+    random colour -- so keying on the raw values grew the cache without bound
+    (measured: 115 MB of surfaces and still climbing after ~7 min of play, which is
+    what made long sessions stutter). Quantising collapses those into families.
+    """
     if intensity != 1.0:
-        color = (int(color[0] * intensity), int(color[1] * intensity), int(color[2] * intensity))
-    # quantise colour to keep the cache small
-    color = (color[0] & 0xF8, color[1] & 0xF8, color[2] & 0xF8)
+        color = (color[0] * intensity, color[1] * intensity, color[2] * intensity)
+    # 4 bits per channel: pulsing intensities and near-identical creature colours
+    # collapse onto the same sprite, and additive glow hides the banding
+    color = (int(color[0]) & 0xF0, int(color[1]) & 0xF0, int(color[2]) & 0xF0)
+    radius = _quantise_radius(radius)
     sprite = _glow_sprite(radius, color)
     surf.blit(sprite, (int(center[0] - radius), int(center[1] - radius)),
               special_flags=pygame.BLEND_RGB_ADD)

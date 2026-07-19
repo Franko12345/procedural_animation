@@ -63,8 +63,8 @@ CHARMS_LIST = [
     _c('espinhos', 'back', 'Espinhos',           'dano de contato',          330, 32, _espinhos_eq, _espinhos_un),
     _c('asas',     'back', 'Asas de Besouro',    '+velocidade e dash',       175, 38, _asas_eq, _asas_un),
     _c('glandula', 'back', 'Glandula de Esporos', 'libera a arma de esporos', 135, 46, _glandula_eq, _glandula_un),
-    _c('ferrao',   'tail', 'Ferrao',             'cauda com ferrao',          18, 34, _ferrao_eq, _ferrao_un),
-    _c('clava',    'tail', 'Cauda-Clava',        'cauda com clava pesada',    15, 34, _clava_eq, _clava_un),
+    _c('ferrao',   'tail', 'Ferrao',             'rabada envenena',           18, 34, _ferrao_eq, _ferrao_un),
+    _c('clava',    'tail', 'Cauda-Clava',        'rabada: +dano e empurrao',  15, 34, _clava_eq, _clava_un),
     _c('nectar',   'tail', 'Glandula de Nectar', 'regeneracao de vida',       45, 36, _nectar_eq, _nectar_un),
 ]
 CHARMS = {c.id: c for c in CHARMS_LIST}

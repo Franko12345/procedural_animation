@@ -292,6 +292,12 @@ class Player(Lizard):
         self.dash_hits = set()
         self.clog = 0.0           # how buried in enemy bodies we are (collision.py)
         self.clog_f = 0.0         # smoothed, so the drag eases in/out
+        # tail whip ("rabada"): a lateral lunge whose follow-through swings the tail
+        self.whip_t = 0.0         # 0 -> 1 over the swing
+        self.whip_cd = 0.0
+        self.whip_cooldown = 0.85
+        self.whip_hits = set()    # one hit per enemy per swing (see dash_hits)
+        self.whip_side = 1
         self.tongue_t = 0.0
         self.tongue_target = None
         self.aim = Vector2(1, 0)
@@ -513,6 +519,35 @@ class Player(Lizard):
                         game.eat(self, t)
                 self.tongue_target = None
 
+        # --- tail whip ("rabada") ---------------------------------------- #
+        self.whip_cd = max(0.0, self.whip_cd - dt)
+        if c.whip_edge and self.whip_cd <= 0 and self.energy >= C.WHIP_COST:
+            self.whip_t = 0.001
+            self.whip_cd = self.whip_cooldown
+            self.energy -= C.WHIP_COST
+            self.whip_hits.clear()          # fresh swing -> everyone hittable again
+            # swing toward the nearest enemy; with nobody around, alternate sides
+            side = self.whip_side
+            foe = game.nearest_enemy(self.pos, 280)
+            if foe is not None:
+                d = foe.pos - self.pos
+                side = 1 if (self.facing.x * d.y - self.facing.y * d.x) > 0 else -1
+            self.whip_side = -side
+            # A lateral lunge is the whole trick: the spine is follow-the-leader, so
+            # yanking the head sideways makes the tail crack around on its own. We
+            # can't just displace tail joints -- spine.resolve rewrites them all.
+            lat = Vector2(-self.facing.y, self.facing.x) * side
+            self.vel += lat * self.max_speed * 1.9
+            audio.play('dash', 0.65)
+            game.shake(3)
+        if self.whip_t > 0:
+            self.whip_t += dt / 0.34
+            if self.whip_t >= 1:
+                self.whip_t = 0.0
+            else:
+                game.fx.trail(self.spine.joints[-1], palette.lighten(self.color, 0.3))
+                self._whip_hit(game)
+
         # --- auto-weapons (Vampire-Survivors style: they act on their own) ---
         self.ability_cd = max(0.0, self.ability_cd - dt)
         for wid, lvl in self.weapons.items():
@@ -521,6 +556,44 @@ class Player(Lizard):
         self.energy = clamp(self.energy + dt * 6, 0, self.max_energy)
         if self.regen > 0 and self.health < self.max_health:
             self.health = min(self.max_health, self.health + self.regen * dt)
+
+    def _whip_hit(self, game):
+        """The real tail joints are the hitbox -- what you see is what hits.
+
+        The tip's own ``spine.radii`` is tiny (~0.22*max_r), so the swing uses an
+        explicit reach instead. Gated by ``whip_hits`` for the same reason as
+        ``dash_hits``: this runs every frame of the swing.
+        """
+        if self.whip_t < 0.15 or self.whip_t > 0.9:
+            return                      # wind-up and recovery don't connect
+        js = self.spine.joints
+        tail = js[-3:] if len(js) >= 3 else js[-1:]
+        reach = self.max_r * 1.15
+        club = self.genome.tail == 'club'
+        sting = self.genome.tail == 'sting'
+        dmg = C.WHIP_DAMAGE * (C.WHIP_CLUB_MULT if club else 1.0)
+        knock = C.WHIP_KNOCK_CLUB if club else C.WHIP_KNOCK
+        for e in game.enemies:
+            if e.dead or e in self.whip_hits:
+                continue
+            for j in tail:
+                where = e.hit_test(j, reach)
+                if not where:
+                    continue
+                self.whip_hits.add(e)
+                d = dmg * (C.CRIT_MULT if where == 'head' else 1.0)
+                if where == 'head':
+                    game.crit_fx(e.spine.joints[0])
+                away = safe_norm(e.pos - j)
+                e.take_hit(game, away, int(round(d)))
+                e.vel += away * knock   # take_hit ASSIGNS vel, so add afterwards
+                if sting:
+                    e.apply_poison(2.5, 2.5)
+                game.fx.spark_burst(j, palette.lighten(self.color, 0.4), 9, 320)
+                game.shake(6 if club else 3)
+                if e.dead:
+                    game.punch(0.05, 7)
+                break
 
     def tongue_tip(self):
         if self.tongue_t <= 0:
