@@ -10,6 +10,7 @@ online" hook from the plan.
 import pygame
 from pygame import Vector2
 
+from . import config as C
 from . import display
 from .mathutil import safe_norm
 
@@ -223,24 +224,52 @@ def describe_joysticks(pads):
         print(f"[gamepad] '{p.name}' via {api}")
 
 
+_ACTIONS = ('dash', 'tongue', 'whip')
+
+
 class Controller:
+    """Input intent, with a short BUFFER on the action presses.
+
+    A plain one-frame edge flag gets lost: ``poll()`` runs once per *rendered*
+    frame while the sim runs on a fixed-step accumulator, so a frame can run zero
+    sim steps (jitter, and every hit-stop). An edge detected on such a frame is
+    never consumed, and the next poll sees the button as still held -- no new
+    rising edge, press swallowed. Buffering the press for ``C.INPUT_BUFFER``
+    seconds fixes that, and also lets a press land slightly *before* a cooldown
+    ends instead of being thrown away.
+    """
+
     def __init__(self):
         self.move = Vector2()
         self.aim_world = Vector2(1, 0)
-        self.dash_edge = False
-        self.tongue_edge = False
-        self.whip_edge = False
-        self._pd = False
-        self._pt = False
-        self._pw = False
+        self._buf = {a: 0.0 for a in _ACTIONS}      # time left on a pending press
+        self._held = {a: False for a in _ACTIONS}   # previous raw state (edge detect)
 
-    def _edges(self, dash, tongue, whip=False):
-        self.dash_edge = dash and not self._pd
-        self.tongue_edge = tongue and not self._pt
-        self.whip_edge = whip and not self._pw
-        self._pd, self._pt, self._pw = dash, tongue, whip
+    def _edges(self, dash, tongue, whip=False, dt=0.0):
+        for action, now in zip(_ACTIONS, (dash, tongue, whip)):
+            if self._buf[action] > 0.0:
+                self._buf[action] = max(0.0, self._buf[action] - dt)
+            if now and not self._held[action]:      # rising edge only: holding never repeats
+                self._buf[action] = C.INPUT_BUFFER
+            self._held[action] = now
 
-    def poll(self, keys, mouse_btn, cam, player_pos):
+    def consume(self, action):
+        """Called when the ability actually fires, so it can't fire twice."""
+        self._buf[action] = 0.0
+
+    @property
+    def dash_edge(self):
+        return self._buf['dash'] > 0.0
+
+    @property
+    def tongue_edge(self):
+        return self._buf['tongue'] > 0.0
+
+    @property
+    def whip_edge(self):
+        return self._buf['whip'] > 0.0
+
+    def poll(self, keys, mouse_btn, cam, player_pos, dt=0.0):
         raise NotImplementedError
 
 
@@ -251,7 +280,7 @@ class KeyboardMouseController(Controller):
         super().__init__()
         self.joy = joy               # optional: P1 can also use a pad (single-player)
 
-    def poll(self, keys, mouse_btn, cam, player_pos):
+    def poll(self, keys, mouse_btn, cam, player_pos, dt=0.0):
         m = Vector2()
         if keys[pygame.K_w]: m.y -= 1
         if keys[pygame.K_s]: m.y += 1
@@ -275,13 +304,13 @@ class KeyboardMouseController(Controller):
             tongue = tongue or self.joy.tongue()
             whip = whip or self.joy.whip()
         self.move = m
-        self._edges(dash, tongue, whip)
+        self._edges(dash, tongue, whip, dt)
 
 
 class KeyboardController(Controller):
     label = "setas + IJKL"
 
-    def poll(self, keys, mouse_btn, cam, player_pos):
+    def poll(self, keys, mouse_btn, cam, player_pos, dt=0.0):
         m = Vector2()
         if keys[pygame.K_UP]: m.y -= 1
         if keys[pygame.K_DOWN]: m.y += 1
@@ -296,7 +325,7 @@ class KeyboardController(Controller):
         if a.length_squared() < 0.1:
             a = m if m.length_squared() > 0.1 else Vector2(1, 0)
         self.aim_world = player_pos + safe_norm(a) * 200
-        self._edges(keys[pygame.K_RCTRL], keys[pygame.K_RSHIFT], keys[pygame.K_RALT])
+        self._edges(keys[pygame.K_RCTRL], keys[pygame.K_RSHIFT], keys[pygame.K_RALT], dt)
 
 
 class GamepadController(Controller):
@@ -306,14 +335,14 @@ class GamepadController(Controller):
         super().__init__()
         self.joy = joy
 
-    def poll(self, keys, mouse_btn, cam, player_pos):
+    def poll(self, keys, mouse_btn, cam, player_pos, dt=0.0):
         self.move = self.joy.move()
         aim = self.joy.aim()
         if aim.length_squared() > 0.02:
             self.aim_world = player_pos + aim * 200
         elif self.move.length_squared() > 0.1:
             self.aim_world = player_pos + self.move * 200
-        self._edges(self.joy.dash(), self.joy.tongue(), self.joy.whip())
+        self._edges(self.joy.dash(), self.joy.tongue(), self.joy.whip(), dt)
 
 
 def make_controllers(num_players, joysticks):

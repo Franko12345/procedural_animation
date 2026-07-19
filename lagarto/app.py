@@ -6,12 +6,15 @@ runs N frames and exits, for headless self-tests.
 """
 
 import sys
+import time
+
 import pygame
 
 from . import audio
 from . import config as C
 from . import display
 from . import fonts
+from . import perf
 from . import ui
 from . import settings
 from .controllers import (make_controllers, describe_joysticks, Pad, MenuNav,
@@ -90,11 +93,33 @@ def _camp_nav(game, left=False, right=False, up=False, down=False, confirm=False
             game.camp_pick_route(camp['sel'])
 
 
+def _toggle_fs():
+    display.toggle_fullscreen()
+    settings.save_display(display, audio)
+
+
+def _pause_pick(game, toggle_fs, meter):
+    """Activate the focused pause item, then re-sync anything the options screen
+    may have written to disk.
+
+    Two things go stale otherwise: ``meter.level`` (menu._activate persists the
+    perf level but has no handle on the running meter, so the toggle would look
+    dead until you quit to the menu), and app.py's own ``cfg`` (the F3 handler
+    writes it back wholesale, which would revert fullscreen/volume changes made
+    from pause).
+    """
+    result = game.pause_activate(toggle_fs)
+    cfg = settings.load()
+    meter.level = cfg.get('perf', perf.OFF)
+    return result, cfg
+
+
 def main():
     smoke = 0
     if '--smoke' in sys.argv:
         i = sys.argv.index('--smoke')
         smoke = int(sys.argv[i + 1]) if i + 1 < len(sys.argv) else 120
+    profile = '--profile' in sys.argv       # also writes ~/.lagarto/perf.csv
 
     pygame.init()
     pygame.joystick.init()
@@ -113,6 +138,8 @@ def main():
     audio.init(sfx_vol=cfg['sfx_vol'], music_vol=cfg['music_vol'])
 
     joysticks = _init_joysticks()
+    meter = perf.Perf(level=perf.FULL if profile else cfg.get('perf', perf.OFF),
+                      log=profile)
     clock = pygame.time.Clock()
     nav = MenuNav()          # gamepad navigation for level-up / camp screens
     fade = ui.Fade()
@@ -125,6 +152,9 @@ def main():
             if chosen is None:
                 break
             num, mode = chosen
+            if not profile:                  # the options screen may have changed it
+                cfg = settings.load()
+                meter.level = cfg.get('perf', perf.OFF)
 
         controllers = make_controllers(num, joysticks)
         game = Game(num, controllers, font, bigfont, mode=mode)
@@ -148,11 +178,27 @@ def main():
                     display.handle_resize()
                 if ev.type == pygame.KEYDOWN:
                     if ev.key == pygame.K_ESCAPE:
-                        running = False
+                        # ESC used to drop the whole run with no confirmation
+                        if game.state == 'pause' and game.pause_back():
+                            pass                       # backed out of a sub-screen
+                        else:
+                            game.toggle_pause()
+                    if ev.key == pygame.K_F3:
+                        cfg['perf'] = meter.cycle()
+                        settings.save(cfg)
                     if ev.key == pygame.K_F11:
                         display.toggle_fullscreen()
                         settings.save_display(display)
-                    if game.state in ('over', 'victory') and ev.key == pygame.K_RETURN:
+                    if game.state == 'pause':
+                        if ev.key in (pygame.K_UP, pygame.K_w):
+                            game.pause_move(-1)
+                        elif ev.key in (pygame.K_DOWN, pygame.K_s):
+                            game.pause_move(1)
+                        elif ev.key in (pygame.K_RETURN, pygame.K_SPACE):
+                            act, cfg = _pause_pick(game, _toggle_fs, meter)
+                            if act == 'quit':
+                                running = False
+                    elif game.state in ('over', 'victory') and ev.key == pygame.K_RETURN:
                         game = Game(num, controllers, font, bigfont, mode=mode)
                     elif game.state == 'levelup' and not game.pick:
                         if ev.key in (pygame.K_1, pygame.K_2, pygame.K_3):
@@ -203,6 +249,17 @@ def main():
                     game.card_idx = min(len(game.cards) - 1, game.card_idx + 1)
                 if nav.confirm:
                     game.choose_card(game.card_idx)
+            elif game.state == 'pause':
+                if nav.up:
+                    game.pause_move(-1)
+                if nav.down:
+                    game.pause_move(1)
+                if nav.cancel and not game.pause_back():
+                    game.toggle_pause()
+                if nav.confirm:
+                    act, cfg = _pause_pick(game, _toggle_fs, meter)
+                    if act == 'quit':
+                        running = False
             elif game.state == 'camp' and game.camp:
                 _camp_nav(game, left=nav.left, right=nav.right, up=nav.up,
                           down=nav.down, confirm=nav.confirm)
@@ -212,10 +269,11 @@ def main():
             keys = pygame.key.get_pressed()
             mouse_btn = pygame.mouse.get_pressed()
             for p in game.players:
-                p.ctrl.poll(keys, mouse_btn, game.cam, p.pos)
+                p.ctrl.poll(keys, mouse_btn, game.cam, p.pos, frame_dt)
 
             acc += frame_dt
             steps = 0
+            _t = time.perf_counter()
             if game.hitstop > 0:                 # freeze frames: draw but don't simulate
                 game.hitstop -= frame_dt
                 acc = min(acc, C.DT)
@@ -224,11 +282,13 @@ def main():
                 acc -= C.DT
                 steps += 1
             game.cam.follow(game.players, frame_dt)
+            step_ms = (time.perf_counter() - _t) * 1000.0
 
             boss = getattr(game.rounds, 'boss', None)
-            if game.state == 'victory':
+            music_state = game.pause_prev if game.state == 'pause' else game.state
+            if music_state == 'victory':
                 audio.set_music('victory')
-            elif game.state == 'camp':
+            elif music_state == 'camp':
                 audio.set_music('calm')
             elif boss is not None and not boss.dead:
                 audio.set_music('boss')          # dynamic track for boss rounds
@@ -237,21 +297,31 @@ def main():
             if game.state != prev_state:
                 # play/level-up/camp animate themselves in and out (veil + dropdown +
                 # absorption), so a blackout there would hide the impact we just built
-                soft = ('play', 'levelup', 'camp')
+                soft = ('play', 'levelup', 'camp', 'pause')
                 if not (prev_state in soft and game.state in soft):
                     fade.start(0.22)
                 prev_state = game.state
             fade.update(frame_dt)
+            _t = time.perf_counter()
             game.draw(screen)
+            if game.state == 'pause':
+                game._draw_pause(screen, joysticks)
             fade.draw(screen)
+            meter.draw(screen, font)
+            draw_ms = (time.perf_counter() - _t) * 1000.0
+            _t = time.perf_counter()
             display.present()
+            present_ms = (time.perf_counter() - _t) * 1000.0
+            meter.frame(frame_dt, step_ms, draw_ms, present_ms, game)
 
             if smoke and frames >= smoke:
                 print(f"[smoke] {frames} frames ok  score={game.score} "
                       f"enemies={len(game.enemies)} friends={len(game.friends)} "
                       f"prey={len(game.prey)} pickups={len(game.pickups)}")
+                meter.close()
                 pygame.quit(); return
 
+    meter.close()
     pygame.quit()
 
 

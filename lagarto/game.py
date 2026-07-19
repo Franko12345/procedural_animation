@@ -119,6 +119,9 @@ class Game:
         self.cards = []
         self.card_idx = 0
         self.levelup_player = None
+        self.pause_mode = 'menu'  # 'menu' | 'options' | 'controls'
+        self.pause_sel = 0
+        self.pause_prev = 'play'  # state to return to (pause can open from camp too)
         self.ui_t = 0.0           # clock for the level-up / camp entry animation
         self.pick = None          # a choice being absorbed by the player (see _step_pick)
         self.ui_fx = 0.0          # keeps fx drawn over the veil just after an impact
@@ -830,7 +833,9 @@ class Game:
         if self.state not in ('victory', 'over'):
             self.rounds.draw_banner(surf, self.font, self.bigfont)
             self._draw_hud(surf)
-        if self.state == 'levelup':
+        if self.state == 'pause':
+            self._draw_pause(surf)
+        elif self.state == 'levelup':
             self._draw_levelup(surf)
         elif self.state == 'camp':
             self._draw_camp(surf)
@@ -1130,6 +1135,125 @@ class Game:
         bt = self.font.render(bonus_txt[r['bonus']], True, bonus_col[r['bonus']])
         s.blit(bt, (rw // 2 - bt.get_width() // 2, 104))
         return s
+
+    # ---- pause ---------------------------------------------------------- #
+    PAUSE_ITEMS = ('CONTINUAR', 'OPCOES', 'CONTROLES', 'SAIR PARA O MENU')
+
+    def toggle_pause(self):
+        """ESC. Pausing is just another non-'play' state, so game.step already
+        freezes the whole simulation for us -- the run is never destroyed."""
+        if self.state == 'pause':
+            self.state = self.pause_prev
+            self.ui_t = 99.0            # returning: don't replay the entry animation
+            return False
+        if self.state not in ('play', 'camp', 'levelup') or self.pick:
+            return False                # not during an absorption or a run-over screen
+        self.pause_prev = self.state
+        self.state = 'pause'
+        self.pause_mode = 'menu'
+        self.pause_sel = 0
+        self.ui_t = 0.0
+        audio.play('ui')
+        return True
+
+    def pause_items(self, joysticks=None):
+        from . import menu as menulib
+        if self.pause_mode == 'options':
+            return menulib._items_for('options', None, 0, None)
+        if self.pause_mode == 'controls':
+            return ['VOLTAR']
+        return list(self.PAUSE_ITEMS)
+
+    def pause_move(self, d):
+        n = len(self.pause_items())
+        self.pause_sel = (self.pause_sel + d) % max(1, n)
+
+    def pause_back(self):
+        """B / ESC inside a sub-screen: step back one level instead of resuming."""
+        if self.pause_mode != 'menu':
+            self.pause_mode = 'menu'
+            self.pause_sel = 0
+            self.ui_t = 0.0
+            return True
+        return False
+
+    def pause_activate(self, toggle_fs):
+        """Returns 'resume', 'quit' or None. Options reuse the menu's own actions."""
+        from . import menu as menulib
+        items = self.pause_items()
+        sel = min(self.pause_sel, len(items) - 1)
+        if self.pause_mode == 'controls':
+            self.pause_back()
+            return None
+        if self.pause_mode == 'options':
+            # same handler the main menu uses -> identical behaviour + persistence
+            r = menulib._activate('options', sel, toggle_fs, len(items))
+            if r is not None:                 # 'VOLTAR'
+                self.pause_back()
+            return None
+        audio.play('ui')
+        if sel == 0:
+            self.toggle_pause()
+            return 'resume'
+        if sel == 1:
+            self.pause_mode = 'options'
+        elif sel == 2:
+            self.pause_mode = 'controls'
+        else:
+            return 'quit'
+        self.pause_sel = 0
+        self.ui_t = 0.0
+        return None
+
+    def _draw_pause(self, surf, joysticks=None):
+        from . import menu as menulib
+        self._veil(surf, (8, 10, 20), 200)
+        cx = C.WIDTH // 2
+        toff, talpha = ui.drop_in(self.ui_t, 0, 0.0, C.UI_VEIL, rise=22.0)
+        if talpha > 0.01:
+            title = self.bigfont.render("PAUSADO", True, C.COL_WHITE)
+            im = title.copy()
+            im.set_alpha(int(255 * talpha))
+            surf.blit(im, (cx - im.get_width() // 2, int(120 + toff)))
+
+        items = self.pause_items(joysticks)
+        if self.pause_mode == 'controls':
+            lines = menulib.controls_lines(joysticks)
+            for i, line in enumerate(lines):
+                off, alpha = ui.drop_in(self.ui_t, 1 + i * 0.25, C.UI_STAGGER,
+                                        C.UI_DROP, rise=30.0)
+                if alpha <= 0.01 or not line:
+                    continue
+                im = self.font.render(line, True, (206, 208, 226))
+                if alpha < 1.0:
+                    im = im.copy()
+                    im.set_alpha(int(255 * alpha))
+                surf.blit(im, (cx - im.get_width() // 2, int(200 + i * 30 + off)))
+            top = 200 + len(lines) * 30 + 16
+        else:
+            top = 210
+
+        self._pause_rects = []
+        for i, label in enumerate(items):
+            off, alpha = ui.drop_in(self.ui_t, 1 + i * 0.5, C.UI_STAGGER, C.UI_DROP,
+                                    rise=34.0)
+            rect = pygame.Rect(cx - 210, top + i * 46, 420, 40)
+            self._pause_rects.append(rect)
+            if alpha <= 0.01:
+                continue
+            sel = (i == min(self.pause_sel, len(items) - 1))
+            y = rect.y + off
+            if sel:
+                palette.glow(surf, (rect.centerx, int(y + 20)), 180,
+                             C.COL_PLAYER[0], 0.22 * alpha)
+                box = pygame.Rect(rect.x, int(y), rect.width, rect.height)
+                pygame.draw.rect(surf, (26, 30, 46), box, border_radius=12)
+                pygame.draw.rect(surf, C.COL_PLAYER[0], box, 3, border_radius=12)
+            im = self.font.render(label, True, C.COL_WHITE if sel else (158, 162, 190))
+            if alpha < 1.0:
+                im = im.copy()
+                im.set_alpha(int(255 * alpha))
+            surf.blit(im, (cx - im.get_width() // 2, int(y + 10)))
 
     def _label(self, layer, text, x, y, off, alpha, color=(200, 200, 220)):
         if alpha <= 0.01:

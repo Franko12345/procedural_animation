@@ -62,6 +62,7 @@ Um módulo por responsabilidade — mantenha assim; não volte para arquivo úni
 | `game.py` | `Game`: mundo, spawns por espécie, ondas, projéteis, colisões, XP/evolução, HUD, vinheta, game over. |
 | `menu.py` | **Hub**: jogar (1/2), opções (tela cheia/escala/vsync/volumes), controles, **bestiário** (criatura procedural viva + lore) e **compêndio** (armas/evoluções/charms), tudo navegável por teclado/mouse/**gamepad**. |
 | `progression.py` | **Meta-progressão**: DNA persistente em `~/.lagarto/save.json` → `UPGRADES` (stats permanentes) e `UNLOCKS` (armas/charms entram no pool). `apply_to_player` no início da run; `finish_run` credita DNA. |
+| `perf.py` | **Medidor de FPS/diagnóstico** (F3 ou nas Opções; `--profile` grava `~/.lagarto/perf.csv`). Separa step/draw/present e expõe o cache de brilho (entradas, MB, **misses/s**) — é o que distingue vazamento de thrashing. |
 | `app.py` | Setup da janela + loop principal com **timestep fixo**. |
 
 `lizard_game.py` é só um launcher: `from lagarto.app import main`.
@@ -103,6 +104,34 @@ Lagarto = 4 elementos: **Intent** (cabeça aponta), **Action** (pernas dão o pa
   então dá um passo em arco a um ponto à frente. **Marcha diagonal**: pares opostos
   nunca dão o passo juntos (`Leg.partner`). Desenho por IK de 2 ossos.
 - Squash & stretch a partir da velocidade.
+
+## Buffer de input (não volte para borda de um frame só)
+
+`Controller` guarda um **timer por ação** (`C.INPUT_BUFFER`, 0,15 s) em vez de uma flag de
+um frame; `dash_edge`/`tongue_edge`/`whip_edge` são **propriedades** (`buffer > 0`) e quem
+dispara chama `ctrl.consume(...)`.
+**Por quê:** `poll()` roda 1x por frame **renderizado**, mas a simulação é acumulador de
+passo fixo — um frame pode rodar **zero passos** (jitter e **todo hit-stop**). A borda
+detectada nesse frame nunca era consumida e o `poll()` seguinte via o botão como "ainda
+pressionado" → **pressionada engolida para sempre**. Com o antigo `RENDER_FPS = 120` contra
+`SIM_HZ = 60` isso era ~**metade dos frames** — a mesma raiz do problema de performance.
+O buffer também deixa valer uma pressionada pouco **antes** do cooldown acabar.
+*O disparo continua por **borda**: segurar o botão não repete (testado).*
+
+## Menu de pausa (`game.state == 'pause'`)
+
+ESC pausa; antes ele **descartava a run inteira sem confirmação**. É só mais um estado
+não-`play`, então `game.step` já congela tudo de graça — a `Game` nunca é destruída.
+- `game.toggle_pause()` guarda `pause_prev` (dá para pausar **dentro do acampamento** e
+  voltar para lá), `pause_mode` alterna menu/opções/controles, `pause_back()` sobe um nível.
+- **Reusa o menu principal**: `menu._items_for('options', ...)` e `menu._activate(...)` dão
+  a tela de opções inteira com a mesma persistência. O texto de controles virou
+  `menu.CONTROLS`/`controls_lines()` — **compartilhado**, senão as duas telas divergem.
+- **Quatro armadilhas já corrigidas** (não reintroduza): a música ramifica em `game.state`
+  todo frame → usar `pause_prev` senão pausar no acampamento troca `calm`→`combat`;
+  `'pause'` tem que estar na tupla `soft` do fade senão dá blackout de 0,22 s;
+  `meter.level` e o `cfg` do `app.py` precisam ser **relidos** depois das opções
+  (`app._pause_pick`), senão o medidor de FPS parece morto e o próximo F3 reverte ajustes.
 
 ## Controles
 
@@ -160,11 +189,13 @@ inimigo leva dano + é puxado; custa energia), **habilidade ativa** (a fazer no 
 
 **Rabada (`Player._whip_hit`)** — golpe de cauda manual, botão próprio (**meio do mouse /
 Q**, P2 **RAlt**, gamepad **Y**). Custa `C.WHIP_COST`, cooldown `Player.whip_cooldown`.
-- **Como a cauda se move**: a espinha é follow-the-leader e `spine.resolve` **reescreve
-  todas as juntas todo frame** (e `collision.separate` re-resolve depois) — *deslocar junta
-  não funciona, é apagado no mesmo frame*. Em vez disso o golpe dá um **impulso lateral na
-  velocidade do jogador**, e a cauda chicoteia sozinha pelo follow-through. O lado é
-  escolhido pelo produto vetorial com o inimigo mais próximo (senão alterna).
+- **Como a cauda se move** (`Player._whip_arc`): a espinha é follow-the-leader e
+  `spine.resolve` **reescreve todas as juntas todo frame** — *deslocar junta não funciona*.
+  O golpe **dirige a cabeça num arco lateral** (envelope `sin(t*pi)`, igual à língua),
+  aplicado em `pos` **depois** do `integrate`, com o `steer` **mudo durante o golpe**.
+  *Já foi um impulso na velocidade: o `steer` apagava a componente lateral em poucos frames
+  e sobrava só o que apontava para onde você já ia — lia como lunge para frente.* O lado
+  vem do produto vetorial com o inimigo mais próximo (senão alterna). Dial: `C.WHIP_REACH`.
 - **Hitbox = as juntas reais** (`spine.joints[-3:]`) com alcance explícito `max_r*1.15`
   (o `radii` da ponta é ~0.22*max_r, pequeno demais). O que você vê é o que acerta;
   cabeça do inimigo ainda dá crítico.
@@ -173,6 +204,10 @@ Q**, P2 **RAlt**, gamepad **Y**). Custa `C.WHIP_COST`, cooldown `Player.whip_coo
 - **Modificadores da cauda** (era tudo cosmético antes): `club` → `WHIP_CLUB_MULT` de dano
   + `WHIP_KNOCK_CLUB` de empurrão + shake maior; `sting` → `apply_poison`. *Nota: o ferrão
   dos **inimigos** aplica `apply_slow`, o do jogador envenena — divergência proposital.*
+- **Dano por acerto é MENOR que o do dash de propósito**: a rabada é **varredura** e acerta
+  vários inimigos por golpe (medido: até 4-5), enquanto o dash é alvo único. Confirmado que
+  **não** há acerto repetido no mesmo alvo (`whip_hits`) e que a cauda **não fere fora do
+  golpe** — o que fazia parecer forte era a largura, não repetição.
 - `take_hit` **atribui** `vel`, então o empurrão extra vem **depois** da chamada.
 
 **Dano do dash — um acerto por investida.** `_collisions` roda **todo frame**, então

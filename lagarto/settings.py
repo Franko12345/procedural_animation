@@ -10,7 +10,8 @@ import json
 import os
 
 DEFAULTS = {'fullscreen': False, 'scale': 2, 'vsync': True,
-            'sfx_vol': 0.7, 'music_vol': 0.45}
+            'sfx_vol': 0.7, 'music_vol': 0.45,
+            'perf': 0}      # medidor de FPS: 0 desligado / 1 fps / 2 detalhado
 
 
 def _dir():
@@ -35,6 +36,8 @@ def load():
         pass                       # missing/corrupt -> defaults
     if data['scale'] not in (1, 2, 3):
         data['scale'] = DEFAULTS['scale']
+    if data['perf'] not in (0, 1, 2):
+        data['perf'] = DEFAULTS['perf']
     for k in ('sfx_vol', 'music_vol'):
         try:
             data[k] = min(1.0, max(0.0, float(data[k])))
@@ -65,4 +68,5 @@ def save_display(display_mod, audio_mod=None):
     else:
         cur = load()
         data['sfx_vol'], data['music_vol'] = cur['sfx_vol'], cur['music_vol']
+    data['perf'] = load()['perf']       # never clobber the perf toggle
     return save(data)

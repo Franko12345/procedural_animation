@@ -16,6 +16,7 @@ from . import display
 from . import evolution
 from . import icons
 from . import palette
+from . import perf
 from . import progression
 from . import settings
 from . import species
@@ -502,17 +503,7 @@ def run_menu(screen, font, bigfont, titlefont, joysticks):
             ui.footer(screen, font, "setas cima/baixo: item - esquerda/direita: aba - ESC/B volta")
         else:  # controls
             _panel(screen, pygame.Rect(C.WIDTH // 2 - 360, 220, 720, 300))
-            lines = [
-                "P1:  WASD mover  -  mouse mirar  -  clique/ESPACO dash  -  dir/SHIFT lingua",
-                "P1 (gamepad):  sticks  -  A dash  -  X lingua   (no single-player)",
-                "P2:  setas mover  -  IJKL mirar  -  RCtrl dash  -  RShift lingua",
-                "P2 (gamepad):  sticks  -  A dash  -  X lingua",
-                "",
-                "armas atacam sozinhas - suba de nivel p/ evoluir - F11 tela cheia - ESC pausa",
-                "",
-                (f"gamepad: {joysticks[0].name}" if joysticks else
-                 "gamepad: nenhum detectado (conecte e ele e reconhecido na hora)"),
-            ]
+            lines = controls_lines(joysticks)
             for i, l in enumerate(lines):
                 im = font.render(l, True, (206, 208, 226) if l else (150, 150, 170))
                 screen.blit(im, (C.WIDTH // 2 - im.get_width() // 2, 250 + i * 32))
@@ -549,6 +540,25 @@ def _main_items(meta):
             'OPCOES', 'CONTROLES', 'BESTIARIO', 'COMPENDIO', 'SAIR']
 
 
+CONTROLS = (
+    "P1:  WASD mover  -  mouse mirar  -  clique/ESPACO dash  -  dir/SHIFT lingua",
+    "P1:  clique-meio/Q rabada (golpe de cauda)",
+    "P1 (gamepad):  sticks  -  A dash  -  X lingua  -  Y rabada   (no single-player)",
+    "P2:  setas mover  -  IJKL mirar  -  RCtrl dash  -  RShift lingua  -  RAlt rabada",
+    "P2 (gamepad):  sticks  -  A dash  -  X lingua  -  Y rabada",
+    "",
+    "armas atacam sozinhas - suba de nivel p/ evoluir",
+    "F11 tela cheia  -  F3 medidor de FPS  -  ESC pausa",
+)
+
+
+def controls_lines(joysticks):
+    """Shared by the menu and the in-game pause screen, so they can't drift."""
+    pad = (f"gamepad: {joysticks[0].name}" if joysticks else
+           "gamepad: nenhum detectado (conecte e ele e reconhecido na hora)")
+    return list(CONTROLS) + ["", pad]
+
+
 def _items_for(mode, bkeys, tab, meta):
     """The navigable item list for a screen (drives selection + hit-testing)."""
     if mode == 'main':
@@ -559,6 +569,7 @@ def _items_for(mode, bkeys, tab, meta):
                 f'VSYNC: {"LIGADO" if display.get_vsync() else "DESLIGADO"}',
                 f'VOLUME EFEITOS: {int(audio.volumes()[0] * 100)}%',
                 f'VOLUME MUSICA: {int(audio.volumes()[1] * 100)}%',
+                f'MEDIDOR DE FPS: {perf.LEVEL_NAMES[settings.load()["perf"]].upper()}  (F3)',
                 'VOLTAR']
     if mode == 'meta':
         return _meta_entries() + ['VOLTAR']
@@ -597,6 +608,11 @@ def _activate(mode, sel, toggle_fs, n_items=0):
             sfx, mus = audio.volumes()
             audio.set_volumes(music=0.0 if mus >= 0.99 else min(1.0, mus + 0.1))
             settings.save_display(display, audio)
+        elif sel == 5:
+            cfg = settings.load()          # off -> fps -> detailed -> off
+            cfg['perf'] = (cfg['perf'] + 1) % 3
+            settings.save(cfg)
+            audio.play('ui')
         else:
             return 'main'                 # VOLTAR
         return None

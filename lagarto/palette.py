@@ -71,6 +71,21 @@ def mix(a, b, t):
 
 _GLOW_CACHE = {}
 _GLOW_MAX = 900          # hard ceiling: see the note in glow() about unbounded growth
+# diagnostics (read by the perf overlay): misses are what cost -- each one is a
+# surface allocation plus 10 filled circles. A steady stream of them means the
+# cache is thrashing; entries climbing forever means it is leaking.
+_hits = 0
+_misses = 0
+_clears = 0
+
+
+def glow_stats():
+    """(entries, bytes, hits, misses, clears) -- for the F3 perf overlay."""
+    total = 0
+    for s in _GLOW_CACHE.values():
+        w, h = s.get_size()
+        total += w * h * 4
+    return len(_GLOW_CACHE), total, _hits, _misses, _clears
 
 
 def _quantise_radius(radius):
@@ -83,13 +98,18 @@ def _quantise_radius(radius):
 
 
 def _glow_sprite(radius, color):
+    global _hits, _misses, _clears
     key = (radius, color)
     surf = _GLOW_CACHE.get(key)
-    if surf is None:
+    if surf is not None:
+        _hits += 1
+    else:
+        _misses += 1
         if len(_GLOW_CACHE) >= _GLOW_MAX:
             # cheaper and more predictable than an LRU; the working set rebuilds
             # in a few frames and the common keys are hit again immediately
             _GLOW_CACHE.clear()
+            _clears += 1
         surf = pygame.Surface((radius * 2, radius * 2), pygame.SRCALPHA)
         steps = 10
         for i in range(steps, 0, -1):

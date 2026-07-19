@@ -298,6 +298,7 @@ class Player(Lizard):
         self.whip_cooldown = 0.85
         self.whip_hits = set()    # one hit per enemy per swing (see dash_hits)
         self.whip_side = 1
+        self.whip_dir = Vector2()
         self.tongue_t = 0.0
         self.tongue_target = None
         self.aim = Vector2(1, 0)
@@ -478,6 +479,7 @@ class Player(Lizard):
         self.dash_cd = max(0.0, self.dash_cd - dt)
 
         if c.dash_edge and self.dash_cd <= 0 and self.energy >= C.DASH_COST:
+            c.consume('dash')
             move = c.move if c.move.length_squared() > 0.1 else self.facing
             self.vel = safe_norm(move) * self.max_speed * (3.5 if self.wings else 3.0)
             self.dash_time = 0.2 if self.wings else 0.16
@@ -489,10 +491,16 @@ class Player(Lizard):
             game.fx.spark_burst(self.pos, palette.lighten(self.color, 0.3), 12, 340)
             game.shake(5)
 
-        self.steer(c.move, dt, speed_mul)
+        if self.whip_t > 0:
+            # the swing owns the body: let steer fight it and the arc collapses
+            self.steer(Vector2(), dt, speed_mul)
+        else:
+            self.steer(c.move, dt, speed_mul)
         self.integrate(dt, on_plant=game.fx.dust)
+        self._whip_arc(dt)
 
         if c.tongue_edge and self.tongue_t == 0 and self.energy >= C.TONGUE_COST:
+            c.consume('tongue')
             self.tongue_t = 0.001
             self.energy -= C.TONGUE_COST                       # tongue costs energy
             # auto-aim at the nearest edible OR enemy, whichever is closer
@@ -522,6 +530,7 @@ class Player(Lizard):
         # --- tail whip ("rabada") ---------------------------------------- #
         self.whip_cd = max(0.0, self.whip_cd - dt)
         if c.whip_edge and self.whip_cd <= 0 and self.energy >= C.WHIP_COST:
+            c.consume('whip')
             self.whip_t = 0.001
             self.whip_cd = self.whip_cooldown
             self.energy -= C.WHIP_COST
@@ -533,11 +542,12 @@ class Player(Lizard):
                 d = foe.pos - self.pos
                 side = 1 if (self.facing.x * d.y - self.facing.y * d.x) > 0 else -1
             self.whip_side = -side
-            # A lateral lunge is the whole trick: the spine is follow-the-leader, so
-            # yanking the head sideways makes the tail crack around on its own. We
-            # can't just displace tail joints -- spine.resolve rewrites them all.
-            lat = Vector2(-self.facing.y, self.facing.x) * side
-            self.vel += lat * self.max_speed * 1.9
+            # Sideways ARC, not a velocity impulse. An impulse got erased within a
+            # few frames by steer() pulling velocity back to the input direction --
+            # what survived was whatever pointed the way you were already going, so
+            # the whip read as a forward lunge. Driving the head along the arc (and
+            # muting steer while it runs) is what makes the tail crack sideways.
+            self.whip_dir = Vector2(-self.facing.y, self.facing.x) * side
             audio.play('dash', 0.65)
             game.shake(3)
         if self.whip_t > 0:
@@ -556,6 +566,24 @@ class Player(Lizard):
         self.energy = clamp(self.energy + dt * 6, 0, self.max_energy)
         if self.regen > 0 and self.health < self.max_health:
             self.health = min(self.max_health, self.health + self.regen * dt)
+
+    def _whip_arc(self, dt):
+        """Sweep the head sideways through the swing; the spine does the rest.
+
+        Applied to ``pos`` AFTER integrate so steer/velocity can't cancel it, and
+        the spine is re-resolved so the body (and the tail hitbox) match the same
+        frame. ``sin(t*pi)`` is the out-and-back envelope the tongue also uses.
+        """
+        if self.whip_t <= 0 or self.whip_dir.length_squared() < 1e-6:
+            return
+        # derivative of the sin envelope -> speed along the arc, so it whips out
+        # fast and eases back instead of teleporting
+        swing = math.cos(self.whip_t * math.pi) * math.pi
+        self.pos += self.whip_dir * swing * C.WHIP_REACH * dt / 0.34
+        m = self.max_r
+        self.pos.x = min(max(self.pos.x, m), C.WORLD_W - m)
+        self.pos.y = min(max(self.pos.y, m), C.WORLD_H - m)
+        self.spine.resolve(self.pos)
 
     def _whip_hit(self, game):
         """The real tail joints are the hitbox -- what you see is what hits.

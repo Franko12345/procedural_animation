@@ -42,13 +42,20 @@ DASH_DAMAGE = 5
 # colisao macia: atravessar inimigo custa ate 55% da velocidade em vez de te empurrar
 CONTACT_DRAG = 0.55
 
+# pressionada fica valida por este tempo: sobrevive a frames sem passo de simulacao
+# (jitter e hit-stop) e a um clique pouco antes do cooldown acabar
+INPUT_BUFFER = 0.15
+
 DASH_COST = 14
 TONGUE_COST = 8
 
 # rabada: golpe de cauda. A clava aumenta o dano e o empurrao; o ferrao envenena.
+WHIP_REACH = 110         # quanto a cabeca varre para o lado no golpe (px)
 WHIP_COST = 10
-WHIP_DAMAGE = 6
-WHIP_CLUB_MULT = 1.6     # dano com cauda-clava
+# A rabada acerta VARIOS inimigos por golpe (varredura), entao o dano por acerto
+# tem que ser menor que o do dash, que e alvo unico. Medido: 4 alvos num golpe.
+WHIP_DAMAGE = 3
+WHIP_CLUB_MULT = 1.6     # dano com cauda-clava (3 -> 4.8, critico ~10)
 WHIP_KNOCK = 170         # empurrao base (a clava usa WHIP_KNOCK_CLUB)
 WHIP_KNOCK_CLUB = 460
 # A simulacao e fixa em SIM_HZ e o desenho NAO interpola entre estados, entao
