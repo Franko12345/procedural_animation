@@ -651,8 +651,7 @@ class Game:
             # health bar (green -> orange -> red as it drops)
             hy = y + 24
             hr = clamp(p.health / p.max_health, 0, 1)
-            hcol = palette.mix((235, 70, 70), (90, 230, 110), hr) if hr < 0.5 else \
-                palette.mix((90, 230, 110), (120, 240, 130), (hr - 0.5) * 2)
+            hcol = palette.health_color(hr)
             pygame.draw.rect(surf, (48, 48, 68), (x, hy, bw, 16), border_radius=8)
             if hr > 0:
                 pygame.draw.rect(surf, hcol, (x, hy, int(bw * hr), 16), border_radius=8)

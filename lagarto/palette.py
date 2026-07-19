@@ -52,6 +52,15 @@ def darken(color, t):
     return tuple(int(c * (1 - t)) for c in color[:3])
 
 
+def health_color(f):
+    """Green -> yellow -> red ramp. A 2-stop red/green mix goes muddy olive at 50%."""
+    f = 0.0 if f < 0 else (1.0 if f > 1 else f)
+    red, yellow, green = (240, 60, 60), (250, 200, 60), (110, 235, 110)
+    if f >= 0.5:
+        return mix(yellow, green, (f - 0.5) * 2)
+    return mix(red, yellow, f * 2)
+
+
 def mix(a, b, t):
     return tuple(int(a[i] + (b[i] - a[i]) * t) for i in range(3))
 

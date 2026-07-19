@@ -711,7 +711,7 @@ class AILizard(Lizard):
         w = max(16, int(self.max_r * 2.2 * cam.zoom))
         h = max(3, int(4 * cam.zoom))
         x = sp[0] - w // 2
-        col = palette.mix((235, 70, 70), (120, 235, 110), f)
+        col = palette.health_color(f)
         pygame.draw.rect(surf, (18, 16, 26), (x - 1, sp[1] - 1, w + 2, h + 2),
                          border_radius=3)
         pygame.draw.rect(surf, col, (x, sp[1], int(w * f), h), border_radius=2)

@@ -208,6 +208,15 @@ tocando); todos caídos = fim. **Score/pólen** escalam com o **combo**.
   cadência, velocidade, XP, pólen) e **unlocks** que liberam armas/charms no pool da run
   (`progression.unlocked` filtra `evolution._weapon_cards`, a loja e os drops de ninho).
 
+## Vida visível
+
+- **Jogador**: barra no HUD com a rampa `palette.health_color` (verde→amarelo→vermelho;
+  uma mistura de 2 paradas vira oliva sujo no meio, por isso a rampa tem 3).
+- **Inimigos**: `AILizard._draw_health` desenha uma barrinha acima da cabeça **só quando
+  feridos** (some em vida cheia p/ não poluir). Escala por `max_hp` — se você ajustar o
+  `hp` depois do spawn, chame `sync_max_hp()` (species/rounds já fazem).
+- **Chefes**: sem barrinha; usam a **barra grande no topo** (`rounds.draw_boss_bar`).
+
 ## Juice / feel
 
 - **Hit-stop**: `game.punch(freeze, shake, flash)` — o loop de `app.py` **pula os passos de
