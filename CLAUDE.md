@@ -208,6 +208,33 @@ tocando); todos caídos = fim. **Score/pólen** escalam com o **combo**.
   cadência, velocidade, XP, pólen) e **unlocks** que liberam armas/charms no pool da run
   (`progression.unlocked` filtra `evolution._weapon_cards`, a loja e os drops de ninho).
 
+## Balanceamento (1ª passada, a partir de playtest do usuário)
+
+Feedback: *inimigos morriam fácil demais, amigos eram desproporcionais, e havia cura
+demais no chão*. Ajustes feitos — **estes números são o lugar para mexer**:
+- **Inimigos ~2x mais duros**: hp de genoma em `species.py` (runner 2→4, tank 6→14,
+  snake/spider/spitter 3→6, horned/spiky/scorpion 4→8) e escala por onda mais rápida
+  (`rounds`: `wave//3` → `int(wave*0.7)`).
+- **Menos inimigos ao mesmo tempo**: `THEMES[...]['cap']` reduzido (11→7, 7→5, 5→4, 8→6)
+  e budget menor (`(4 + wave*1.6)` → `(3 + wave*1.1)`).
+- **Menos cura**: fruta cura 25→12; frutas iniciais 12→5; drop de inimigo 40%→15%;
+  ninho dropa fruta 100%→50%.
+- **Amigos temporários e mais fracos**: `config.FRIEND_LIFE` (45s, piscam nos últimos 5s
+  e somem), hp 3→2, ataque a cada 0.6s→1.1s; ovos no mundo 6→3; ovo na loja 24→40 pólen.
+
+## Hitbox: corpo inteiro + cabeça é ponto fraco
+
+**Antes o dano testava só um círculo na cabeça** (`e.pos` + `e.max_r`), então uma cobra de
+322 px era atingível em ~5 % do corpo — o jogador sentia "acertei mas não contou".
+- **`Lizard.body_points()`** amostra a espinha (juntas 0, ¼, ½, ¾, fim, com o raio local) e
+  **`hit_test(pos, raio)`** devolve `None` / `'body'` / `'head'`. Mesmo padrão do
+  `collision._samples`.
+- Usado por **todas** as fontes de dano: dash (`game._collisions`), projéteis
+  (`_update_projectiles`) e auras/orbitais/poças (`weapons._enemies_in`).
+- **Cabeça = crítico** (`config.CRIT_MULT`) com spark dourado + popup "CRITICO!"
+  (`game.crit_fx`), e um **anel de mira** desenhado na cabeça dos inimigos
+  (`AILizard._draw_weakpoint`) mostrando onde vale a pena acertar.
+
 ## Vida visível
 
 - **Jogador**: barra no HUD com a rampa `palette.health_color` (verde→amarelo→vermelho;
@@ -216,6 +243,11 @@ tocando); todos caídos = fim. **Score/pólen** escalam com o **combo**.
   feridos** (some em vida cheia p/ não poluir). Escala por `max_hp` — se você ajustar o
   `hp` depois do spawn, chame `sync_max_hp()` (species/rounds já fazem).
 - **Chefes**: sem barrinha; usam a **barra grande no topo** (`rounds.draw_boss_bar`).
+- **Amigos**: além da barrinha, a **cor do corpo desbota** conforme enfraquecem
+  (`AILizard._fade_by_vitality`: interpola de `base_color` até um cinza-lavanda usando o
+  **pior** entre `hp/max_hp` e `life/FRIEND_LIFE`), e piscam nos últimos 5 s antes de sumir.
+  Como todo o desenho lê `self.color`, basta atualizar essa cor que corpo/pernas/rim/glow
+  acompanham.
 
 ## Juice / feel
 
@@ -224,6 +256,10 @@ tocando); todos caídos = fim. **Score/pólen** escalam com o **combo**.
   dano no jogador (0.05s) e **morte de chefe** (0.22s + flash branco).
 - **Transições**: `ui.Fade` (fade curto) ao entrar numa run e a cada troca de estado
   (play ↔ camp ↔ levelup ↔ victory/over) e entre telas do menu.
+- **Menus animados (estilo Vampire Survivors)**: `menu._menu_list` recebe um dict `anim`
+  (`{'t', 'sel_f'}`) e faz **drop-in escalonado** dos itens (slide + fade, cada um ~45 ms
+  após o anterior) e um **destaque que desliza** entre as opções (`sel_f` persegue `sel`),
+  com o item selecionado pulsando levemente.
 - `ui.fit(font, texto, largura)` trunca texto com "..." para nada vazar das caixas.
 
 ## Ícones e áudio (gerados em código)

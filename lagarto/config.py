@@ -17,6 +17,12 @@ MAX_STEPS = 5            # cap sim steps per frame -> avoids the "spiral of deat
 # --- ability energy costs (shared by the logic and the HUD dials) ---------- #
 RUN_FINAL_WAVE = 20      # modo normal: onda do chefe final (vitoria)
 
+FRIEND_HP = 6            # aliados agora tomam dano de verdade -> precisam aguentar
+ENEMY_HP_MULT = 2.0      # dial unico de dificuldade: vida dos inimigos
+CRIT_MULT = 2.0          # dano ao acertar a cabeca (ponto fraco)
+AGGRO_TIME = 5.0         # segundos que um aliado segura o aggro apos bater
+FRIEND_LIFE = 45.0       # aliados sao temporarios (segundos)
+
 DASH_COST = 14
 TONGUE_COST = 8
 RENDER_FPS = 120

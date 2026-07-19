@@ -22,15 +22,15 @@ from .mathutil import vfrom_angle, clamp
 # theme -> (banner, enemy pool, budget multiplier, max alive at once)
 THEMES = {
     'enxame':     dict(banner='ENXAME', pool=['runner', 'runner', 'spiky', 'snake'],
-                       budget=1.7, cap=11),
+                       budget=1.3, cap=7),
     'cuspidores': dict(banner='CHUVA DE CUSPIDORES', pool=['spitter', 'spitter', 'runner'],
-                       budget=1.0, cap=7),
+                       budget=0.85, cap=5),
     'tanques':    dict(banner='MARCHA DOS TANQUES', pool=['tank', 'horned', 'tank'],
-                       budget=0.7, cap=5),
+                       budget=0.6, cap=4),
     'aranhas':    dict(banner='NOITE DAS ARANHAS', pool=['spider', 'spider', 'scorpion'],
-                       budget=1.0, cap=7),
+                       budget=0.85, cap=5),
     'invasao':    dict(banner='INVASAO', pool=list(species.ENEMY_SPECIES),
-                       budget=1.05, cap=8),
+                       budget=0.9, cap=6),
 }
 THEME_KEYS = list(THEMES.keys())
 BOSS_EVERY = 5          # a boss round every N waves
@@ -101,7 +101,8 @@ class Nest:
             game.fx.spark_burst(self.pos, (255, 220, 160), 20, 360)
             game.fx.ring(self.pos, (220, 170, 120))
             game.shake(8)
-            game.spawn_fruit(self.pos)
+            if random.random() < 0.5:
+                game.spawn_fruit(self.pos)
             if random.random() < 0.22:              # rare: nests can drop a charm
                 from . import charms as CH
                 p = game.nearest_player(self.pos) or (game.players[0] if game.players else None)
@@ -165,7 +166,7 @@ class RoundManager:
         self.theme = theme or self._next_theme or self._pick_theme()
         self._next_theme = None
         spec = THEMES[self.theme]
-        self.budget = int((4 + self.wave * 1.6) * spec['budget'])
+        self.budget = int((3 + self.wave * 1.1) * spec['budget'])
         if self.is_boss_round:
             self.budget = max(3, self.budget // 2)     # fewer mobs, one huge threat
         self.state = 'combat'
@@ -270,7 +271,7 @@ class RoundManager:
                             self._alive_enemies() + len(self.marks) < spec['cap']:
                         key = random.choice(spec['pool'])
                         pos = n.pos + vfrom_angle(random.uniform(0, 360), random.uniform(20, 70))
-                        self.marks.append(SpawnMark(pos, key, self.wave // 3,
+                        self.marks.append(SpawnMark(pos, key, int(self.wave * 0.7),
                                                     1.0 + min(self.wave * 0.02, 0.4)))
                         self.budget -= 1
                         n.reset_emit(self.wave > 4)

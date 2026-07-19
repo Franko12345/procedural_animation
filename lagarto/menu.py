@@ -91,28 +91,57 @@ def _panel(screen, rect):
     pygame.draw.rect(screen, (60, 64, 96), rect, 2, border_radius=16)
 
 
-def _menu_list(screen, font, bigfont, items, sel, top, accent):
-    """Draw a vertical list; return clickable rects. Spacing adapts to item count."""
+def _menu_list(screen, font, bigfont, items, sel, top, accent, anim=None, t=0.0):
+    """Vertical list, Vampire-Survivors style: items drop in staggered and the
+    highlight *glides* between entries instead of snapping.
+
+    ``anim`` is a dict kept by the caller: {'t': seconds since this screen opened,
+    'sel_f': smoothed selection index}.
+    """
     cx = C.WIDTH // 2
     rects = []
-    # keep the whole list on screen even when a screen grows new entries
     gap = 58
     if items:
         gap = max(40, min(58, (C.HEIGHT - top - 56) // len(items)))
     small = gap < 52
+    w = 420
+    at = anim['t'] if anim else 99.0
+    sel_f = anim['sel_f'] if anim else float(sel)
+
+    # gliding highlight, drawn under the labels so text stays crisp
+    hy = top + sel_f * gap
+    hrect = pygame.Rect(cx - w // 2, int(hy), w, gap - 10)
+    if at > 0.05:
+        pulse = 0.5 + 0.5 * math.sin(t * 5)
+        palette.glow(screen, hrect.center, 150, accent, 0.22 + 0.16 * pulse)
+        pygame.draw.rect(screen, (26, 30, 46), hrect, border_radius=12)
+        pygame.draw.rect(screen, accent, hrect, 3, border_radius=12)
+        # little marker that rides along the left edge
+        bar = pygame.Rect(hrect.x + 9, hrect.y + 9, 5, hrect.height - 18)
+        pygame.draw.rect(screen, accent, bar, border_radius=3)
+
     for i, label in enumerate(items):
-        chosen = (i == sel)
-        y = top + i * gap
-        w = 420
-        rect = pygame.Rect(cx - w // 2, y, w, gap - 10)
+        # staggered drop-in: each row starts a bit after the previous one
+        lt = max(0.0, min(1.0, (at - i * 0.045) / 0.26))
+        ease = 1 - (1 - lt) ** 3                       # ease-out cubic
+        y = top + i * gap - (1 - ease) * 26            # slides down into place
+        rect = pygame.Rect(cx - w // 2, int(top + i * gap), w, gap - 10)
         rects.append((i, rect))
-        if chosen:
-            palette.glow(screen, rect.center, 120, accent, 0.35)
-            pygame.draw.rect(screen, accent, rect, 3, border_radius=12)
+        if lt <= 0:
+            continue
+        chosen = (i == sel)
         col = C.COL_WHITE if chosen else (150, 152, 172)
         f = font if small else bigfont
         im = f.render(label, True, col)
-        screen.blit(im, (cx - im.get_width() // 2, rect.centery - im.get_height() // 2))
+        if chosen and not small:                       # selected pops slightly
+            grow = 1.0 + 0.06 * (0.5 + 0.5 * math.sin(t * 5))
+            im = pygame.transform.smoothscale(
+                im, (int(im.get_width() * grow), int(im.get_height() * grow)))
+        if ease < 1:
+            im = im.copy()
+            im.set_alpha(int(255 * ease))
+        screen.blit(im, (cx - im.get_width() // 2,
+                         int(y + (gap - 10) // 2 - im.get_height() // 2)))
     return rects
 
 
@@ -327,6 +356,7 @@ def run_menu(screen, font, bigfont, titlefont, joysticks):
     fade = ui.Fade()
     fade.start(0.3)
     prev_mode = 'main'
+    anim = {'t': 0.0, 'sel_f': 0.0}      # drop-in clock + smoothed selection
     demo, cam, world = _make_backdrop()
     t = 0.0
     mode = 'main'
@@ -438,14 +468,14 @@ def run_menu(screen, font, bigfont, titlefont, joysticks):
         _title(screen, titlefont, font, t)
 
         if mode == 'main':
-            rects = _menu_list(screen, font, bigfont, items, sel, 250, C.COL_PLAYER[0])
+            rects = _menu_list(screen, font, bigfont, items, sel, 250, C.COL_PLAYER[0], anim, t)
             legend = ("gamepad detectado" if joysticks else "gamepad: conecte p/ P2")
             foot = font.render(f"setas/mouse p/ navegar - ENTER p/ escolher - {legend}",
                                True, (170, 172, 194))
             screen.blit(foot, (C.WIDTH // 2 - foot.get_width() // 2, C.HEIGHT - 44))
         elif mode == 'options':
             _panel(screen, pygame.Rect(C.WIDTH // 2 - 300, 230, 600, 240))
-            rects = _menu_list(screen, font, bigfont, items, sel, 268, C.COL_PLAYER2[0])
+            rects = _menu_list(screen, font, bigfont, items, sel, 268, C.COL_PLAYER2[0], anim, t)
             hint = font.render("arraste a janela p/ redimensionar - vsync ligado",
                                True, (180, 182, 202))
             screen.blit(hint, (C.WIDTH // 2 - hint.get_width() // 2, 420))
@@ -486,11 +516,16 @@ def run_menu(screen, font, bigfont, titlefont, joysticks):
             for i, l in enumerate(lines):
                 im = font.render(l, True, (206, 208, 226) if l else (150, 150, 170))
                 screen.blit(im, (C.WIDTH // 2 - im.get_width() // 2, 250 + i * 32))
-            rects = _menu_list(screen, font, bigfont, items, sel, 470, C.COL_PLAYER2[0])
+            rects = _menu_list(screen, font, bigfont, items, sel, 470, C.COL_PLAYER2[0], anim, t)
 
         if mode != prev_mode:
             fade.start(0.2)
             prev_mode = mode
+            anim['t'] = 0.0                  # replay the drop-in on the new screen
+            anim['sel_f'] = float(sel)
+        anim['t'] += dt
+        # ease the highlight toward the real selection (glide, not snap)
+        anim['sel_f'] += (sel - anim['sel_f']) * min(1.0, dt * 16)
         fade.update(dt)
         fade.draw(screen)
         display.present()

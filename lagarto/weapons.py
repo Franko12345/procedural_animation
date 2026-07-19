@@ -20,13 +20,12 @@ from .projectile import spit as mk_spit, web as mk_web, Projectile
 
 
 def _enemies_in(game, pos, r):
-    r2 = r * r
+    """Enemies whose BODY (not just the head) is within `r` of `pos`."""
     out = []
     for e in game.enemies:
         if e.dead:
             continue
-        dx = e.pos.x - pos[0]; dy = e.pos.y - pos[1]
-        if dx * dx + dy * dy <= r2:
+        if e.hit_test(pos, r):
             out.append(e)
     return out
 

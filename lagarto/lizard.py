@@ -111,6 +111,31 @@ class Lizard:
             leg.partner = legs[(i + h) % len(legs)]
         return legs
 
+    # ---- hit testing ----------------------------------------------------- #
+    def body_points(self):
+        """Sample points along the spine: [(pos, radius, is_head), ...].
+
+        Damage used to test a single circle at the head, so a 322px snake was only
+        ~5% hittable. Same sampling idea as ``collision._samples``.
+        """
+        js, rs = self.spine.joints, self.spine.radii
+        m = len(js)
+        idx = sorted({0, m // 4, m // 2, (3 * m) // 4, m - 1})
+        return [(js[i], rs[i], i == 0) for i in idx]
+
+    def hit_test(self, pos, radius=0.0):
+        """None if it misses; 'head' (weak point) or 'body' if it connects."""
+        best = None
+        for jp, r, is_head in self.body_points():
+            dx = jp.x - pos[0]
+            dy = jp.y - pos[1]
+            reach = r + radius
+            if dx * dx + dy * dy <= reach * reach:
+                if is_head:
+                    return 'head'            # weak point wins outright
+                best = 'body'
+        return best
+
     # ---- status --------------------------------------------------------- #
     def apply_slow(self, mul, dur):
         self.slow_mul = min(self.slow_mul, mul) if self.slow_t > 0 else mul
@@ -524,6 +549,10 @@ class AILizard(Lizard):
         self.xp_value = 3
         self.score_value = 15
         self.grants = None
+        self.base_color = self.color   # pristine colour; friends fade from this
+        self.aggro = None         # creature that pulled this enemy's attention
+        self.aggro_t = 0.0
+        self.life = None          # friends are temporary: seconds left before leaving
         self.poison_t = 0.0
         self.poison_dps = 0.0
         self._pacc = 0.0
@@ -577,10 +606,28 @@ class AILizard(Lizard):
             self.wander = vfrom_angle(random.uniform(0, 360))
         return self.wander
 
+    def _fade_by_vitality(self):
+        """Allies desaturate as they lose health OR run out of time -> readable at a glance."""
+        hp_f = self.hp / max(1, getattr(self, 'max_hp', self.hp))
+        life_f = 1.0 if self.life is None else clamp(self.life / C.FRIEND_LIFE, 0, 1)
+        v = clamp(min(hp_f, life_f), 0, 1)
+        self.color = palette.mix((116, 110, 138), self.base_color, v)
+
     def update(self, dt, game):
+        if self.life is not None:                 # allies wander off after a while
+            self.life -= dt
+            self._fade_by_vitality()
+            if self.life <= 0:
+                self.dead = True
+                game.fx.burst(self.pos, self.color, 14, 170)
+                game.fx.ring(self.pos, self.color)
+                return
         if self._tick_status(dt, game):
             return
         self.shoot_cd = max(0.0, self.shoot_cd - dt)
+        self.aggro_t = max(0.0, self.aggro_t - dt)
+        if self.aggro is not None and (self.aggro.dead or self.aggro_t <= 0):
+            self.aggro = None
         d = Vector2()
         speed = 1.0
         if self.kind == 'prey':
@@ -593,7 +640,8 @@ class AILizard(Lizard):
             else:
                 d = self.wander_dir(dt); speed = 0.5
         elif self.kind == 'enemy':
-            target = game.nearest_player(self.pos)
+            # a friend that hits us steals the aggro for a few seconds -> allies tank
+            target = self.aggro if self.aggro is not None else game.nearest_player(self.pos)
             beh = self.genome.behavior
             if target and target.pos.distance_to(self.pos) < 700:
                 if beh == 'ranged':
@@ -621,7 +669,9 @@ class AILizard(Lizard):
                 d = safe_norm(foe.pos - self.pos); speed = 1.2
                 if foe.pos.distance_to(self.pos) < (self.max_r + foe.max_r) and self.attack_cd <= 0:
                     foe.take_hit(game, safe_norm(foe.pos - self.pos), 1)
-                    self.attack_cd = 0.6
+                    foe.aggro = self              # taunt: it now comes after us
+                    foe.aggro_t = C.AGGRO_TIME
+                    self.attack_cd = 1.1          # allies hit slower than the player
                     game.fx.burst(foe.pos, C.COL_FRIEND, 8, 160)
             elif leader:
                 off = leader.pos.distance_to(self.pos)
@@ -694,8 +744,32 @@ class AILizard(Lizard):
             self.vel += self.wander * self.max_speed * 1.4
         return Vector2()
 
+    def _draw_weakpoint(self, surf, cam):
+        """Mark the head: it is the weak point (crit) and where aiming pays off."""
+        if self.kind != 'enemy' or getattr(self, 'is_boss', False):
+            return
+        head = self.spine.joints[0]
+        if not cam.visible(head, 40):
+            return
+        sp = cam.w2s(head)
+        r = max(4, int(self.max_r * 0.85 * cam.zoom))
+        pulse = 0.55 + 0.45 * math.sin(self.wobble * 2.4)
+        col = (255, 210, 120)
+        palette.glow(surf, sp, r * 1.5, col, 0.18 + 0.16 * pulse)
+        pygame.draw.circle(surf, col, sp, r, max(1, int(2 * cam.zoom)))
+        # little crosshair ticks so it reads as "aim here"
+        for a in (0, 90, 180, 270):
+            p1 = head + vfrom_angle(a, self.max_r * 0.85)
+            p2 = head + vfrom_angle(a, self.max_r * 1.15)
+            pygame.draw.line(surf, col, cam.w2s(p1), cam.w2s(p2), max(1, int(2 * cam.zoom)))
+
     def draw(self, surf, cam):
+        if self.life is not None and self.life < 5.0:
+            # blink faster as the ally is about to leave
+            if int(self.life * (12 if self.life < 2 else 6)) % 2 == 0:
+                return
         super().draw(surf, cam)
+        self._draw_weakpoint(surf, cam)
         self._draw_health(surf, cam)
 
     def _draw_health(self, surf, cam):
@@ -718,11 +792,18 @@ class AILizard(Lizard):
 
     def _contact(self, game, target):
         self.attack_cd = 0.8
-        if target.dashing:
+        if getattr(target, 'dashing', False):
             self.take_hit(game, safe_norm(self.pos - target.pos), 3)
+            return
+        away = safe_norm(target.pos - self.pos)
+        if not hasattr(target, 'hurt'):           # an allied creature, not the player
+            target.take_hit(game, away, 2 if self.max_r > 25 else 1)
+            if self.genome.tail == 'sting':
+                target.apply_slow(0.5, 1.4)
+            return
         else:
             dmg = int(8 + self.max_r * 0.4)      # bigger predators hit harder
-            target.hurt(game, safe_norm(target.pos - self.pos), dmg)
+            target.hurt(game, away, dmg)
             if self.genome.tail == 'sting':      # scorpion sting also slows
                 target.apply_slow(0.5, 1.4)
             thorns = getattr(target, 'thorns', 0)
@@ -754,5 +835,5 @@ class AILizard(Lizard):
             game.add_pollen(max(1, self.score_value // 12))
             game.kills += 1
             game.give_xp(self.xp_value)
-            if random.random() < 0.4:
+            if random.random() < 0.15:
                 game.spawn_fruit(self.pos)

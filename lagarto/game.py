@@ -122,9 +122,9 @@ class Game:
 
         for _ in range(46):
             self.pickups.append(Bug(self._rand_world()))
-        for _ in range(12):
+        for _ in range(5):
             self.pickups.append(Fruit(self._rand_world()))
-        for _ in range(6):
+        for _ in range(3):
             self.pickups.append(Egg(self._rand_world()))
         for _ in range(8):
             self.prey.append(self._spawn_prey())
@@ -139,6 +139,12 @@ class Game:
 
     def shake(self, m):
         self.cam.add_shake(m)
+
+    def crit_fx(self, pos):
+        """Feedback for a weak-point (head) hit."""
+        self.fx.spark_burst(pos, (255, 232, 150), 12, 380)
+        self.fx.popup(pos, "CRITICO!", (255, 226, 120))
+        audio.play('hit', 1.0)
 
     def punch(self, freeze=0.06, shake=6, flash=0.0):
         """Impact feedback: brief freeze + shake (+ optional screen flash)."""
@@ -286,7 +292,9 @@ class Game:
                 if pl.dead:
                     continue
                 f = AILizard(pl.pos, 'friend', 0.9, C.COL_FRIEND)
-                f.hp = 3
+                f.hp = C.FRIEND_HP
+                f.sync_max_hp()
+                f.life = C.FRIEND_LIFE
                 g.friends.append(f)
 
         def charm(g):
@@ -302,7 +310,7 @@ class Game:
             dict(name='Vitalidade', desc='+20 vida maxima', cost=28, hue=5, icon='health', fn=vitality),
             dict(name='Vigor', desc='+15% dano das armas', cost=32, hue=0, icon='might', fn=might),
             dict(name='Charm', desc='adaptacao p/ um slot', cost=30, hue=280, icon='nectar', fn=charm),
-            dict(name='Ovo de Amigo', desc='invoca um aliado', cost=24, hue=270, icon='legs', fn=egg),
+            dict(name='Ovo de Amigo', desc='aliado temporario', cost=40, hue=270, icon='legs', fn=egg),
         ]
 
     def camp_equip(self, cid):
@@ -394,8 +402,13 @@ class Game:
                 for e in self.enemies:
                     if e.dead:
                         continue
-                    if e.pos.distance_to(pr.pos) < e.max_r + pr.radius:
-                        e.take_hit(self, safe_norm(pr.vel), pr.dmg)
+                    where = e.hit_test(pr.pos, pr.radius)
+                    if where:
+                        dmg = pr.dmg
+                        if where == 'head':
+                            dmg = int(round(dmg * C.CRIT_MULT))
+                            self.crit_fx(e.spine.joints[0])
+                        e.take_hit(self, safe_norm(pr.vel), dmg)
                         if pr.effect == 'poison':
                             e.apply_poison(3.0, 3.0)
                         pr.dead = True
@@ -424,13 +437,15 @@ class Game:
             self.fx.popup(target.pos, "+5")
         elif kind == 'fruit':
             player.energy = clamp(player.energy + 22, 0, player.max_energy)
-            player.health = min(player.max_health, player.health + 25)
+            player.health = min(player.max_health, player.health + 12)
             player.food += 1
             self.add_score(10)
             self.fx.popup(target.pos, "+cura", (120, 240, 120))
         elif kind == 'egg':
             f = AILizard(target.pos, 'friend', 0.9, C.COL_FRIEND)
-            f.hp = 3
+            f.hp = C.FRIEND_HP
+            f.sync_max_hp()
+            f.life = C.FRIEND_LIFE
             self.friends.append(f)
             self.add_score(20)
             self.fx.popup(target.pos, "AMIGO!", C.COL_FRIEND)
@@ -557,11 +572,16 @@ class Game:
             for e in self.enemies:
                 if e.dead:
                     continue
-                if p.pos.distance_to(e.pos) < p.max_r + e.max_r and p.dashing:
+                where = e.hit_test(p.pos, p.max_r) if p.dashing else None
+                if where:
                     grant = getattr(e, 'grants', None)
                     if p.venom:
                         e.apply_poison(2.5, 2.5)
-                    e.take_hit(self, safe_norm(e.pos - p.pos), 3)
+                    dmg = 3
+                    if where == 'head':                 # weak point
+                        dmg = int(round(dmg * C.CRIT_MULT))
+                        self.crit_fx(e.spine.joints[0])
+                    e.take_hit(self, safe_norm(e.pos - p.pos), dmg)
                     if e.dead:
                         self.punch(0.07, 8)          # dash-kill: crunchy freeze
                         # stealing a body part is now a rare treat, not every kill
