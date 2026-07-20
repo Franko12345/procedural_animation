@@ -301,6 +301,40 @@ pólen gasto explode da barraca, vira um cometa dourado e estoura no lagarto com
 o véu usa surface opaca + `set_alpha` (SRCALPHA por-pixel custava ~6 ms/frame); a camada
 de shake só é composta **quando há shake** (`_ui_dest`), senão desenha direto na tela.
 
+## Legibilidade da tela (texto + layout do topo)
+
+**O texto era fraco porque o antialiasing não é o problema.** Ele já estava ligado nos
+~68 pontos de render. O borrão vem do `display.present()` fazer `smoothscale` da tela
+inteira: o glifo é rasterizado a 14 px na surface lógica e **esticado com filtro bilinear**
+para 2x/3x. Traço fino não sobrevive a isso. Duas coisas resolvem, e as duas importam:
+- **`ui.text(surf, font, s, pos, cor, align=)`** desenha um **contorno escuro** atrás do
+  glifo — a borda dura é a única coisa que atravessa o filtro. `pos` é onde os glifos
+  caem, então é substituto direto de `surf.blit(font.render(...), pos)`, e ele **devolve o
+  rect** do texto (usado pelo layout). *`ui.text_surface` devolve surface **cacheada e
+  compartilhada** — `.copy()` antes de mexer no `set_alpha`, senão todo desenho seguinte
+  daquela string herda a alteração (o fade do banner caiu exatamente nisso).*
+- **`fonts.get(size, bold=True)` por padrão** — haste grossa sobrevive à escala.
+- O cache de texto tem **teto (`_TEXT_MAX = 700`) com `clear()`**, mesmo padrão do
+  `palette._GLOW_CACHE`: score, vida e timers são texto **contínuo**, então o keyspace é
+  ilimitado. Medido: estável em ~608 entradas / 9,7 MB em 18 000 frames.
+
+**A pilha do topo (`game.TopStack`).** Seis elementos — score, linha de onda, combo, banner
+do tema, nome do chefe e barra do chefe — fixavam cada um o próprio `y`. Numa onda de chefe
+com combo eram **três sobreposições ao mesmo tempo**, e o banner dura 2,2 s exatamente
+quando o chefe nasce, ou seja era garantido de acontecer. Hoje cada elemento pede a altura
+que precisa (`top.take(h)`) e recebe a próxima faixa livre.
+- **Ordem de desenho = prioridade.** Permanentes (HUD, barra do chefe) reservam primeiro e
+  nunca se mexem; o banner é **transitório** e vai por último, senão empurra a barra do
+  chefe para dentro da área de jogo justo nos segundos do spawn.
+- `top.reset()` uma vez por frame, em `game.draw`.
+- O **HUD é escondido em `levelup`/`camp`**: essas telas têm cabeçalho próprio e o HUD por
+  baixo do véu só competia com os painéis.
+
+**Nada de `→` (U+2192) em texto de UI.** O Noto Sans base não cobre setas (elas vivem no
+Noto Sans Symbols) e ela saía como **tofu em toda carta de upgrade de arma**. Pior: o
+`font.metrics('→')` **mente** — reporta o glifo e mesmo assim não rasteriza, então teste
+renderizando, não consultando. Use `->`. O travessão `—` renderiza normal.
+
 ## Modelo de dano (barra de vida)
 
 Vida é **contínua** (`Player.health`/`max_health`, base 100), desenhada como **barra**
@@ -344,6 +378,33 @@ tocando); todos caídos = fim. **Score/pólen** escalam com o **combo**.
   tela de fim). Gasta-se no menu em **EVOLUCAO (DNA)**: upgrades permanentes (vida, dano,
   cadência, velocidade, XP, pólen) e **unlocks** que liberam armas/charms no pool da run
   (`progression.unlocked` filtra `evolution._weapon_cards`, a loja e os drops de ninho).
+
+## Balanceamento (2ª passada): subir DANO, não vida
+
+Regra que veio da pesquisa (Isaac/Gungeon/VS) e vale para todo ajuste futuro: num jogo de
+ataque automático a única agência do jogador é **posicionamento**, então dificuldade tem que
+ser **consequência de erro de posição**. Vida a mais vira esponja e ainda faz a build
+*parecer* mais fraca do que é.
+- **Dano de contato** sai de `lizard.contact_damage(max_r, wave)`, com os dials
+  `ENEMY_DMG_BASE` (11), `ENEMY_DMG_SIZE` (0.5) e uma **escada por onda em degraus**
+  (`ENEMY_DMG_STEP`/`ENEMY_DMG_PER_STEP`) — rampa contínua o jogador não percebe, degrau
+  ele sente. Corredor 16→26 da onda 1 à 20; tanque 26→36. Projétil: `ENEMY_PROJ_DMG` (10).
+- **`ENEMY_HP_MULT` 3.0 → 2.2.** O 3.0 tinha sido subido para compensar a hitbox de corpo
+  inteiro **e** os bugs de dano (dash multi-hit, ácido empilhando), e nunca foi revisitado
+  depois que os bugs foram corrigidos.
+- **Não mexer nos i-frames** (`hit_flash > 0.45`) — são o que mantém o jogo justo.
+
+**Medição (bot headless dirigido, `--smoke` não serve para isso).** Dois estilos: `kite`
+(só se move, deixa as armas trabalharem) e `aggro` (caça de dash, como o usuário joga).
+Resultado do rebalanceamento: aggro passou de onda mediana 2,5 / 5,5 abates para **3,0 /
+8 abates** no mesmo tempo até morrer — mata mais rápido, morre igual. *Um bot que só se
+move mede um jogo que ninguém joga:* no nível 1 o `cuspe` faz **1 de dano a cada 1,05 s**,
+então quase todo o dano inicial vem do **dash**.
+
+**Aberto, e é decisão de design, não bug:** jogar 100% passivo **não limpa a onda 1 em 6
+minutos**. A premissa "ataque é automático, você só se posiciona" não vale no começo da
+run. Subir o dano das armas base resolveria, mas deixaria o jogo *mais fácil* — o oposto do
+pedido. Precisa de decisão do usuário antes de mexer.
 
 ## Balanceamento (1ª passada, a partir de playtest do usuário)
 

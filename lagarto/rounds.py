@@ -17,6 +17,7 @@ from . import audio
 from . import config as C
 from . import palette
 from . import species
+from . import ui
 from .mathutil import vfrom_angle, clamp
 
 # theme -> (banner, enemy pool, budget multiplier, max alive at once)
@@ -307,26 +308,41 @@ class RoundManager:
         if b is None or b.dead:
             return
         w, h = 620, 20
-        x = C.WIDTH // 2 - w // 2
-        y = 122                     # below the score/wave HUD line
+        cx = C.WIDTH // 2
+        x = cx - w // 2
         f = clamp(b.hp / max(1, b.max_hp), 0, 1)
         name = getattr(b, 'boss_name', 'CHEFE')
-        im = bigfont.render(name, True, (255, 120, 120))
-        surf.blit(im, (C.WIDTH // 2 - im.get_width() // 2, y - 40))
+        # name and bar each reserve a band in the shared top column (game.TopStack)
+        # instead of the old fixed y=122 / y-40, which collided with the combo
+        # meter and the theme banner on every boss wave.
+        stack = self.game.top
+        ui.text(surf, bigfont, name, (cx, stack.take(bigfont.get_height())),
+                (255, 132, 132), align='center')
+        y = stack.take(h)
         pygame.draw.rect(surf, (40, 20, 26), (x, y, w, h), border_radius=10)
         if f > 0:
             col = palette.mix((255, 60, 60), (255, 170, 80), f)
             pygame.draw.rect(surf, col, (x, y, int(w * f), h), border_radius=10)
             palette.glow(surf, (x + int(w * f), y + h // 2), 26, col, 0.5)
         pygame.draw.rect(surf, (16, 12, 18), (x, y, w, h), 3, border_radius=10)
-        pips = font.render(f"{int(b.hp)}/{b.max_hp}", True, (255, 220, 220))
-        surf.blit(pips, (C.WIDTH // 2 - pips.get_width() // 2, y + 1))
+        ui.text(surf, font, f"{int(b.hp)}/{b.max_hp}", (cx, y + 1), (255, 236, 236),
+                align='center')
 
     def draw_banner(self, surf, font, bigfont):
-        if self.banner_t > 0 and self.state == 'combat':
-            a = clamp(self.banner_t / 2.2, 0, 1)
-            txt = bigfont.render(THEMES[self.theme]['banner'], True, C.COL_ENEMY)
-            sub = font.render(f"Onda {self.wave}", True, (220, 220, 235))
-            y = 110
-            surf.blit(txt, (C.WIDTH // 2 - txt.get_width() // 2, y))
-            surf.blit(sub, (C.WIDTH // 2 - sub.get_width() // 2, y + txt.get_height()))
+        if self.banner_t <= 0 or self.state != 'combat':
+            return
+        cx = C.WIDTH // 2
+        txt = ui.text_surface(bigfont, THEMES[self.theme]['banner'], C.COL_ENEMY)
+        sub = ui.text_surface(font, f"Onda {self.wave}", (230, 230, 246))
+        y = self.game.top.take(txt.get_height() + sub.get_height())
+        # the old code computed this alpha and never applied it, so the banner
+        # vanished in one frame; fade it out over the last 0.6s instead
+        a = clamp(self.banner_t / 0.6, 0, 1)
+        if a < 1.0:
+            # text_surface hands back a *cached, shared* surface -- copy before
+            # touching its alpha or every later draw inherits the fade
+            txt, sub = txt.copy(), sub.copy()
+            txt.set_alpha(int(255 * a))
+            sub.set_alpha(int(255 * a))
+        surf.blit(txt, (cx - txt.get_width() // 2, y))
+        surf.blit(sub, (cx - sub.get_width() // 2, y + txt.get_height()))

@@ -14,8 +14,71 @@ from . import palette
 
 INK = (12, 14, 22)
 LINE = (68, 72, 104)
-TEXT = (238, 240, 252)
-DIM = (158, 162, 190)
+TEXT = (247, 248, 255)
+DIM = (186, 190, 214)
+
+# --- text with an outline -------------------------------------------------- #
+# Everything is drawn on the fixed logical surface and then smoothscaled onto the
+# window by display.present(), so every glyph is rasterised at logical size and
+# *stretched bilinearly*. Thin anti-aliased strokes turn to mush that way -- which
+# is why the UI read as weak even though anti-aliasing was on everywhere. A dark
+# rim is the one thing that survives the filter: it keeps a hard edge at any
+# scale, so the text holds its weight at 1x, 2x, 3x and in fullscreen.
+_OUTLINE = ((-1, -1), (0, -1), (1, -1), (-1, 0),
+            (1, 0), (-1, 1), (0, 1), (1, 1))
+# Cached because an outline is 9 renders per string; without a cache the HUD alone
+# would pay that every frame. Capped + cleared like palette._GLOW_CACHE: score,
+# health numbers and timers are all *continuous* text, so the keyspace is
+# unbounded and an uncapped dict is the same leak we already fixed once.
+_TEXT_CACHE = {}
+_TEXT_MAX = 700
+
+
+def text_surface(font, s, color, outline=INK, width=2):
+    """Text pre-rendered with a dark outline.
+
+    The returned surface is **cached and shared** -- ``.copy()`` it before calling
+    ``set_alpha``/``fill`` on it, or every later draw of the same string inherits
+    the change (the round banner's fade hit exactly this).
+    """
+    key = (font, s, color, outline, width)
+    im = _TEXT_CACHE.get(key)
+    if im is None:
+        body = font.render(s, True, color)
+        if width <= 0:
+            im = body
+        else:
+            dark = font.render(s, True, outline)
+            w, h = body.get_size()
+            im = pygame.Surface((w + width * 2, h + width * 2), pygame.SRCALPHA)
+            for dx, dy in _OUTLINE:
+                im.blit(dark, (width + dx * width, width + dy * width))
+            im.blit(body, (width, width))
+        if len(_TEXT_CACHE) >= _TEXT_MAX:
+            _TEXT_CACHE.clear()
+        _TEXT_CACHE[key] = im
+    return im
+
+
+def text(surf, font, s, pos, color, outline=INK, width=2, align='left'):
+    """Draw outlined text. ``pos`` is where the *glyphs* land, so this is a drop-in
+    replacement for ``surf.blit(font.render(...), pos)``. Returns the text rect,
+    which callers use to stack elements without overlapping."""
+    im = text_surface(font, s, color, outline, width)
+    bw = im.get_width() - 2 * width
+    bh = im.get_height() - 2 * width
+    x, y = int(pos[0]), int(pos[1])
+    if align == 'center':
+        x -= bw // 2
+    elif align == 'right':
+        x -= bw
+    surf.blit(im, (x - width, y - width))
+    return pygame.Rect(x, y, bw, bh)
+
+
+def text_size(font, s):
+    """Size of the glyphs alone (outline excluded) -- for layout maths."""
+    return font.size(s)
 
 
 def panel(surf, rect, alpha=190, accent=None, radius=16):

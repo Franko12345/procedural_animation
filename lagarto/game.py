@@ -11,6 +11,7 @@ from pygame import Vector2
 import pygame
 
 from . import config as C
+from . import fonts
 from .mathutil import clamp, ease_out, lerp, vfrom_angle, safe_norm
 from .spine import build_radii
 from .lizard import Player, AILizard
@@ -50,8 +51,8 @@ def _dial(surf, center, r, frac, color, font, label, t, enabled=True):
         pulse = 0.35 + 0.25 * (0.5 + 0.5 * math.sin(t * 6))
         palette.glow(surf, center, r * 2.2, color, pulse)
     pygame.draw.circle(surf, (96, 102, 136) if not ready else color, center, r, 2)
-    im = font.render(label, True, (206, 208, 226) if ready else (130, 134, 160))
-    surf.blit(im, (center[0] + r + 6, center[1] - im.get_height() // 2))
+    ui.text(surf, font, label, (center[0] + r + 6, center[1] - font.get_height() // 2),
+            (232, 234, 250) if ready else (146, 150, 178))
 
 
 _VIGNETTE = None
@@ -74,6 +75,36 @@ def _vignette(surf):
     surf.blit(_VIGNETTE, (0, 0))
 
 
+class TopStack:
+    """Vertical layout for the top-centre column.
+
+    Six things live there -- score, wave line, combo, theme banner, boss name and
+    boss bar -- and each used to hardcode its own ``y`` with no idea of the others.
+    On a boss wave with a live combo that was *three* overlaps at once, and the
+    banner writes for 2.2s exactly when the boss spawns, so it was guaranteed to
+    be seen. Now every element asks for the height it needs and gets the next free
+    band, which also means new elements (boss phase bars, Phase 4) can never
+    silently land on top of an existing one.
+
+    Elements reserve in draw order, so the caller must draw top-down: HUD, then
+    banner, then boss bar.
+    """
+
+    def __init__(self, top=10, gap=4):
+        self.top = top
+        self.gap = gap
+        self.y = top
+
+    def reset(self):
+        self.y = self.top
+
+    def take(self, h):
+        """Reserve a band ``h`` tall and return its top ``y``."""
+        y = self.y
+        self.y += h + self.gap
+        return y
+
+
 class Game:
     def __init__(self, num_players, controllers, font, bigfont, meta=None, mode='normal'):
         self.mode = mode                     # 'normal' (ends at the final boss) | 'endless'
@@ -81,6 +112,10 @@ class Game:
         self.run_banked = False
         self.font = font
         self.bigfont = bigfont
+        # dial labels only: at 18pt "DASH" is 48px wide and ran into the next
+        # dial's circle (68px pitch, 11px radius). They are secondary readouts,
+        # so shrinking them fixes the collision *and* improves the hierarchy.
+        self.smallfont = fonts.get(14)
         self.cam = Camera()
         self.fx = FX()
         self.world = World()
@@ -127,6 +162,7 @@ class Game:
         self.ui_fx = 0.0          # keeps fx drawn over the veil just after an impact
         self._uilayer = None      # scratch surface so screen shake can move the whole UI
         self._panels = {}         # rendered card/shop/route panels, keyed by their state
+        self.top = TopStack()     # shared top-centre column (see TopStack)
         self._card_rects = []
         self._shop_rects = []
         self._route_rects = []
@@ -829,10 +865,20 @@ class Game:
         _vignette(surf)
         if self.state == 'play':
             self._draw_offscreen(surf)
-        self.rounds.draw_boss_bar(surf, self.font, self.bigfont)
-        if self.state not in ('victory', 'over'):
-            self.rounds.draw_banner(surf, self.font, self.bigfont)
+        # The top-centre column is shared and elements reserve their band in draw
+        # order, so draw order == priority. Persistent readouts (HUD, boss bar)
+        # claim their spot first and never move; the theme banner is a 2.2s
+        # announcement and goes last, so it can no longer shove the boss bar down
+        # into the play area for the exact seconds the boss is spawning.
+        # 'levelup'/'camp' own the whole screen and have their own headers; the
+        # HUD behind them was pure clutter competing with the panels.
+        self.top.reset()
+        if self.state not in ('victory', 'over', 'levelup', 'camp'):
             self._draw_hud(surf)
+            self.rounds.draw_boss_bar(surf, self.font, self.bigfont)
+            self.rounds.draw_banner(surf, self.font, self.bigfont)
+        else:
+            self.rounds.draw_boss_bar(surf, self.font, self.bigfont)
         if self.state == 'pause':
             self._draw_pause(surf)
         elif self.state == 'levelup':
@@ -858,9 +904,9 @@ class Game:
             x = 16 if i == 0 else C.WIDTH - bw - 16
             y = 14
             col = p.colorset[0]
-            surf.blit(self.font.render(f"P{i+1}", True, col), (x, y))
-            lv = self.font.render(f"Nv {p.level}", True, (210, 210, 226))
-            surf.blit(lv, (x + bw - lv.get_width(), y))
+            ui.text(surf, self.font, f"P{i+1}", (x, y), col)
+            ui.text(surf, self.font, f"Nv {p.level}", (x + bw, y), (226, 228, 244),
+                    align='right')
 
             # health bar (green -> orange -> red as it drops)
             hy = y + 24
@@ -870,8 +916,10 @@ class Game:
             if hr > 0:
                 pygame.draw.rect(surf, hcol, (x, hy, int(bw * hr), 16), border_radius=8)
             pygame.draw.rect(surf, (14, 14, 24), (x, hy, bw, 16), 2, border_radius=8)
-            hnum = self.font.render(f"{int(p.health)}/{int(p.max_health)}", True, (16, 16, 24))
-            surf.blit(hnum, (x + bw // 2 - hnum.get_width() // 2, hy))
+            # light glyphs + dark rim, not dark-on-bar: the bar shifts green ->
+            # orange -> red under it, and dark ink lost contrast on every shade.
+            ui.text(surf, self.font, f"{int(p.health)}/{int(p.max_health)}",
+                    (x + bw // 2, hy), (255, 255, 255), align='center')
 
             # energy + xp slim bars
             ey = hy + 22
@@ -888,17 +936,17 @@ class Game:
             # on a 68px pitch, with short labels
             dash_frac = 1.0 - clamp(p.dash_cd / max(0.001, p.dash_cooldown), 0, 1)
             _dial(surf, (x + 12, dy + 14), 11, dash_frac, p.colorset[0],
-                  self.font, "DASH", self.time, enabled=p.energy >= C.DASH_COST)
+                  self.smallfont, "DASH", self.time, enabled=p.energy >= C.DASH_COST)
             t_frac = 0.0 if p.tongue_t > 0 else 1.0
             _dial(surf, (x + 80, dy + 14), 11, t_frac, (235, 90, 120),
-                  self.font, "LING", self.time, enabled=p.energy >= C.TONGUE_COST)
+                  self.smallfont, "LING", self.time, enabled=p.energy >= C.TONGUE_COST)
             w_frac = 1.0 - clamp(p.whip_cd / max(0.001, p.whip_cooldown), 0, 1)
             _dial(surf, (x + 148, dy + 14), 11, w_frac, (250, 190, 90),
-                  self.font, "RABO", self.time, enabled=p.energy >= C.WHIP_COST)
+                  self.smallfont, "RABO", self.time, enabled=p.energy >= C.WHIP_COST)
 
             if p.down:
-                surf.blit(self.font.render(f"CAIDO {p.revive:0.0f}s - toque p/ reviver",
-                                           True, C.COL_ENEMY), (x, dy + 34))
+                ui.text(surf, self.font, f"CAIDO {p.revive:0.0f}s - toque p/ reviver",
+                        (x, dy + 34), C.COL_ENEMY)
             # equipped weapons live in the bottom corners so they never collide
             # with the health/energy bars or the cooldown dials
             wy = C.HEIGHT - 34
@@ -907,34 +955,41 @@ class Game:
                 cxw = (x + 18 + wi * 46) if i == 0 else (x + bw - 18 - wi * 46)
                 c = (cxw, wy)
                 icons.draw(surf, wid, c, 14, w.color)
-                ln = self.font.render(str(lvl), True, C.COL_WHITE)
                 lp = (c[0] + 13, c[1] + 11)
                 pygame.draw.circle(surf, C.COL_INK, lp, 9)
                 pygame.draw.circle(surf, w.color, lp, 9, 1)
-                surf.blit(ln, (lp[0] - ln.get_width() // 2, lp[1] - ln.get_height() // 2))
+                lh = self.font.get_height()
+                ui.text(surf, self.font, str(lvl), (lp[0], lp[1] - lh // 2),
+                        C.COL_WHITE, align='center')
 
-        s = self.bigfont.render(str(self.score), True, C.COL_HUD)
-        surf.blit(s, (C.WIDTH // 2 - s.get_width() // 2, 10))
-        w = self.font.render(
-            f"Onda {self.wave}   Amigos {len(self.friends)}   Abates {self.kills}",
-            True, (180, 180, 200))
-        surf.blit(w, (C.WIDTH // 2 - w.get_width() // 2, 48))
+        # ---- top-centre column: every element reserves its own band ---- #
+        cx = C.WIDTH // 2
+        y = self.top.take(self.bigfont.get_height())
+        ui.text(surf, self.bigfont, str(self.score), (cx, y), C.COL_HUD, align='center')
+
+        y = self.top.take(self.font.get_height())
+        ui.text(surf, self.font,
+                f"Onda {self.wave}   Amigos {len(self.friends)}   Abates {self.kills}",
+                (cx, y), (214, 217, 238), align='center')
 
         # combo / streak meter (rewards staying aggressive)
         if self.combo >= 2:
             heat = min(1.0, self.combo / 25.0)
             col = palette.mix((255, 214, 90), (255, 86, 86), heat)
-            img = self.bigfont.render(f"x{self.combo}  COMBO", True, col)
+            # composed first: the flash scales the *outlined* image, and the band
+            # it reserves has to be the scaled height or the banner lands on it
+            img = ui.text_surface(self.bigfont, f"x{self.combo}  COMBO", col)
             sc = 1.0 + self.combo_flash * 0.25
             if sc > 1.01:
                 img = pygame.transform.rotozoom(img, 0, sc)
-            cx = C.WIDTH // 2
-            surf.blit(img, (cx - img.get_width() // 2, 74))
-            bw = 150
+            cbar = 150                      # NB: not `bw`, which is the player panel
+            y = self.top.take(img.get_height() + 9)
+            surf.blit(img, (cx - img.get_width() // 2, y))
+            by = y + img.get_height() + 2
             f = clamp(self.combo_timer / 3.2, 0, 1)
-            pygame.draw.rect(surf, (50, 46, 60), (cx - bw // 2, 74 + img.get_height() + 2, bw, 5),
+            pygame.draw.rect(surf, (50, 46, 60), (cx - cbar // 2, by, cbar, 5),
                              border_radius=3)
-            pygame.draw.rect(surf, col, (cx - bw // 2, 74 + img.get_height() + 2, int(bw * f), 5),
+            pygame.draw.rect(surf, col, (cx - cbar // 2, by, int(cbar * f), 5),
                              border_radius=3)
 
     # ---- UI screen compositing ------------------------------------------ #

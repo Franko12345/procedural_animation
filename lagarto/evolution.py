@@ -91,7 +91,10 @@ class WeaponCard:
             self.name = f'{w.name}  [NOVA]'
             self.desc = w.level_desc(1)
         else:
-            self.name = f'{w.name}  Nv{next_level - 1}→{next_level}'
+            # ASCII '->' e nao a seta U+2192: o Noto Sans base nao cobre setas
+            # (elas vivem no Noto Sans Symbols), entao ela sai como tofu na carta.
+            # font.metrics() mente aqui -- reporta o glifo e mesmo assim nao rasteriza.
+            self.name = f'{w.name}  Nv{next_level - 1}->{next_level}'
             self.desc = w.level_desc(next_level)
         self._gaining = gaining
         self._next = next_level

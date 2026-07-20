@@ -1,7 +1,12 @@
 """Font loading: pick the nicest available face and cache by (role, size).
 
-Text is always rendered anti-aliased; combined with ``display.present``'s
-smooth scaling that keeps the UI crisp at 1x/2x/3x and in fullscreen.
+Text is always anti-aliased, but that is *not* what keeps it readable: the whole
+logical surface is smoothscaled onto the window by ``display.present``, so every
+glyph is rasterised small and then stretched with a bilinear filter. Thin strokes
+lose their edge that way and the UI reads as washed out.
+
+Two things fight that, and both matter: **bold by default** (thick stems survive
+the filter, hairlines do not) and the dark rim drawn by ``ui.text``.
 """
 
 import pygame
@@ -35,8 +40,9 @@ def _pick():
     return _chosen
 
 
-def get(size, bold=False):
-    """A cached, anti-aliased-ready font at ``size``."""
+def get(size, bold=True):
+    """A cached font at ``size``. Bold is the default on purpose -- see the module
+    docstring: regular weight does not survive ``display.present``'s upscale."""
     key = (size, bold)
     f = _cache.get(key)
     if f is None:

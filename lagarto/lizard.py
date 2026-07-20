@@ -25,6 +25,18 @@ from .projectile import spit as game_spit
 TAU = C.TAU
 
 
+def contact_damage(max_r, wave):
+    """Melee damage an enemy of this size deals on wave ``wave``.
+
+    Size still matters (a tank should hurt more than a runner), but the wave term
+    is a *staircase*, not a ramp: the player can feel "runners started hurting"
+    at a step boundary, whereas a smooth curve just reads as the game drifting.
+    """
+    step = max(0, int(wave)) // C.ENEMY_DMG_STEP
+    return int(C.ENEMY_DMG_BASE + max_r * C.ENEMY_DMG_SIZE
+               + step * C.ENEMY_DMG_PER_STEP)
+
+
 class Lizard:
     def __init__(self, pos, kind, scale=1.0, color=None, genome=None):
         self.kind = kind
@@ -859,7 +871,8 @@ class AILizard(Lizard):
             if random.random() < dt * 26:
                 game.fx.burst(mouth, palette.lighten(self.color, 0.3), 1, 50)
             if self.shoot_charge <= 0:
-                game.spawn_projectile(game_spit(mouth, target.pos, self.color))
+                game.spawn_projectile(game_spit(mouth, target.pos, self.color,
+                                                dmg=C.ENEMY_PROJ_DMG))
                 game.fx.spark_burst(mouth, self.color, 7, 200)
             return to * 0.05, 0.0                 # brace while charging
 
@@ -961,8 +974,7 @@ class AILizard(Lizard):
                 target.apply_slow(0.5, 1.4)
             return
         else:
-            dmg = int(8 + self.max_r * 0.4)      # bigger predators hit harder
-            target.hurt(game, away, dmg)
+            target.hurt(game, away, contact_damage(self.max_r, game.wave))
             if self.genome.tail == 'sting':      # scorpion sting also slows
                 target.apply_slow(0.5, 1.4)
             thorns = getattr(target, 'thorns', 0)

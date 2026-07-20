@@ -18,7 +18,25 @@ MAX_STEPS = 5            # cap sim steps per frame -> avoids the "spiral of deat
 RUN_FINAL_WAVE = 20      # modo normal: onda do chefe final (vitoria)
 
 FRIEND_HP = 6            # aliados agora tomam dano de verdade -> precisam aguentar
-ENEMY_HP_MULT = 3.0      # dial unico de dificuldade: vida dos inimigos
+# Vida dos inimigos. Estava em 3.0: foi subido duas vezes, primeiro para compensar
+# a hitbox de corpo inteiro e depois os bugs de dano (dash multi-hit, acido
+# empilhando) -- e nunca revisitado depois que os bugs foram corrigidos. Medido
+# com bot headless: a 3.0 um corredor da onda 1 tem 12 de vida contra o cuspe Nv1
+# de 1 de dano a cada 1,05s, ou seja 12,6s de fogo por inimigo, e jogar passivo
+# NAO limpa a onda 1 em 6 minutos. A dificuldade vem do dano (abaixo), nao daqui.
+ENEMY_HP_MULT = 2.2
+
+# --- dano dos inimigos ----------------------------------------------------- #
+# Sobe DANO, nao vida. Num jogo de ataque automatico a unica agencia do jogador e
+# posicionamento, entao a dificuldade tem que ser consequencia de erro de posicao;
+# vida a mais so vira esponja e ainda faz a build parecer mais fraca do que e.
+ENEMY_DMG_BASE = 11          # era 8 fixo
+ENEMY_DMG_SIZE = 0.5         # era 0.4 -- predador maior bate mais forte
+# Escada por onda em DEGRAUS discretos: uma rampa continua o jogador nao percebe,
+# um degrau ele sente ("a partir da onda 5 o corredor me machuca de verdade").
+ENEMY_DMG_STEP = 4           # a cada N ondas sobe um degrau
+ENEMY_DMG_PER_STEP = 2.0     # quanto sobe por degrau
+ENEMY_PROJ_DMG = 10          # cuspe inimigo (era 8); lento e telegrafado -> da p/ desviar
 CRIT_MULT = 2.0          # dano ao acertar a cabeca (ponto fraco)
 AGGRO_TIME = 5.0         # segundos que um aliado segura o aggro apos bater
 FRIEND_LIFE = 45.0       # aliados sao temporarios (segundos)
