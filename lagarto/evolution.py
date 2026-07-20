@@ -8,6 +8,7 @@ named ``Synergy`` for an extra kick, the "just one more run" hook (Lake of Creat
 
 import random as _random
 
+from . import config as C
 from . import palette
 
 
@@ -106,6 +107,24 @@ class WeaponCard:
             player.level_weapon(self.wid)
 
 
+class ItemCard:
+    """A level-up card that grants an item (items.py)."""
+    is_item = True
+
+    def __init__(self, item):
+        self.item = item
+        self.id = item.id
+        self.icon = item.icon
+        self.color = item.color
+        self.name = item.name
+        self.desc = item.desc
+        self.weight = item.weight()
+
+    def apply(self, player, game):
+        from . import items as _items
+        _items.give(player, self.item, game)
+
+
 def _weapon_cards(player):
     from . import weapons
     from . import progression
@@ -123,6 +142,35 @@ def _weapon_cards(player):
     return cards
 
 
+def _card_tag(card):
+    """The id a synergy would match this card by."""
+    return getattr(card, 'wid', None) or getattr(card, 'id', None)
+
+
+def synergy_factor(player, card):
+    """Gungeon's Synergy Factor: bias the roll toward COMPLETING a combo.
+
+    Not a new system -- ``roll_cards`` already picks by weight, so this is a
+    multiplier on that weight. It exists as anti-frustration: the game quietly
+    conspires to let your build close, instead of dangling half a synergy for
+    the rest of the run.
+    """
+    tag = _card_tag(card)
+    if not tag:
+        return 1.0
+    owned = owned_tags(player)
+    best = 1.0
+    for s in SYNERGIES:
+        if s.id in player.synergies or tag not in s.needs or tag in owned:
+            continue
+        missing = len(s.needs - owned)
+        if missing == 1:                      # this card finishes it
+            best = max(best, C.SYNERGY_FACTOR_CLOSE)
+        elif missing > 1:                     # this card starts it
+            best = max(best, C.SYNERGY_FACTOR_START)
+    return best
+
+
 def roll_cards(player, n=3, rng=_random):
     """Mix of weapon cards (new/upgrade, VS-style) and passive mutation cards."""
     pool = list(_weapon_cards(player))
@@ -130,8 +178,12 @@ def roll_cards(player, n=3, rng=_random):
         if m.id in _ONCE and m.id in player.mutations:
             continue
         pool.append(m)
+    from . import items as _items
+    for it in _items.in_pool(_items.POOL_LEVEL, getattr(player, 'items', ())):
+        pool.append(ItemCard(it))
     rng.shuffle(pool)
-    chosen, weights = [], [c.weight for c in pool]
+    weights = [c.weight * synergy_factor(player, c) for c in pool]
+    chosen = []
     while pool and len(chosen) < n:
         total = sum(weights)
         r = rng.uniform(0, total)
@@ -161,8 +213,20 @@ class Synergy:
 def _syn_arachnid(p, g): p.speed_mult *= 1.15; p.max_speed *= 1.15; p.venom = True
 def _syn_fortress(p, g): p.thorns += 2; p.max_health += 30; p.health += 30
 def _syn_glass(p, g): p.max_speed *= 1.2; p.dash_cooldown *= 0.7
+def _syn_corrosao(p, g): p.area_mult *= 1.35
+def _syn_metralha(p, g): p.amount += 1
+def _syn_ceifador(p, g): p.might *= 1.25
+def _syn_praga(p, g): p.venom = True; p.might *= 1.15
+def _syn_bola(p, g): p.whip_mult *= 1.5; p.whip_cooldown *= 0.8
+def _syn_fantasma(p, g): p.dash_cooldown *= 0.6; p.max_speed *= 1.1
+def _syn_colmeia(p, g): p.amount += 1; p.cooldown_mult *= 0.85
+def _syn_ultimo(p, g): p.armor = min(0.7, p.armor + 0.15); p.regen += 3.0
+def _syn_chicote(p, g): p.whip_cooldown *= 0.7
 
 
+# `needs` may name a mutation, a weapon, an ITEM or a character id -- see
+# `owned_tags`. Gungeon's rule applies: every synergy is NAMED and shown in the
+# compendium, because one the player never learns about may as well not exist.
 SYNERGIES = [
     Synergy('arachnid', 'ARACNIDEO', {'legs', 'venom'},
             'pernas + peconha: velocidade e veneno', _syn_arachnid),
@@ -170,12 +234,50 @@ SYNERGIES = [
             'placas + espinhos: reflete dano', _syn_fortress),
     Synergy('glass', 'RELAMPAGO', {'speed', 'wings'},
             'agilidade + membranas: dash brutal', _syn_glass),
+    Synergy('corrosao', 'CORROSAO', {'rastro', 'acido'},
+            'rastro do dash + poca de acido: area muito maior', _syn_corrosao),
+    Synergy('metralha', 'METRALHA', {'retaguarda', 'cuspe'},
+            'retaguarda + cuspe: mais um projetil por salva', _syn_metralha),
+    Synergy('ceifador', 'CEIFADOR', {'estopim', 'carnica'},
+            'estopim + carnica: cada abate alimenta o proximo', _syn_ceifador),
+    Synergy('praga', 'PRAGA VIVA', {'contagio', 'venom'},
+            'contagio + peconha: o veneno nunca para de se espalhar', _syn_praga),
+    Synergy('bola', 'BOLA DE DEMOLICAO', {'club', 'farpas'},
+            'clava + farpas: a rabada vira arma de cerco', _syn_bola),
+    Synergy('fantasma', 'FANTASMA', {'marcado', 'ricochete'},
+            'presa marcada + ricochete: dash atras de dash', _syn_fantasma),
+    Synergy('colmeia', 'COLMEIA', {'enxame', 'chamado'},
+            'enxame + chamado: voce nunca luta sozinho', _syn_colmeia),
+    Synergy('ultimo', 'ULTIMO SUSPIRO', {'segundo', 'adrenalina'},
+            'segundo folego + adrenalina: mais forte a beira da morte', _syn_ultimo),
+    Synergy('chicote', 'CHICOTE VIVO', {'vibora', 'espiral'},
+            'vibora + cauda em espiral: a cauda nao para', _syn_chicote),
 ]
+
+
+def owned_tags(player):
+    """Everything a synergy can key on: mutations, weapons, items, character.
+
+    One flat set on purpose -- a synergy should be able to say "this weapon plus
+    that item" without caring which system each half comes from.
+    """
+    tags = set(player.mutations) | set(player.weapons)
+    tags |= set(getattr(player, 'items', ()))
+    cid = getattr(player, 'character_id', None)
+    if cid:
+        tags.add(cid)
+    return tags
+
+
+def synergy_progress(player):
+    """[(synergy, owned_count, total)] -- what the compendium shows."""
+    tags = owned_tags(player)
+    return [(s, len(s.needs & tags), len(s.needs)) for s in SYNERGIES]
 
 
 def check_synergies(player, game):
     """Fire any newly-completed synergy; returns names triggered this call."""
-    owned = set(player.mutations)
+    owned = owned_tags(player)
     fired = []
     for s in SYNERGIES:
         if s.id not in player.synergies and s.needs <= owned:

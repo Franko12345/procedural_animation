@@ -411,8 +411,12 @@ class Game:
         p = self._pick_player()
         if p is None:
             return
-        if getattr(card, 'is_weapon', False):
+        if getattr(card, 'is_weapon', False) or getattr(card, 'is_item', False):
             card.apply(p, self)
+            # items count toward synergies too (evolution.owned_tags), so the
+            # check has to run for them as well, not only for mutations
+            for name in evolution.check_synergies(p, self):
+                self.fx.popup(p.pos, name, C.COL_WHITE)
         else:
             p.apply_mutation(card, self)
         p.pending_levelups = max(0, p.pending_levelups - 1)

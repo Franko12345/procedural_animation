@@ -52,6 +52,7 @@ Um módulo por responsabilidade — mantenha assim; não volte para arquivo úni
 | `lizard.py` | `Lizard` (base construída **do genoma**: espinha + N pernas pareadas/radiais + partes + status slow), `Player` (XP/nível/`grant_part`/energia/dash/língua), `AILizard` (prey/enemy/friend + behaviors chase/ranged/lunge/hop + poison). |
 | `species.py` | **Genomas-template** + metadados (role, xp, score, `grants`, `diet`). `make()` spawna variação. Roster: grazer/critter/frog/fish (presa), runner/tank/snake/horned/spiky/spider/spitter/scorpion + **wasp/bomber/gunner/venomer** (inimigo). |
 | `characters.py` | **Personagens jogáveis**: 4 genomas + modificadores de identidade + uma mecânica exclusiva cada. |
+| `items.py` | **Itens**: 4 **ativos** (botão E, carga por abate) + 16 **passivos que mudam mecânica**. Qualidade 0-4 + pools por origem (level/shop/nest/boss). |
 | `champions.py` | **Campeões**: variantes nomeadas (modelo Rain World) + modificadores empilháveis. `maybe_promote` no spawn, chance crescente por onda. |
 | `evolution.py` | **Cartas de mutação** (`MUTATIONS`: stats + partes) + `roll_cards` + **sinergias nomeadas** (`SYNERGIES`, ex.: ARACNIDEO=legs+venom, FORTALEZA=plates+thorns). |
 | `projectile.py` | `Projectile` (cuspe de veneno, teia de slow, tiro de chefe). Helpers `spit`/`web`. |
@@ -87,6 +88,32 @@ Lagarto, cobra, aranha (radial), escorpião, peixe = **genomas diferentes**, nã
   venom, wings) e partes (espinhos/placas/chifres/pernas/clava). **Sinergias** disparam
   no `apply_mutation`. Input das cartas tratado em `app.py` (1/2/3, setas+ENTER, clique).
 - **Cores randomizadas**: cada spawn usa `genome.random_variation` (hue/sat/val/tamanho).
+
+## Itens e sinergias (`items.py` + `evolution.py`)
+
+**A divisão importa:** os passivos de **stat** continuam sendo as cartas de mutação
+(`evolution.MUTATIONS`); `items.py` traz os que **mudam uma mecânica** — regra tirada do
+Isaac, onde os itens memoráveis reescrevem um verbo (Spirit Sword troca o tiro por espada)
+e "+10% de dano" é esquecível por construção. São 16 de mecânica contra 4 ativos.
+
+- **`Player.ability`/`ability_cd` existiam declarados e decrementados desde muito antes,
+  sem nada os usar** — um soquete vazio. Os ativos o preencheram. Carga por **abate**,
+  o que amarra o recurso ao loop de combo que o jogo já roda.
+- **A carga é contada em INTEIROS.** Somar `1/14` catorze vezes dá 0,9999999999999998, ou
+  seja o item ficava cheio na tela e se recusava a disparar. A fração só existe para o anel.
+- **Um gancho, um ponto só.** `Retaguarda` vive em `game.spawn_projectile` (o gargalo por
+  onde todo projétil passa — por arma seriam 8 cópias); `Adrenalina` vive em
+  `Player.damage_mult()`, lido por dash, rabada e armas.
+- **Ordem importa em efeitos que se auto-consomem:** `Presa Marcada` marcava o inimigo
+  *antes* do `take_hit` do próprio dash, então o crítico era gasto no golpe que o criou —
+  o item não fazia nada observável. Marcar **depois**.
+
+**Sinergias**: 12 nomeadas, e `evolution.owned_tags` achata mutações + armas + itens +
+personagem num set só, para uma sinergia poder dizer "esta arma com aquele item" sem
+saber de qual sistema cada metade veio. O **Synergy Factor** (Gungeon) multiplica o *peso*
+da carta que avança um combo — não é sistema novo, `roll_cards` já escolhia por peso.
+Medido: a carta que fecha aparece em **117/600** rolagens contra **43/600** sem o fator.
+*Sinergia invisível não existe:* todas aparecem no compêndio, aba EVOLUCOES.
 
 ## Personagens jogáveis (`characters.py`)
 

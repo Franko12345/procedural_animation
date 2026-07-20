@@ -16,6 +16,7 @@ from . import config as C
 from . import display
 from . import evolution
 from . import icons
+from . import items
 from . import palette
 from . import perf
 from . import progression
@@ -222,7 +223,7 @@ def _draw_bestiary(screen, font, bigfont, keys, sel, preview, cam):
 
 
 def _draw_compendium(screen, font, bigfont, tab, entries, sel):
-    tabs_r = ui.tabs(screen, font, ['ARMAS', 'EVOLUCOES', 'CHARMS'], tab, 196,
+    tabs_r = ui.tabs(screen, font, ['ARMAS', 'EVOLUCOES', 'CHARMS', 'ITENS'], tab, 196,
                      C.COL_PLAYER[0])
     left = pygame.Rect(70, 246, 330, 400)
     right = pygame.Rect(420, 246, C.WIDTH - 490, 400)
@@ -340,9 +341,17 @@ def _compendium_entries(tab):
         for m in evolution.MUTATIONS:
             out.append(dict(name=m.name, color=m.color, icon=m.icon, tag='MUTACAO', desc=m.desc))
         for s in evolution.SYNERGIES:
-            out.append(dict(name=f"SINERGIA: {s.name}", color=C.COL_WHITE,
+            out.append(dict(name=f"SINERGIA: {s.name}", color=(255, 226, 120),
                             tag='COMBO', desc=s.desc,
                             levels=[f"requer: {', '.join(sorted(s.needs))}"]))
+    elif tab == 3:
+        for it in items.ITEMS:
+            kind = 'ATIVO (tecla E)' if it.kind == 'active' else 'PASSIVO'
+            where = ', '.join(it.pools)
+            out.append(dict(name=it.name, color=it.color, icon=it.icon,
+                            tag=f"{kind}  -  qualidade {it.quality}",
+                            desc=it.desc,
+                            levels=[f"aparece em: {where}"]))
     else:
         for c in charms.CHARMS.values():
             out.append(dict(name=c.name, color=palette.vibrant(c.hue, 0.8, 1.0), icon=c.id,
@@ -434,9 +443,9 @@ def run_menu(screen, font, bigfont, titlefont, joysticks):
                 elif ev.key in (pygame.K_RIGHT, pygame.K_d) and mode == 'chars':
                     sel = (sel + 1) % len(items)
                 elif ev.key in (pygame.K_LEFT, pygame.K_a) and mode == 'compendium':
-                    tab, sel = (tab - 1) % 3, 0
+                    tab, sel = (tab - 1) % 4, 0
                 elif ev.key in (pygame.K_RIGHT, pygame.K_d) and mode == 'compendium':
-                    tab, sel = (tab + 1) % 3, 0
+                    tab, sel = (tab + 1) % 4, 0
                 elif ev.key in (pygame.K_RETURN, pygame.K_SPACE):
                     if mode == 'meta' and _buy_meta(meta, items[:-1], sel):
                         audio.play('buy'); meta = progression.load(); continue
@@ -476,9 +485,9 @@ def run_menu(screen, font, bigfont, titlefont, joysticks):
             sel = (sel - 1) % len(items); audio.play('ui', 0.5)
         if mode == 'compendium':
             if nav.left:
-                tab, sel = (tab - 1) % 3, 0
+                tab, sel = (tab - 1) % 4, 0
             if nav.right:
-                tab, sel = (tab + 1) % 3, 0
+                tab, sel = (tab + 1) % 4, 0
         if nav.confirm and mode == 'meta' and _buy_meta(meta, items[:-1], sel):
             audio.play('buy'); meta = progression.load()
         elif nav.confirm:

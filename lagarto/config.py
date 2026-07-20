@@ -98,6 +98,13 @@ ITEM_DRAIN = 4.0         # vida drenada pela lingua por acerto
 ITEM_DART_DMG = 5        # farpas disparadas pela rabada
 ITEM_SPREAD_R = 130      # alcance do contagio
 
+# Synergy Factor (Gungeon): multiplica o PESO de uma carta que avanca uma
+# sinergia. E anti-frustracao -- o jogo conspira para a sua build fechar em vez
+# de pendurar meia sinergia pelo resto da run. Nao e sistema novo: roll_cards ja
+# escolhia por peso.
+SYNERGY_FACTOR_CLOSE = 3.2   # esta carta COMPLETA uma sinergia
+SYNERGY_FACTOR_START = 1.4   # esta carta comeca uma
+
 # --- personagens jogaveis (characters.py) ----------------------------------- #
 CHAR_LAGARTO_REROLLS = 1        # rerrolagens da mao de cartas, por ROUND
 

@@ -232,6 +232,161 @@ def _expand(s, c, r, col):
     pygame.draw.circle(s, palette.darken(col, 0.2), c, r, max(1, r // 9))
 
 
+# ---- items (items.py) ------------------------------------------------------ #
+# Twenty items all falling back to the same disc is worse than the shape
+# collisions the compendium already has, so each gets its own silhouette.
+
+def _ring_burst(s, c, r, col):          # pulso: expanding shockwave
+    for k, f in enumerate((1.0, 0.66, 0.36)):
+        pygame.draw.circle(s, col if k == 0 else palette.lighten(col, 0.3),
+                           c, max(1, int(r * f)), max(1, r // 7))
+
+
+def _shell(s, c, r, col):               # muda: a shed skin, split open
+    pygame.draw.arc(s, col, (c[0] - r, c[1] - r, r * 2, r * 2), 0.6, 5.7,
+                    max(2, r // 4))
+    pygame.draw.circle(s, palette.lighten(col, 0.5), (c[0], c[1]), max(2, r // 3))
+
+
+def _horn_call(s, c, r, col):           # chamado: a horn / summon cone
+    pts = [(c[0] - r * 0.8, c[1] - r * 0.5), (c[0] + r * 0.8, c[1] - r * 0.9),
+           (c[0] + r * 0.8, c[1] + r * 0.9), (c[0] - r * 0.8, c[1] + r * 0.5)]
+    pygame.draw.polygon(s, col, pts)
+    pygame.draw.polygon(s, INK, pts, max(1, r // 8))
+
+
+def _volley(s, c, r, col):              # salva: three darts fanning out
+    for a in (-38, 0, 38):
+        tip = c + vfrom_angle(a, r)
+        tail = c + vfrom_angle(a + 180, r * 0.5)
+        pygame.draw.line(s, col, tail, tip, max(2, r // 5))
+        pygame.draw.circle(s, palette.lighten(col, 0.5), tip, max(1, r // 5))
+
+
+def _trail(s, c, r, col):               # rastro: fading footprints
+    for k, f in enumerate((1.0, 0.72, 0.48)):
+        p = (int(c[0] - r * 0.7 + k * r * 0.7), int(c[1] + r * 0.3 - k * r * 0.3))
+        pygame.draw.circle(s, palette.mix(INK, col, f), p, max(2, int(r * 0.42 * f)))
+
+
+def _sling(s, c, r, col):               # arremesso: tongue flinging outward
+    pygame.draw.arc(s, col, (c[0] - r, c[1] - r * 0.6, r * 1.6, r * 1.4),
+                    2.2, 5.2, max(2, r // 5))
+    pygame.draw.circle(s, palette.lighten(col, 0.5),
+                       (int(c[0] + r * 0.6), int(c[1] - r * 0.5)), max(2, r // 3))
+
+
+def _darts(s, c, r, col):               # farpas: barbs off an arc
+    pygame.draw.arc(s, col, (c[0] - r, c[1] - r, r * 2, r * 2), 3.4, 6.0,
+                    max(2, r // 5))
+    for a in (200, 240, 280, 320):
+        base = c + vfrom_angle(a, r * 0.75)
+        pygame.draw.line(s, palette.lighten(col, 0.4), base,
+                         c + vfrom_angle(a, r * 1.15), max(1, r // 7))
+
+
+def _boom(s, c, r, col):                # estopim: a spiky detonation
+    _star(s, c, r, col, spikes=7, inner=0.4)
+    pygame.draw.circle(s, palette.lighten(col, 0.6), c, max(2, r // 3))
+
+
+def _magnet(s, c, r, col):              # iman: horseshoe
+    pygame.draw.arc(s, col, (c[0] - r * 0.85, c[1] - r * 0.9, r * 1.7, r * 1.7),
+                    0.5, 2.65, max(3, r // 3))
+    for sx in (-1, 1):
+        pygame.draw.rect(s, palette.lighten(col, 0.45),
+                         (c[0] + sx * r * 0.75 - r * 0.2, c[1] + r * 0.1,
+                          r * 0.4, r * 0.6))
+
+
+def _fang_drop(s, c, r, col):           # carnica: fang over a drop
+    pts = [(c[0] - r * 0.5, c[1] - r * 0.7), (c[0] + r * 0.5, c[1] - r * 0.7),
+           (c[0], c[1] + r * 0.15)]
+    pygame.draw.polygon(s, col, pts)
+    pygame.draw.polygon(s, INK, pts, max(1, r // 8))
+    pygame.draw.circle(s, palette.lighten(col, 0.5),
+                       (c[0], int(c[1] + r * 0.6)), max(2, r // 4))
+
+
+def _bounce(s, c, r, col):              # ricochete: a bouncing path
+    pts = [(c[0] - r, c[1] + r * 0.5), (c[0] - r * 0.3, c[1] - r * 0.6),
+           (c[0] + r * 0.3, c[1] + r * 0.5), (c[0] + r, c[1] - r * 0.6)]
+    pygame.draw.lines(s, col, False, pts, max(2, r // 5))
+    pygame.draw.circle(s, palette.lighten(col, 0.5),
+                       (int(pts[-1][0]), int(pts[-1][1])), max(2, r // 4))
+
+
+def _cocoon(s, c, r, col):              # casulo: wrapped oval
+    pygame.draw.ellipse(s, col, (c[0] - r * 0.6, c[1] - r, r * 1.2, r * 2))
+    for k in (-0.4, 0.0, 0.4):
+        pygame.draw.line(s, INK, (c[0] - r * 0.6, c[1] + k * r),
+                         (c[0] + r * 0.6, c[1] + k * r + r * 0.2), max(1, r // 8))
+
+
+def _target(s, c, r, col):              # marcado: a brand, not a crosshair
+    pygame.draw.circle(s, col, c, r, max(2, r // 5))
+    pygame.draw.circle(s, col, c, max(2, int(r * 0.35)))
+
+
+def _spread(s, c, r, col):              # contagio: one dot infecting others
+    pygame.draw.circle(s, col, c, max(2, int(r * 0.42)))
+    for a in (30, 150, 270):
+        p = c + vfrom_angle(a, r * 0.8)
+        pygame.draw.line(s, palette.darken(col, 0.2), c, p, max(1, r // 8))
+        pygame.draw.circle(s, palette.lighten(col, 0.4), p, max(1, int(r * 0.24)))
+
+
+def _two_way(s, c, r, col):             # retaguarda: arrows both ways
+    for sx in (-1, 1):
+        tip = (c[0] + sx * r, c[1])
+        pygame.draw.line(s, col, (c[0] + sx * r * 0.2, c[1]), tip, max(2, r // 5))
+        pygame.draw.polygon(s, palette.lighten(col, 0.4),
+                            [tip, (tip[0] - sx * r * 0.38, c[1] - r * 0.32),
+                             (tip[0] - sx * r * 0.38, c[1] + r * 0.32)])
+
+
+def _deflect(s, c, r, col):             # contragolpe: shot bouncing off a bar
+    pygame.draw.line(s, col, (c[0] - r * 0.2, c[1] - r), (c[0] - r * 0.2, c[1] + r),
+                     max(3, r // 4))
+    pygame.draw.lines(s, palette.lighten(col, 0.45), False,
+                      [(c[0] + r, c[1] - r * 0.7), (c[0] - r * 0.1, c[1]),
+                       (c[0] + r, c[1] + r * 0.7)], max(2, r // 6))
+
+
+def _pulse_line(s, c, r, col):          # adrenalina: heartbeat spike
+    pygame.draw.lines(s, col, False,
+                      [(c[0] - r, c[1]), (c[0] - r * 0.35, c[1]),
+                       (c[0] - r * 0.1, c[1] - r * 0.85),
+                       (c[0] + r * 0.15, c[1] + r * 0.7),
+                       (c[0] + r * 0.4, c[1]), (c[0] + r, c[1])], max(2, r // 5))
+
+
+def _leech(s, c, r, col):               # sanguessuga: curved sucker
+    pygame.draw.arc(s, col, (c[0] - r, c[1] - r, r * 2, r * 2), 1.0, 4.4,
+                    max(3, r // 4))
+    pygame.draw.circle(s, palette.lighten(col, 0.5),
+                       (int(c[0] - r * 0.1), int(c[1] - r * 0.85)), max(2, r // 4))
+
+
+def _second_wind(s, c, r, col):         # segundo folego: a rising feather
+    pygame.draw.line(s, col, (c[0], c[1] + r), (c[0], c[1] - r), max(2, r // 6))
+    for k in range(3):
+        f = 0.9 - k * 0.26
+        y = c[1] - r * (0.55 - k * 0.42)
+        for sx in (-1, 1):
+            pygame.draw.line(s, palette.lighten(col, 0.35), (c[0], y),
+                             (c[0] + sx * r * f, y + r * 0.34), max(1, r // 8))
+
+
+def _spiral(s, c, r, col):              # espiral: whip sweeping a full circle
+    pts = []
+    for k in range(26):
+        a = k * 26
+        rad = r * (0.15 + 0.85 * k / 25.0)
+        pts.append(c + vfrom_angle(a, rad))
+    pygame.draw.lines(s, col, False, pts, max(2, r // 6))
+
+
 # ---- playable characters -------------------------------------------------- #
 # Each one is a silhouette of the creature you actually get. A generic badge
 # would tell the player nothing; the whole point of these four is that they look
@@ -313,6 +468,14 @@ def _char_larva(s, c, r, col):
 
 
 ICONS = {
+    # items (items.py)
+    'pulso': _ring_burst, 'muda': _shell, 'chamado': _horn_call,
+    'ferrao_ativo': _volley, 'rastro': _trail, 'arremesso': _sling,
+    'farpas': _darts, 'estopim': _boom, 'iman': _magnet, 'carnica': _fang_drop,
+    'ricochete': _bounce, 'casulo': _cocoon, 'marcado': _target,
+    'contagio': _spread, 'retaguarda': _two_way, 'contragolpe': _deflect,
+    'adrenalina': _pulse_line, 'sanguessuga': _leech, 'segundo': _second_wind,
+    'espiral': _spiral,
     # playable characters
     'char_lagarto': _char_lagarto, 'char_vibora': _char_vibora,
     'char_couracado': _char_couracado, 'char_larva': _char_larva,
