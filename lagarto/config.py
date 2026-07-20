@@ -203,6 +203,7 @@ INPUT_BUFFER = 0.15
 
 DASH_COST = 14
 TONGUE_COST = 8
+KILL_ENERGY = 4      # energia devolvida ao abater (sustenta o combo agressivo)
 
 # rabada: golpe de cauda. A clava aumenta o dano e o empurrao; o ferrao envenena.
 # Curvatura TOTAL da cauda no auge, distribuida entre as juntas (peso quadratico
@@ -222,7 +223,14 @@ WHIP_COST = 10
 #   + cauda-clava .... 5,2 (critico 10,4)
 #   + clava e 3 Vigor  9   (critico 18)
 WHIP_DAMAGE = 2
-WHIP_CLUB_MULT = 2.6     # a clava e o upgrade que transforma a cauda em arma
+# 2.6 -> 2.3: retoque leve na escala ("dano subindo rapido demais"). O corte
+# maior veio da area (7 -> 2-3 alvos por golpe); a clava continua sendo O upgrade
+# da cauda, so um pouco menos ingreme.
+WHIP_CLUB_MULT = 2.3
+# Hitbox da rabada: so as juntas da PONTA (nao a metade que anima) e alcance
+# menor -- a area cheia acertava ~7 de 12 num circulo, "matava a sala inteira".
+WHIP_HIT_JOINTS = 3      # quantas juntas do final ferem
+WHIP_REACH = 1.05        # x max_r (era 1.6)
 WHIP_KNOCK = 170         # empurrao base (a clava usa WHIP_KNOCK_CLUB)
 WHIP_KNOCK_CLUB = 460
 # A simulacao e fixa em SIM_HZ e o desenho NAO interpola entre estados, entao

@@ -846,11 +846,14 @@ class Player(Lizard):
         if self.whip_reflect:
             self._whip_reflect(game)
         js = self.spine.joints
-        pv, _k = self._whip_span()
-        tail = js[pv + 1:] if pv is not None else js[-3:]
-        # generous on purpose: the tail is thin but moving fast, and the sweep
-        # covers a wide arc -- a tight tube made obvious sweeps whiff
-        reach = self.max_r * 1.6
+        # Hitbox is the TIP end of the swing, not the whole animated span. The
+        # span (half the body) still *moves* -- but damaging all of it hit ~7 of
+        # 12 enemies in a full circle, which read as "the tail one-shots the room".
+        # The last few joints are the fastest, most visible part of the sweep, so
+        # concentrating damage there keeps "what you see hits" while shrinking the
+        # area to the arc behind/beside you (measured 2-3 targets).
+        tail = js[-C.WHIP_HIT_JOINTS:]
+        reach = self.max_r * C.WHIP_REACH
         club = self.genome.tail == 'club'
         sting = self.genome.tail == 'sting'
         # scales with `might` like every auto-weapon does. Without this the whip
@@ -1509,6 +1512,12 @@ class AILizard(Lizard):
                 itemlib.add_charge(p)         # kills charge the active item
                 if p.kill_heal:
                     p.health = min(p.max_health, p.health + C.ITEM_KILL_HEAL)
+            # A kill trickles energy back to the NEAREST player (not all, in co-op),
+            # so an aggressive combo self-sustains its dash/tongue/whip a little.
+            killer = game.nearest_player(self.pos)
+            if killer is not None and not killer.dead:
+                killer.energy = min(killer.max_energy,
+                                    killer.energy + C.KILL_ENERGY)
             self._death_item_fx(game)
             if random.random() < 0.15:
                 game.spawn_fruit(self.pos)

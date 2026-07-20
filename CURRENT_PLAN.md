@@ -28,12 +28,12 @@ Regra: paro sempre numa fronteira jogável; `--smoke` verde antes de cada commit
   Farpas (piercing), Arremesso, Sanguessuga, Contragolpe, Espiral, Ímã (coletáveis)
 - [x] Fim de run volta ao menu (ESC / B); ENTER / A reinicia
 
-## AGORA — Fase B2: balanço
-- [ ] Rabada — encolher hitbox e deslocar p/ perto da ponta (`_whip_span`, `reach`); suavizar escala de dano
-- [ ] Regen — `+4/s` por carta é rápido demais; reduzir/suavizar empilhamento
-- [ ] Abate dá pouca energia — em `die()`, `+energia` ao jogador próximo
+## Fase B2: balanço — FEITO (commit pendente)
+- [x] Rabada — hitbox = 3 juntas da ponta (era metade do corpo) + reach 1.6→1.05; clava 2.6→2.3. Medido: 7/12 → 2-3 alvos por golpe
+- [x] Regen — `+4/s` → `+2.2/s` por carta
+- [x] Abate dá energia — `+4` ao jogador mais próximo (KILL_ENERGY), coop-safe
 
-## Fase B3: barras bio
+## AGORA — Fase B3: barras bio
 - [ ] Vida/energia/XP orgânicas em `_draw_hud` (membrana pulsante, flagelos); cachear surfaces
 
 ## Fase B4: novas criaturas procedurais

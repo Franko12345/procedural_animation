@@ -32,7 +32,7 @@ def _health(p, g): p.max_health += 30; p.health += 30
 def _speed(p, g): p.speed_mult *= 1.14; p.max_speed *= 1.14
 def _dash(p, g): p.dash_cooldown *= 0.8
 def _energy(p, g): p.max_energy += 30; p.energy = p.max_energy
-def _regen(p, g): p.regen += 4.0
+def _regen(p, g): p.regen += 2.2  # era 4.0/s -- curava rapido demais
 def _xp(p, g): p.xp_mult *= 1.25
 def _tongue(p, g): p.tongue_range += 90
 def _thorns(p, g): p.thorns += 1
