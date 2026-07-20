@@ -335,10 +335,21 @@ ninho leva 2x). **Ao mexer em dano de contato, cheque sempre se a fonte é por-f
 **Contato jogador↔inimigo é MACIO** (feedback: ser empurrado por todo inimigo parecia
 pinball). O jogador **nunca é deslocado**: atravessa, **empurra o inimigo** (push cheio,
 sem peso por tamanho) e paga em **velocidade**. `collision.separate` acumula a
-profundidade de sobreposição em `creature.clog`; `Player.update` normaliza por `max_r*1.2`,
-suaviza (`clog_f`, `approach` 9/s) e aplica `C.CONTACT_DRAG` (0.55) — pico de ~60% da
-velocidade quando enterrado, **ignorado durante o dash** (atravessar é a graça).
-*Inimigo↔inimigo continua com separação dura* — sem isso volta o bug de empilhar.
+profundidade de sobreposição em `creature.clog`; `Player.update` normaliza, suaviza
+(`clog_f`, `approach` 9/s) e aplica `C.CONTACT_DRAG`. **Ignorado durante o dash**
+(atravessar é a graça). *Inimigo↔inimigo continua com separação dura* — sem isso volta o
+bug de empilhar.
+
+**Duas coisas estavam erradas nesse freio, e as duas foram medidas:**
+- **Presa freava igual a inimigo.** `movers` inclui presas e o ramo de contato macio
+  dispara para qualquer par com o jogador que não seja aliado, então um **pastador
+  inofensivo a 30 px deixava o jogador a 49% da velocidade** — sem nenhuma pista visual
+  que o jogador associasse à lentidão. Hoje só `collision.DRAGS_PLAYER` (= inimigos)
+  acumula `clog`; presas continuam sendo empurradas, mas não custam velocidade.
+- **Saturava com UM inimigo.** `clog` soma 5×5 pares de amostras, então um corredor já
+  batia ~25 contra o divisor `max_r*1.2` → o freio era binário (100% ou 45%), sem
+  gradiente. `C.CONTACT_FULL` (3.0) escala o divisor para "enterrado em ~3 corpos".
+  Medido depois: 1 inimigo ≈ 90%, 4 ≈ 68%, 6 ≈ 65%.
 
 ## Ondas em rounds (`rounds.py`) + Acampamento
 

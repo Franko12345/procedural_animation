@@ -380,7 +380,9 @@ class Player(Lizard):
         self.can_dash = True         # COURACADO cannot dash at all
         self.knockback_immune = False
         self.whip_mult = 1.0         # VIBORA's tail hits far harder
-        self.rerolls_per_level = 0   # LAGARTO rerolls its level-up hand
+        self.rerolls_per_round = 0   # LAGARTO: rerolls of the level-up hand,
+        # refilled once per ROUND (not per level-up: you level several times a
+        # round, so refilling there made them effectively unlimited)
         self.rerolls = 0
         self.growth = 0              # LARVA: kills banked toward the next size step
         self.ability = None          # active ability id (from charms/evolution)
@@ -534,9 +536,13 @@ class Player(Lizard):
         # Soft collision: pushing through enemies costs speed instead of shoving you
         # around (collision.py fills `clog` with the overlap depth). Eased so it
         # doesn't stutter, and ignored mid-dash -- ploughing through is the point.
-        # clog is a sum of overlap depths; it peaks around max_r when you are truly
-        # buried in a body, so that is the scale that maps to "fully bogged down"
-        target_clog = clamp(self.clog / max(self.max_r * 1.2, 1.0), 0.0, 1.0)
+        # `clog` sums the overlap of 5x5 sample pairs, so ONE enemy already reached
+        # ~25 against the old max_r*1.2 divisor -- the drag saturated on first
+        # contact and read as binary (full speed or half speed, nothing between).
+        # Scaling the divisor to CONTACT_FULL enemies restores the gradient: one
+        # body slows you a little, being buried in the horde slows you a lot.
+        full = max(self.max_r * 1.2 * C.CONTACT_FULL, 1.0)
+        target_clog = clamp(self.clog / full, 0.0, 1.0)
         self.clog_f = approach(self.clog_f, target_clog, 9, dt)
         drag = 1.0 - C.CONTACT_DRAG * self.clog_f
 

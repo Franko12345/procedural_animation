@@ -177,6 +177,11 @@ class RoundManager:
     def start_round(self, theme=None):
         self.wave += 1
         g = self.game
+        # Rerolls refill per ROUND, not per level-up. Refilling on every level-up
+        # made them effectively unlimited -- you level several times a round, so
+        # the resource never ran out and stopped being a decision.
+        for p in g.players:
+            p.rerolls = p.rerolls_per_round
         self.boss = None
         self.is_final = (self.game.mode == 'normal' and self.wave >= C.RUN_FINAL_WAVE)
         self.is_boss_round = self.is_final or (self.wave % BOSS_EVERY == 0)

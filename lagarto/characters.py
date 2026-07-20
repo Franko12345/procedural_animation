@@ -60,9 +60,12 @@ def _lagarto(p):
 
     A default character with no mechanic is the option nobody picks twice, so
     this one owns *consistency*: rerolling a level-up hand turns the run from
-    something that happens to you into something you build (Isaac's D6).
+    something that happens to you into something you build (Isaac's D6). The
+    charge refills per ROUND -- per level-up it never ran out, and a resource
+    that never runs out is not a decision.
     """
-    p.rerolls_per_level = C.CHAR_LAGARTO_REROLLS
+    p.rerolls_per_round = C.CHAR_LAGARTO_REROLLS
+    p.rerolls = p.rerolls_per_round      # usable before the first round starts
 
 
 def _vibora(p):
@@ -112,10 +115,10 @@ def _larva(p):
 CHARACTERS = [
     Character(
         'lagarto', 'LAGARTO',
-        'Equilibrado. Rerrola as cartas uma vez por nivel.',
+        'Equilibrado. Rerrola a mao de cartas uma vez por round.',
         130,
         Genome(name='lagarto', size=1.25, leg_count=4, hue=130, sat=0.82, val=0.95),
-        mods=('EQUILIBRADO', 'REROLL POR NIVEL'),
+        mods=('EQUILIBRADO', 'REROLL POR ROUND'),
         apply=_lagarto,
     ),
     Character(

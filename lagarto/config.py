@@ -68,7 +68,7 @@ VENOM_PUDDLE_TICK = 0.55
 VENOM_PUDDLE_LIFE = 2.8
 
 # --- personagens jogaveis (characters.py) ----------------------------------- #
-CHAR_LAGARTO_REROLLS = 1        # rerrolagens da mao de cartas, por nivel
+CHAR_LAGARTO_REROLLS = 1        # rerrolagens da mao de cartas, por ROUND
 
 CHAR_VIBORA_WEAPON_CAP = 2      # o teto E a mecanica: com 6 armas o rabo e bonus,
                                 # com 2 ele e o seu dano e voce tem que golpear
@@ -140,8 +140,13 @@ PICK_ROUTE_END = 0.50    # rotas: versao curta (so expande e avanca)
 DASH_DAMAGE = 4
 DASH_WINGS_MULT = 1.5
 
-# colisao macia: atravessar inimigo custa ate 55% da velocidade em vez de te empurrar
-CONTACT_DRAG = 0.55
+# Colisao macia: atravessar inimigo custa velocidade em vez de te empurrar.
+# Medido antes: um pastador (inofensivo!) a 30px te deixava a 49% da velocidade, e
+# UM corredor ja saturava o efeito -- ou seja, era liga-desliga, nao gradiente.
+# Hoje so INIMIGOS arrastam (collision.DRAGS_PLAYER) e a saturacao exige estar
+# enterrado em ~3 corpos.
+CONTACT_DRAG = 0.35      # freio maximo, quando totalmente enterrado
+CONTACT_FULL = 3.0       # quantos corpos sobrepostos equivalem a "atolado de vez"
 
 # pressionada fica valida por este tempo: sobrevive a frames sem passo de simulacao
 # (jitter e hit-stop) e a um clique pouco antes do cooldown acabar

@@ -283,7 +283,6 @@ class Game:
         self.ui_t = 0.0
         self.pick = None
         self._panels.clear()
-        player.rerolls = player.rerolls_per_level      # LAGARTO's hand reroll
         audio.play('levelup')
         self.fx.popup(player.pos, f"NIVEL {player.level}!", C.COL_WHITE)
         self.fx.ring(player.pos, player.colorset[0])

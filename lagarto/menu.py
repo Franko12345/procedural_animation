@@ -582,7 +582,7 @@ CONTROLS = (
     "P2:  setas mover  -  IJKL mirar  -  RCtrl dash  -  RShift lingua  -  RAlt rabada",
     "P2 (gamepad):  sticks  -  A dash  -  X lingua  -  Y rabada",
     "",
-    "armas atacam sozinhas - suba de nivel p/ evoluir  -  [R] rerrola as cartas (LAGARTO)",
+    "armas atacam sozinhas - suba de nivel p/ evoluir  -  [R] rerrola as cartas - 1x por round (LAGARTO)",
     "F11 tela cheia  -  F3 medidor de FPS  -  ESC pausa",
 )
 

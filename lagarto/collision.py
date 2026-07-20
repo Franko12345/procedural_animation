@@ -21,6 +21,10 @@ CELL = 80          # world units; ~ two body samples touching
 SQUISH = 0.9       # <1 lets squishy bodies sink into each other a touch
 EASE = 0.6         # fraction of the correction applied per step (less jitter)
 FRIENDLY = ('player', 'friend')   # allies pass through each other (no clunky bumping)
+# Only these drag the player. Prey used to count too, so brushing past a grazer
+# cut your speed in half -- with no visual cause a player would ever connect to
+# "why am I slow?". They still get shoved aside; they just don't cost you speed.
+DRAGS_PLAYER = ('enemy',)
 
 
 def _samples(creatures):
@@ -94,11 +98,13 @@ def separate(creatures):
                     cp, op = c.kind == 'player', o.kind == 'player'
                     if cp or op:
                         if cp:
-                            c._clog += ov
+                            if o.kind in DRAGS_PLAYER:
+                                c._clog += ov
                             o._px -= nx * ov
                             o._py -= ny * ov
                         else:
-                            o._clog += ov
+                            if c.kind in DRAGS_PLAYER:
+                                o._clog += ov
                             c._px += nx * ov
                             c._py += ny * ov
                         continue
