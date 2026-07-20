@@ -192,10 +192,16 @@ Q**, P2 **RAlt**, gamepad **Y**). Custa `C.WHIP_COST`, cooldown `Player.whip_coo
 - **Como a cauda se move** (`Player._whip_arc`): quem varre é a **cauda**, não o jogador.
   A espinha é follow-the-leader, então só dá para *dirigi-la pela cabeça* — por isso as
   duas primeiras tentativas erraram o alvo (impulso na velocidade e depois arco na cabeça:
-  ambas jogavam o **corpo inteiro** de lado). A solução é **reconstruir as últimas juntas**
-  a partir de um pivô: `WHIP_SWEEP` gira a seção em bloco (é o que leva a ponta longe) e
-  `WHIP_CURL` adiciona atraso por segmento (o "estalo"). *Curl alto demais **enrola** a
-  cauda sob a barriga em vez de varrer.*
+  ambas jogavam o **corpo inteiro** de lado). A solução é **reconstruir as juntas da metade
+  traseira** a partir de um pivô (`_whip_span`), distribuindo `C.WHIP_SWEEP` graus de
+  curvatura **entre todas elas**.
+  - **A rampa de curvatura tem que ser suave.** Aplicar o giro todo na primeira junta vira
+    **dobradiça** (lê como "um pedaço rígido girando"); rampa quadrática rumo à ponta joga
+    ~80° num link só, acima do próprio limite de curvatura da espinha (`bend=26`) — dá bico
+    e ainda é clampado pelo `resolve` seguinte. Rampa quase uniforme = arco quase circular
+    = o lagarto **mantém a curvatura natural**.
+  - **Envelope de período inteiro** (`sin(t*2π)`): varre um lado, passa pelo meio e varre o
+    outro **num golpe só**, começando e terminando em zero (entra e sai suave sozinho).
   - Ancorar o ângulo no **corpo** (`js[pv] - js[pv-2]`), **nunca na cauda do frame
     anterior**: `spine.resolve` deriva direção das posições anteriores, então ancorar na
     cauda realimenta a curva e o balanço se cancela num tremor.
@@ -210,6 +216,9 @@ Q**, P2 **RAlt**, gamepad **Y**). Custa `C.WHIP_COST`, cooldown `Player.whip_coo
 - **Modificadores da cauda** (era tudo cosmético antes): `club` → `WHIP_CLUB_MULT` de dano
   + `WHIP_KNOCK_CLUB` de empurrão + shake maior; `sting` → `apply_poison`. *Nota: o ferrão
   dos **inimigos** aplica `apply_slow`, o do jogador envenena — divergência proposital.*
+- **A hitbox usa a MESMA seção que se move** (`_whip_span` serve os dois). Quando só as 3
+  últimas juntas eram testadas e a seção que balança cresceu para 6, a cauda passava
+  visivelmente por cima do inimigo sem acertar.
 - **Alcance = o arco atrás/ao lado** (medido: 1-2 alvos por golpe), não a tela toda. Quando
   o golpe ainda movia o corpo, pegava 4-5 e o dano por acerto tinha sido baixado para
   compensar; com a cauda sozinha voltou para perto do dash, e quem paga a diferença é o

@@ -50,9 +50,11 @@ DASH_COST = 14
 TONGUE_COST = 8
 
 # rabada: golpe de cauda. A clava aumenta o dano e o empurrao; o ferrao envenena.
-WHIP_SWEEP = 115         # graus que a secao da cauda gira em bloco (leva a ponta longe)
-WHIP_CURL = 42           # atraso total distribuido nos segmentos: da o "estalo".
-                         # Curl alto demais ENROLA a cauda sob a barriga em vez de varrer.
+# Curvatura TOTAL da cauda no auge, distribuida entre as juntas (peso quadratico
+# rumo a ponta). Nao e o giro de um bloco: aplicar tudo na primeira junta vira
+# dobradica. O golpe faz um periodo inteiro -> varre os dois lados numa so vez.
+WHIP_SWEEP = 150
+WHIP_TIME = 0.5          # duracao do golpe (dois lados cabem aqui)
 WHIP_COST = 10
 # Depois que o golpe passou a mover a CAUDA (e nao o jogador), ele so alcanca o
 # arco atras/ao lado -- medido 1-2 alvos por golpe, nao 4-5. Entao o dano por

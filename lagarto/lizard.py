@@ -547,7 +547,7 @@ class Player(Lizard):
             audio.play('dash', 0.65)
             game.shake(3)
         if self.whip_t > 0:
-            self.whip_t += dt / 0.34
+            self.whip_t += dt / C.WHIP_TIME
             if self.whip_t >= 1:
                 self.whip_t = 0.0
             else:
@@ -562,6 +562,19 @@ class Player(Lizard):
         self.energy = clamp(self.energy + dt * 6, 0, self.max_energy)
         if self.regen > 0 and self.health < self.max_health:
             self.health = min(self.max_health, self.health + self.regen * dt)
+
+    def _whip_span(self):
+        """(pivot index, joint count) of the section that whips.
+
+        Shared by the animation and the hitbox on purpose: the damaging joints
+        MUST be the ones that visibly move, or you get the classic 'it looked
+        like it hit' complaint. When only the last 3 joints were tested and the
+        swinging section grew to 6, the tail swept right past enemies.
+        """
+        n = len(self.spine.joints)
+        k = max(4, n // 2)                      # blend the bend over half the body
+        pv = n - k - 1                          # pivot joint (behind the legs)
+        return (pv, k) if pv >= 1 else (None, 0)
 
     def _whip_arc(self, dt):
         """Curl the TAIL sideways through the swing, leaving the head where it is.
@@ -579,11 +592,10 @@ class Player(Lizard):
         if self.whip_t <= 0 or self.whip_dir.length_squared() < 1e-6:
             return
         js = self.spine.joints
-        n = len(js)
-        k = max(3, n // 3)                      # how much of the tail whips
-        pv = n - k - 1                          # pivot joint (behind the legs)
-        if pv < 1:
+        pv, k = self._whip_span()
+        if pv is None:
             return
+        n = len(js)
         # Anchor the swing to the BODY (straight back from the pivot), not to last
         # frame's tail: spine.resolve rebuilds joint directions from their previous
         # positions, so anchoring to the tail fed the curl back into itself and the
@@ -591,18 +603,26 @@ class Player(Lizard):
         back = js[pv] - js[max(0, pv - 2)]
         if back.length_squared() < 1e-6:
             return
-        # SWEEP rotates the whole tail section about the pivot -- that is what
-        # carries the tip across an arc (a pure curl just coils it up and barely
-        # reaches). CURL adds per-segment lag so it cracks instead of swinging
-        # like a stick.
         cross = back.x * self.whip_dir.y - back.y * self.whip_dir.x
         side = 1.0 if cross > 0 else -1.0
-        env = math.sin(self.whip_t * math.pi)
-        ang = angle_of(back) + side * C.WHIP_SWEEP * env
-        curl = side * C.WHIP_CURL * env / k
-        for i in range(pv + 1, n):
+        # A full period, not a half: the tail sweeps out one side, back through
+        # the middle and out the other in a single press. Starts and ends at 0
+        # with matching slope, so it eases in and out on its own.
+        env = math.sin(self.whip_t * 2.0 * math.pi)
+        total = side * C.WHIP_SWEEP * env
+        # Spread the bend across every joint instead of turning the whole section
+        # at the pivot -- that hinge is what read as "a rigid chunk rotating".
+        # The ramp toward the tip is GENTLE on purpose: a steep one (quadratic)
+        # put ~80 deg into the last link, well past the spine's own bend limit
+        # (26 deg), so it showed as a kink and then got clamped by the next
+        # resolve. Near-uniform turns = near-circular arc = the lizard keeps its
+        # natural curve while still whipping a little harder at the end.
+        w = [0.6 + 0.8 * (idx / max(1, k - 1)) for idx in range(k)]
+        inv = 1.0 / sum(w)
+        ang = angle_of(back)
+        for idx, i in enumerate(range(pv + 1, n)):
+            ang += total * w[idx] * inv
             js[i] = js[i - 1] + vfrom_angle(ang, self.spine.link)
-            ang += curl
 
     def _whip_hit(self, game):
         """The real tail joints are the hitbox -- what you see is what hits.
@@ -611,11 +631,14 @@ class Player(Lizard):
         explicit reach instead. Gated by ``whip_hits`` for the same reason as
         ``dash_hits``: this runs every frame of the swing.
         """
-        if self.whip_t < 0.15 or self.whip_t > 0.9:
-            return                      # wind-up and recovery don't connect
+        if self.whip_t < 0.06 or self.whip_t > 0.97:
+            return                      # only the very start/end don't connect
         js = self.spine.joints
-        tail = js[-3:] if len(js) >= 3 else js[-1:]
-        reach = self.max_r * 1.15
+        pv, _k = self._whip_span()
+        tail = js[pv + 1:] if pv is not None else js[-3:]
+        # generous on purpose: the tail is thin but moving fast, and the sweep
+        # covers a wide arc -- a tight tube made obvious sweeps whiff
+        reach = self.max_r * 1.6
         club = self.genome.tail == 'club'
         sting = self.genome.tail == 'sting'
         dmg = C.WHIP_DAMAGE * (C.WHIP_CLUB_MULT if club else 1.0)
