@@ -539,8 +539,14 @@ class Player(Lizard):
         game.shake(4)
 
     def hurt(self, game, src_dir, dmg=10):
+        """Take damage. Returns True only if it actually LANDED.
+
+        The return value matters: side effects that ride along with a hit (the
+        scorpion's slow) must not fire when the hit bounced off i-frames --
+        otherwise you get a debuff with no damage number to explain it.
+        """
         if self.dashing or self.hit_flash > 0.45 or self.down or self.shed_t > 0:
-            return
+            return False
         dmg *= (1.0 - self.armor)                       # carapaca charm blocks a %
         self.health -= dmg
         self.hit_flash = 1.0
@@ -568,6 +574,7 @@ class Player(Lizard):
             self.revive = 6.0
             game.fx.burst(self.pos, C.COL_WHITE, 26, 260)
             game.fx.ring(self.pos, self.color)
+        return True
 
     def update(self, dt, game):
         if self.down:
@@ -826,7 +833,25 @@ class Player(Lizard):
         mouth = self.spine.joints[0] + self.spine.head_dir() * self.max_r
         return mouth.lerp(aim, reach), mouth
 
+    def _draw_slow_mark(self, surf, cam):
+        """Show WHY you are slow.
+
+        Two independent brakes multiply on the player (a sting's slow and the
+        contact drag) and neither had any tell, so being at half speed looked
+        like the game misbehaving. Cold rings under the body read as "something
+        is holding you" without adding a HUD element.
+        """
+        if self.slow_t <= 0:
+            return
+        sp = cam.w2s(self.pos)
+        f = clamp(self.slow_t / 0.4, 0, 1)
+        r = int(self.max_r * 1.9 * cam.zoom)
+        col = (120, 190, 255)
+        palette.glow(surf, sp, r, col, 0.22 * f)
+        pygame.draw.circle(surf, col, sp, r, max(1, int(2 * cam.zoom)))
+
     def draw(self, surf, cam):
+        self._draw_slow_mark(surf, cam)
         for wid, lvl in self.weapons.items():        # auras behind the body
             w = weapons.WEAPONS[wid]
             if w.layer == 'under':
@@ -1332,12 +1357,19 @@ class AILizard(Lizard):
         if not hasattr(target, 'hurt'):           # an allied creature, not the player
             target.take_hit(game, away, 2 if self.max_r > 25 else 1)
             if self.genome.tail == 'sting':
-                target.apply_slow(0.5, 1.4)
+                target.apply_slow(C.STING_SLOW, C.STING_SLOW_TIME)
             return
         else:
-            target.hurt(game, away, contact_damage(self.max_r, game.wave))
-            if self.genome.tail == 'sting':      # scorpion sting also slows
-                target.apply_slow(0.5, 1.4)
+            landed = target.hurt(game, away, contact_damage(self.max_r, game.wave))
+            # The sting only slows on a hit that CONNECTED. It used to fire even
+            # when hurt() bounced off i-frames, and its 1.4s duration was longer
+            # than the 0.8s attack cooldown -- so a single scorpion kept the
+            # player at 50% speed 59% of the time, with no damage number to
+            # explain why. Same shape as the Acido and venom-puddle bugs:
+            # an effect that lasts longer than its own reapplication interval
+            # is permanent by construction.
+            if landed and self.genome.tail == 'sting':
+                target.apply_slow(C.STING_SLOW, C.STING_SLOW_TIME)
             thorns = getattr(target, 'thorns', 0)
             if thorns:                            # attacker gets pricked
                 self.take_hit(game, safe_norm(self.pos - target.pos), thorns)

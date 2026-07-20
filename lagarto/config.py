@@ -142,6 +142,12 @@ CHAMP_SALTADOR_CD = 2.4
 CHAMP_SALTADOR_POWER = 3.1
 CHAMP_ARMOR = 0.6        # fracao bloqueada de frente (por tras leva normal)
 
+# Ferrao (escorpiao/envenenador): TEM que durar menos que o attack_cd de 0.8s de
+# quem o aplica, senao a lentidao e permanente por construcao -- foi o terceiro
+# bug desta mesma forma no projeto (Acido, poca de veneno, agora o ferrao).
+STING_SLOW = 0.7         # 30% mais lento (era 50%, e invisivel demais para tanto)
+STING_SLOW_TIME = 0.4    # << attack_cd (0.8): uptime ~50%, nao ~75%
+
 CRIT_MULT = 2.0          # dano ao acertar a cabeca (ponto fraco)
 AGGRO_TIME = 5.0         # segundos que um aliado segura o aggro apos bater
 FRIEND_LIFE = 45.0       # aliados sao temporarios (segundos)

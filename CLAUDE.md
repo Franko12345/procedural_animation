@@ -340,7 +340,23 @@ profundidade de sobreposição em `creature.clog`; `Player.update` normaliza, su
 (atravessar é a graça). *Inimigo↔inimigo continua com separação dura* — sem isso volta o
 bug de empilhar.
 
-**Duas coisas estavam erradas nesse freio, e as duas foram medidas:**
+**São DOIS freios independentes que se MULTIPLICAM** (a lentidão do ferrão × o
+`clog` do contato). Medido numa briga com 6 inimigos: 89% × 89% = **80% de
+velocidade média**, 40% do tempo abaixo de 80%. Nenhum é ruim sozinho; juntos
+explicam o "por que estou lento?" — e nenhum dos dois tinha qualquer aviso na
+tela. Hoje `Player._draw_slow_mark` desenha anéis frios sob o corpo enquanto a
+lentidão dura.
+
+**A lentidão do ferrão disparava mesmo sem o golpe acertar.** `_contact` chamava
+`apply_slow` fora do resultado de `hurt()`, que sai cedo nos i-frames — então
+você levava 50% de lentidão **sem número de dano nenhum para explicar**. Pior:
+duração 1,4 s contra `attack_cd` de 0,8 s, ou seja **permanente por construção**.
+Medido: um escorpião te mantinha lento **59% do tempo**. Hoje `hurt()` **devolve
+se o golpe landou** e o ferrão só retarda nesse caso, com `STING_SLOW_TIME` (0,4)
+bem menor que o `attack_cd`. *Terceira vez que este projeto tropeça em "efeito
+dura mais que o intervalo de reaplicação" — Ácido, poça de veneno, ferrão.*
+
+**Duas coisas estavam erradas no clog, e as duas foram medidas:**
 - **Presa freava igual a inimigo.** `movers` inclui presas e o ramo de contato macio
   dispara para qualquer par com o jogador que não seja aliado, então um **pastador
   inofensivo a 30 px deixava o jogador a 49% da velocidade** — sem nenhuma pista visual
