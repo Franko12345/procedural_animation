@@ -33,10 +33,10 @@ Regra: paro sempre numa fronteira jogável; `--smoke` verde antes de cada commit
 - [x] Regen — `+4/s` → `+2.2/s` por carta
 - [x] Abate dá energia — `+4` ao jogador mais próximo (KILL_ENERGY), coop-safe
 
-## AGORA — Fase B3: barras bio
-- [ ] Vida/energia/XP orgânicas em `_draw_hud` (membrana pulsante, flagelos); cachear surfaces
+## Fase B3: barras bio — FEITO (commit pendente)
+- [x] `_bio_bar`: membrana arredondada, menisco pulsante na ponta, brilho interno, flagelos que balançam (só na vida). Sem Surface por frame; 0,23 ms p/ o HUD de 2 jogadores.
 
-## Fase B4: novas criaturas procedurais
+## AGORA — Fase B4: novas criaturas procedurais
 - [ ] Corpos novos (tentáculo / segmentado / radial variado) — refs RujiK, Codeer, Sebastian Lague
 - [ ] Entram como inimigos comuns (`species.py` + behavior); alguns viram chefes
 - [ ] `genome.__slots__` — declarar atributo novo (armadilha recorrente)

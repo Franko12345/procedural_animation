@@ -32,6 +32,52 @@ from .camera import Camera
 from .world import World
 from .collision import separate
 from .rounds import RoundManager
+from .mathutil import vfrom_angle as _vfrom_angle
+
+
+def _bio_bar(surf, x, y, w, h, frac, color, t, flagella=0, glow=None):
+    """An organic 'membrane sac' bar instead of a flat rectangle.
+
+    Drawn entirely with primitives (no per-frame Surface -- the ui._tint rule),
+    animated purely by ``t`` so it costs the same whether it moves or not:
+      * a dark rounded capsule (the sac),
+      * a fill whose leading edge bulges and breathes,
+      * a soft inner highlight up top (a light source), and
+      * optional flagella -- little cilia that sway off the fill's leading edge,
+        which is what sells "biological" at a glance.
+    """
+    frac = 0.0 if frac < 0 else (1.0 if frac > 1 else frac)
+    r = h // 2
+    cap = pygame.Rect(x, y, w, h)
+    pygame.draw.rect(surf, (16, 18, 28), cap, border_radius=r)
+    fw = int(w * frac)
+    if fw > 1:
+        fill = pygame.Rect(x, y, fw, h)
+        pygame.draw.rect(surf, palette.darken(color, 0.25), fill, border_radius=r)
+        # top meniscus: a lighter band with a slow breathing wobble
+        band_h = max(2, h // 3)
+        pygame.draw.rect(surf, palette.lighten(color, 0.35),
+                         (x, y + 1, fw, band_h), border_radius=r)
+        # leading-edge bulge, pulsing -- reads as fluid under pressure
+        bulge = int(h * (0.55 + 0.12 * math.sin(t * 3.0)))
+        tip = (x + fw, y + h // 2)
+        palette.glow(surf, tip, bulge, color, 0.5)
+        pygame.draw.circle(surf, palette.lighten(color, 0.5), tip, max(2, h // 3))
+        for k in range(flagella):
+            fx = x + int(fw * (k + 0.5) / max(1, flagella))
+            sway = math.sin(t * 4.0 + k * 1.7) * 0.55
+            base = (fx, y + 2)
+            mid = (fx + int(h * 0.45 * sway), y - int(h * 0.55))
+            tipf = (fx + int(h * 0.8 * sway), y - int(h * 1.05))
+            pygame.draw.lines(surf, palette.lighten(color, 0.2), False,
+                              [base, mid, tipf], max(1, h // 8))
+            pygame.draw.circle(surf, palette.lighten(color, 0.5),
+                               (int(tipf[0]), int(tipf[1])), max(1, h // 6))
+    if glow:
+        palette.glow(surf, (x + fw, y + h // 2), h, color, 0.25)
+    # living rim
+    pygame.draw.rect(surf, palette.lighten(color, 0.15) if frac > 0 else (40, 44, 60),
+                     cap, 2, border_radius=r)
 
 def _dial(surf, center, r, frac, color, font, label, t, enabled=True):
     """Radial cooldown dial: fills as the ability recharges, pulses when ready.
@@ -969,28 +1015,23 @@ class Game:
             ui.text(surf, self.font, f"Nv {p.level}", (x + bw, y), (226, 228, 244),
                     align='right')
 
-            # health bar (green -> orange -> red as it drops)
-            hy = y + 24
+            # health: the big organic sac, with swaying flagella
+            hy = y + 26
             hr = clamp(p.health / p.max_health, 0, 1)
-            hcol = palette.health_color(hr)
-            pygame.draw.rect(surf, (48, 48, 68), (x, hy, bw, 16), border_radius=8)
-            if hr > 0:
-                pygame.draw.rect(surf, hcol, (x, hy, int(bw * hr), 16), border_radius=8)
-            pygame.draw.rect(surf, (14, 14, 24), (x, hy, bw, 16), 2, border_radius=8)
-            # light glyphs + dark rim, not dark-on-bar: the bar shifts green ->
+            _bio_bar(surf, x, hy, bw, 16, hr, palette.health_color(hr), self.time,
+                     flagella=3, glow=True)
+            # light glyphs + dark rim, not dark-on-bar: the fill shifts green ->
             # orange -> red under it, and dark ink lost contrast on every shade.
             ui.text(surf, self.font, f"{int(p.health)}/{int(p.max_health)}",
                     (x + bw // 2, hy), (255, 255, 255), align='center')
 
-            # energy + xp slim bars
+            # energy + xp: slim sacs (no flagella -- too short to read)
             ey = hy + 22
-            pygame.draw.rect(surf, (40, 44, 60), (x, ey, bw, 7), border_radius=4)
-            pygame.draw.rect(surf, (110, 210, 240),
-                             (x, ey, int(bw * p.energy / p.max_energy), 7), border_radius=4)
-            xy = ey + 11
-            pygame.draw.rect(surf, (40, 40, 60), (x, xy, bw, 5), border_radius=3)
-            pygame.draw.rect(surf, (245, 210, 90),
-                             (x, xy, int(bw * clamp(p.xp / p.xp_to_next, 0, 1)), 5), border_radius=3)
+            _bio_bar(surf, x, ey, bw, 8, p.energy / p.max_energy, (96, 206, 240),
+                     self.time)
+            xy = ey + 12
+            _bio_bar(surf, x, xy, bw, 6, clamp(p.xp / p.xp_to_next, 0, 1),
+                     (245, 205, 84), self.time + 1.7)
             # ability cooldown dials (dash / tongue) -> readable "can I act?" feedback
             dy = xy + 16
             # three dials in a 216px panel: 78px pitch overflowed, so 11px radius
