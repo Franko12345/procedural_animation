@@ -374,6 +374,7 @@ def run_menu(screen, font, bigfont, titlefont, joysticks):
 
     pending = None       # (num_players, game_mode) waiting on character picks
     picks = []           # one character id per player, filled in order
+    charprev = {}        # live creature previews for the select screen
 
     def toggle_fs():
         display.toggle_fullscreen()
@@ -534,7 +535,8 @@ def run_menu(screen, font, bigfont, titlefont, joysticks):
         elif mode == 'chars':
             who = ("ESCOLHA SEU LAGARTO" if not pending or pending[0] == 1
                    else f"JOGADOR {len(picks) + 1}: ESCOLHA")
-            rects = _draw_chars(screen, font, bigfont, sel, meta, t, anim, who)
+            rects = _draw_chars(screen, font, bigfont, sel, meta, t, anim, who,
+                                preview=charprev, dt=dt)
             tab_rects = []
         else:  # controls
             _panel(screen, pygame.Rect(C.WIDTH // 2 - 360, 220, 720, 300))
@@ -623,7 +625,63 @@ def _char_entries(meta):
     return [c.name for c in characters.CHARACTERS]
 
 
-def _draw_chars(screen, font, bigfont, sel, meta, t, anim, who):
+def _char_previews(store):
+    """One live creature per character, built once and kept walking.
+
+    The whole premise of these four is that they *look* different because the
+    body is generated from the genome -- so showing the real thing animating
+    beats any icon: what you see on the card is literally what you will control.
+    """
+    if store.get('made'):
+        return store['crea']
+    store['made'] = True
+    store['crea'] = []
+    store['cam'] = Camera()
+    # the stage is only ~116px tall and these bodies are up to 380px long, so it
+    # has to be pulled well back or you see a close-up of one eye
+    store['cam'].zoom = 0.62
+    for c in characters.CHARACTERS:
+        cr = AILizard(Vector2(C.WORLD_W / 2, C.WORLD_H / 2), 'prey',
+                      genome=c.make_genome())
+        # menu-only tint: in game the hue comes from the player slot, but here
+        # each card needs its own identity and the accent is that identity
+        cr.color = c.color()
+        cr.base_color = cr.color
+        cr.spine.resolve(cr.pos)
+        cr.preview_phase = len(store['crea']) * 1.4    # so they don't move in lockstep
+        # Fit-to-stage zoom, but clamped to a NARROW range on purpose: a true fit
+        # would make every body the same on-screen size and throw away the fact
+        # that the couracado is huge and the larva is tiny, which is half of what
+        # the card is telling you.
+        span = cr.spine.link * (len(cr.spine.joints) - 1)
+        cr.preview_zoom = clamp(178.0 / max(span, 1.0), 0.42, 0.80)
+        store['crea'].append(cr)
+    return store['crea']
+
+
+def _char_preview_step(c, cam, dt, t):
+    """Walk the card creature in PROFILE, not in a circle.
+
+    The bestiary spins its creature through every heading, which is fine when it
+    fills half the screen. Here the whole point is comparing bodies -- leg count,
+    length, girth -- and a creature pointed at the camera shows none of that. So
+    it holds a sideways heading and just sways.
+    """
+    c.on_screen = True
+    sway = math.sin(t * 0.7 + c.preview_phase) * 34
+    c.steer(vfrom_angle(sway), dt, 0.55)
+    c.pos += c.vel * dt
+    c.spine.resolve(c.pos)
+    if c.vel.length_squared() > 1:
+        c.facing = safe_norm(c.vel)
+    for leg in c.legs:
+        leg.update(c.spine, c.vel, dt, None)
+    c.squash = approach(c.squash, 1 + clamp(c.vel.length() / c.max_speed, 0, 1) * 0.16,
+                        9, dt)
+    c.wobble += dt * 6
+
+
+def _draw_chars(screen, font, bigfont, sel, meta, t, anim, who, preview=None, dt=0.0):
     """Character select: a card per character, not a list of sentences.
 
     The list version put four long strings on top of each other and had no
@@ -634,15 +692,20 @@ def _draw_chars(screen, font, bigfont, sel, meta, t, anim, who):
     """
     n = len(characters.CHARACTERS)
     cw, gap = 244, 16
-    ch = 356
+    ch = 384
     x0 = C.WIDTH // 2 - (n * cw + (n - 1) * gap) // 2
-    top = 236
+    top = 228
     rects = []
     at = anim['t'] if anim else 9.0
+    crea_all = _char_previews(preview) if preview is not None else None
+    pcam = preview['cam'] if preview is not None else None
+    if crea_all:                       # walk them so the legs actually animate
+        for cr in crea_all:
+            _char_preview_step(cr, pcam, dt, t)
 
-    ui.text(screen, bigfont, who, (C.WIDTH // 2, 176), C.COL_WHITE, align='center')
+    ui.text(screen, bigfont, who, (C.WIDTH // 2, 164), C.COL_WHITE, align='center')
     ui.text(screen, font, "setas/mouse escolhem  -  ENTER confirma  -  ESC volta",
-            (C.WIDTH // 2, 208), (176, 180, 206), align='center')
+            (C.WIDTH // 2, 198), (176, 180, 206), align='center')
 
     for i, c in enumerate(characters.CHARACTERS):
         locked = characters.is_locked(c, meta)
@@ -663,12 +726,27 @@ def _draw_chars(screen, font, bigfont, sel, meta, t, anim, who):
         screen.blit(body, r.topleft)
         pygame.draw.rect(screen, accent, r, 4 if chosen else 2, border_radius=16)
 
-        icons.draw(screen, f'char_{c.id}', (r.centerx, r.y + 78), 40,
-                   accent, glow=not locked)
-        ui.text(screen, bigfont, c.name, (r.centerx, r.y + 132), accent, align='center')
+        # live creature, clipped to a stage inside the card (bestiary pattern)
+        stage = pygame.Rect(r.x + 10, r.y + 12, r.width - 20, 128)
+        pygame.draw.rect(screen, (11, 13, 22), stage, border_radius=12)
+        crea = crea_all[i] if crea_all and i < len(crea_all) else None
+        if crea is not None:
+            old = screen.get_clip()
+            screen.set_clip(stage)
+            pcam.zoom = crea.preview_zoom
+            pcam.center = (stage.centerx, stage.centery + 6)
+            pcam.pos = Vector2(crea.pos)
+            if locked:                        # silhouette only until you earn it
+                crea.color = (74, 78, 98)
+            else:
+                crea.color = c.color()
+            crea.draw(screen, pcam)
+            screen.set_clip(old)
+        pygame.draw.rect(screen, (48, 52, 78), stage, 1, border_radius=12)
+        ui.text(screen, bigfont, c.name, (r.centerx, r.y + 152), accent, align='center')
 
         # modifiers as chips: the compressed "who is this" line
-        cy = r.y + 176
+        cy = r.y + 202
         for m in c.mods[:3]:
             w = font.size(m)[0] + 18
             chip = pygame.Rect(r.centerx - w // 2, cy, w, 22)
