@@ -428,6 +428,10 @@ def run_menu(screen, font, bigfont, titlefont, joysticks):
                     sel = (sel + 1) % len(items)
                 elif ev.key in (pygame.K_UP, pygame.K_w):
                     sel = (sel - 1) % len(items)
+                elif ev.key in (pygame.K_LEFT, pygame.K_a) and mode == 'chars':
+                    sel = (sel - 1) % len(items)
+                elif ev.key in (pygame.K_RIGHT, pygame.K_d) and mode == 'chars':
+                    sel = (sel + 1) % len(items)
                 elif ev.key in (pygame.K_LEFT, pygame.K_a) and mode == 'compendium':
                     tab, sel = (tab - 1) % 3, 0
                 elif ev.key in (pygame.K_RIGHT, pygame.K_d) and mode == 'compendium':
@@ -442,6 +446,8 @@ def run_menu(screen, font, bigfont, titlefont, joysticks):
                 elif ev.key == pygame.K_ESCAPE:
                     if mode == 'main':
                         return None
+                    if mode == 'chars':
+                        pending, picks = None, []
                     mode, sel = 'main', 0
             if ev.type == pygame.VIDEORESIZE:
                 display.handle_resize()
@@ -525,6 +531,11 @@ def run_menu(screen, font, bigfont, titlefont, joysticks):
             entries = _compendium_entries(tab)
             rects, tab_rects = _draw_compendium(screen, font, bigfont, tab, entries, sel)
             ui.footer(screen, font, "setas cima/baixo: item - esquerda/direita: aba - ESC/B volta")
+        elif mode == 'chars':
+            who = ("ESCOLHA SEU LAGARTO" if not pending or pending[0] == 1
+                   else f"JOGADOR {len(picks) + 1}: ESCOLHA")
+            rects = _draw_chars(screen, font, bigfont, sel, meta, t, anim, who)
+            tab_rects = []
         else:  # controls
             _panel(screen, pygame.Rect(C.WIDTH // 2 - 360, 220, 720, 300))
             lines = controls_lines(joysticks)
@@ -598,7 +609,7 @@ def _items_for(mode, bkeys, tab, meta):
     if mode == 'meta':
         return _meta_entries() + ['VOLTAR']
     if mode == 'chars':
-        return _char_entries(meta) + ['VOLTAR']
+        return _char_entries(meta)   # sem VOLTAR: sao cartas lado a lado, ESC volta
     if mode == 'bestiary':
         return bkeys + ['VOLTAR']
     if mode == 'compendium':
@@ -607,22 +618,97 @@ def _items_for(mode, bkeys, tab, meta):
 
 
 def _char_entries(meta):
-    """One line per character. Locked ones are *shown*, greyed with their
-    requirement -- a reward the player cannot see is not a reward."""
-    out = []
-    for c in characters.CHARACTERS:
-        if characters.is_locked(c, meta):
+    """Labels only -- the real screen is `_draw_chars`. Kept so selection,
+    hit-testing and gamepad nav share the generic index machinery."""
+    return [c.name for c in characters.CHARACTERS]
+
+
+def _draw_chars(screen, font, bigfont, sel, meta, t, anim, who):
+    """Character select: a card per character, not a list of sentences.
+
+    The list version put four long strings on top of each other and had no
+    hierarchy at all -- you could not tell at a glance what any of them played
+    like. Here the icon carries the silhouette, the accent colour carries the
+    identity, and the modifiers are chips, so the eye lands on name -> shape ->
+    traits in that order.
+    """
+    n = len(characters.CHARACTERS)
+    cw, gap = 244, 16
+    ch = 356
+    x0 = C.WIDTH // 2 - (n * cw + (n - 1) * gap) // 2
+    top = 236
+    rects = []
+    at = anim['t'] if anim else 9.0
+
+    ui.text(screen, bigfont, who, (C.WIDTH // 2, 176), C.COL_WHITE, align='center')
+    ui.text(screen, font, "setas/mouse escolhem  -  ENTER confirma  -  ESC volta",
+            (C.WIDTH // 2, 208), (176, 180, 206), align='center')
+
+    for i, c in enumerate(characters.CHARACTERS):
+        locked = characters.is_locked(c, meta)
+        off, alpha = ui.drop_in(at, i, stagger=0.05, dur=0.28, rise=30.0)
+        rect = pygame.Rect(x0 + i * (cw + gap), top, cw, ch)
+        rects.append((i, rect))
+        if alpha <= 0.01:
+            continue
+        r = rect.move(0, int(off))
+        accent = (92, 96, 122) if locked else c.color()
+        chosen = (i == sel)
+
+        if chosen:
+            pulse = 0.5 + 0.5 * math.sin(t * 5)
+            palette.glow(screen, r.center, cw * 0.78, accent, 0.20 + 0.14 * pulse)
+        body = pygame.Surface((r.width, r.height), pygame.SRCALPHA)
+        body.fill((20, 23, 38, 236) if chosen else (15, 17, 28, 208))
+        screen.blit(body, r.topleft)
+        pygame.draw.rect(screen, accent, r, 4 if chosen else 2, border_radius=16)
+
+        icons.draw(screen, f'char_{c.id}', (r.centerx, r.y + 78), 40,
+                   accent, glow=not locked)
+        ui.text(screen, bigfont, c.name, (r.centerx, r.y + 132), accent, align='center')
+
+        # modifiers as chips: the compressed "who is this" line
+        cy = r.y + 176
+        for m in c.mods[:3]:
+            w = font.size(m)[0] + 18
+            chip = pygame.Rect(r.centerx - w // 2, cy, w, 22)
+            pygame.draw.rect(screen, (30, 34, 52), chip, border_radius=999)
+            pygame.draw.rect(screen, accent, chip, 1, border_radius=999)
+            ui.text(screen, font, m, (chip.centerx, cy + 2),
+                    (222, 226, 244) if not locked else (140, 144, 166),
+                    align='center')
+            cy += 27
+
+        # The blurb gets whatever vertical space is actually left, and no more.
+        # Hardcoding its position collided with the lock block on exactly the
+        # cards that need the lock text most -- same failure as the old HUD stack.
+        cy += 10
+        reserved = 78 if locked else 14          # the BLOQUEADO block at the bottom
+        room = (r.bottom - reserved) - cy
+        lines = ui.wrap(font, c.blurb, cw - 34)[:max(0, room // 21)]
+        for li, line in enumerate(lines):
+            ui.text(screen, font, line, (r.centerx, cy + li * 21),
+                    (200, 204, 226) if not locked else (126, 130, 152),
+                    align='center')
+
+        if locked:
+            veil = pygame.Surface((r.width, r.height), pygame.SRCALPHA)
+            veil.fill((8, 9, 16, 150))
+            screen.blit(veil, r.topleft)
+            pygame.draw.rect(screen, (92, 96, 122), r, 2, border_radius=16)
             req = progression.unlock_hint('character', c.id)
-            out.append(f'{c.name}  (bloqueado: {req})')
-        else:
-            out.append(f'{c.name}  -  {c.blurb}')
-    return out
+            ui.text(screen, font, "BLOQUEADO", (r.centerx, r.bottom - 58),
+                    (255, 190, 90), align='center')
+            for li, line in enumerate(ui.wrap(font, req, cw - 34)):
+                ui.text(screen, font, line, (r.centerx, r.bottom - 34 + li * 19),
+                        (236, 208, 150), align='center')
+    return rects
 
 
 def _activate(mode, sel, toggle_fs, n_items=0):
     """Return 1/2 to start, a mode name to switch screen, or None for no-op."""
     if mode == 'chars':
-        return 'main' if sel >= n_items - 1 else ('pick', sel)
+        return ('pick', sel)
     if mode in ('bestiary', 'compendium'):
         return 'main' if sel >= n_items - 1 else None    # only VOLTAR does anything
     if mode == 'meta':

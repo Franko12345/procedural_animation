@@ -232,7 +232,90 @@ def _expand(s, c, r, col):
     pygame.draw.circle(s, palette.darken(col, 0.2), c, r, max(1, r // 9))
 
 
+# ---- playable characters -------------------------------------------------- #
+# Each one is a silhouette of the creature you actually get. A generic badge
+# would tell the player nothing; the whole point of these four is that they look
+# different on screen, so the icon has to promise the same thing.
+
+def _blob(s, c, pts, col, w=None):
+    pygame.draw.polygon(s, col, pts)
+    pygame.draw.polygon(s, INK, pts, w or max(1, len(pts) // 6))
+
+
+def _char_lagarto(s, c, r, col):
+    """Four legs, medium body, tapering tail: the baseline shape."""
+    body = [(c[0] - r * 0.7, c[1]), (c[0] - r * 0.2, c[1] - r * 0.42),
+            (c[0] + r * 0.45, c[1] - r * 0.34), (c[0] + r * 0.8, c[1]),
+            (c[0] + r * 0.45, c[1] + r * 0.34), (c[0] - r * 0.2, c[1] + r * 0.42)]
+    for sx in (-1, 1):
+        for lx in (-0.35, 0.3):
+            pygame.draw.line(s, palette.darken(col, 0.25),
+                             (c[0] + r * lx, c[1] + sx * r * 0.28),
+                             (c[0] + r * (lx - 0.16), c[1] + sx * r * 0.78),
+                             max(2, r // 7))
+    pygame.draw.line(s, palette.darken(col, 0.2), (c[0] - r * 0.65, c[1]),
+                     (c[0] - r * 0.98, c[1] - r * 0.3), max(2, r // 8))
+    _blob(s, c, body, col)
+    pygame.draw.circle(s, (250, 250, 255), (int(c[0] + r * 0.45), int(c[1] - r * 0.12)),
+                       max(2, r // 6))
+    pygame.draw.circle(s, INK, (int(c[0] + r * 0.48), int(c[1] - r * 0.12)),
+                       max(1, r // 12))
+
+
+def _char_vibora(s, c, r, col):
+    """Legless S-curve ending in a heavy club: the tail IS the weapon."""
+    pts = []
+    for k in range(9):
+        f = k / 8.0
+        x = c[0] - r * 0.9 + f * r * 1.7
+        y = c[1] + math.sin(f * math.pi * 1.7) * r * 0.5
+        pts.append((x, y))
+    for i in range(len(pts) - 1):
+        w = max(2, int(r * (0.30 - 0.16 * (i / len(pts)))))
+        pygame.draw.line(s, col, pts[i], pts[i + 1], w * 2)
+    pygame.draw.circle(s, palette.lighten(col, 0.25),
+                       (int(pts[-1][0]), int(pts[-1][1])), max(3, int(r * 0.3)))
+    pygame.draw.circle(s, INK, (int(pts[-1][0]), int(pts[-1][1])),
+                       max(3, int(r * 0.3)), max(1, r // 10))
+    pygame.draw.circle(s, (250, 250, 255), (int(pts[0][0]), int(pts[0][1])),
+                       max(2, r // 7))
+
+
+def _char_couracado(s, c, r, col):
+    """Wide plated shell -- reads as 'wall' before you read the label."""
+    body = [(c[0] - r * 0.85, c[1] + r * 0.1), (c[0] - r * 0.5, c[1] - r * 0.6),
+            (c[0] + r * 0.5, c[1] - r * 0.6), (c[0] + r * 0.9, c[1] + r * 0.1),
+            (c[0] + r * 0.5, c[1] + r * 0.7), (c[0] - r * 0.5, c[1] + r * 0.7)]
+    for sx in (-1, 1):
+        for lx in (-0.4, 0.25):
+            pygame.draw.line(s, palette.darken(col, 0.3),
+                             (c[0] + r * lx, c[1] + sx * r * 0.5),
+                             (c[0] + r * (lx - 0.1), c[1] + sx * r * 0.95),
+                             max(3, r // 5))
+    _blob(s, c, body, col)
+    for k in range(3):                       # chevron plates down the back
+        x = c[0] - r * 0.45 + k * r * 0.45
+        pygame.draw.lines(s, palette.lighten(col, 0.45), False,
+                          [(x, c[1] + r * 0.28), (x + r * 0.2, c[1] - r * 0.18),
+                           (x + r * 0.4, c[1] + r * 0.28)], max(2, r // 9))
+
+
+def _char_larva(s, c, r, col):
+    """Small segmented grub. Deliberately the smallest icon of the four."""
+    for k in range(4):
+        f = k / 3.0
+        rr = r * (0.42 - 0.09 * f)
+        x = c[0] - r * 0.32 + f * r * 0.75
+        pygame.draw.circle(s, col, (int(x), int(c[1])), int(rr))
+        pygame.draw.circle(s, INK, (int(x), int(c[1])), int(rr), max(1, r // 12))
+    pygame.draw.circle(s, (250, 250, 255),
+                       (int(c[0] + r * 0.5), int(c[1] - r * 0.08)), max(2, r // 8))
+
+
 ICONS = {
+    # playable characters
+    'char_lagarto': _char_lagarto, 'char_vibora': _char_vibora,
+    'char_couracado': _char_couracado, 'char_larva': _char_larva,
     # weapons
     'cuspe': _drop, 'ferrao': _arrow, 'teia': _star, 'esporos': _bubbles,
     'feromonio': _rings, 'sopro': _fan, 'enxame': _orbit, 'acido': _puddle,

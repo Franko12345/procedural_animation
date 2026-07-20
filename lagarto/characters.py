@@ -141,7 +141,8 @@ CHARACTERS = [
     Character(
         'larva', 'LARVA',
         'Comeca minuscula com 1 arma. Cresce a cada abate ate ficar enorme.',
-        95,
+        58,      # amarelo: 95 ficava perto demais do verde do LAGARTO na tela
+                 # de selecao, e duas cartas da mesma cor apagam a identidade
         Genome(name='larva', size=0.72, girth=1.25, length=0.8, leg_count=0,
                hue=95, sat=0.9, val=1.0, speed=1.05),
         mods=('INDEFESA NO INICIO', 'CRESCE MATANDO', 'SLOTS PROGRESSIVOS'),
