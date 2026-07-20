@@ -58,6 +58,28 @@ class Lizard:
         self.slow_t = 0.0
         self.slow_mul = 1.0
 
+        self.max_speed = 0.0
+        self._speed_base = 0.0
+        self.rebuild_body(keep_pose=False)
+        self.accel = 900.0
+        self.target_dir = Vector2()
+
+    def rebuild_body(self, keep_pose=True):
+        """Recompute everything derived from the genome -- and nothing else.
+
+        Calling ``__init__`` again also wipes hp, weapons, level, aggro and the
+        rest of the run state, which is why ``champions.py`` had to snapshot a
+        list of fields around it. Three features need the *body* to follow a
+        changed genome while the run continues: the LARVA growing, a champion
+        being promoted, and (phase 5) a boss shedding armour between phases. They
+        all go through here.
+
+        ``max_speed`` accumulates multipliers from meta-progression and cards, so
+        recomputing it from scratch would silently delete them; the ratio against
+        ``_speed_base`` is carried across instead.
+        """
+        g = self.genome
+        self.scale = g.size
         if g.radial:                      # spider: compact body, few joints
             n = 3
             maxr = 15 * g.size * g.girth
@@ -67,14 +89,18 @@ class Lizard:
             maxr = 17 * g.size * g.girth
             link = maxr * 1.05
         self.max_r = maxr
-        self.spine = Spine(pos, n, link, build_radii(n, maxr), bend=26)
+        head = Vector2(self.spine.joints[0]) if (keep_pose and hasattr(self, 'spine')) \
+            else Vector2(self.pos)
+        self.spine = Spine(head, n, link, build_radii(n, maxr), bend=26)
+        self.spine.resolve(head)
         self.legs = self._build_legs(g, n, maxr)
         for leg in self.legs:
             leg.init_foot(self.spine)
 
-        self.max_speed = 165 * (0.85 + 0.4 / g.size) * g.speed
-        self.accel = 900.0
-        self.target_dir = Vector2()
+        base = 165 * (0.85 + 0.4 / g.size) * g.speed
+        mult = (self.max_speed / self._speed_base) if self._speed_base else 1.0
+        self.max_speed = base * mult
+        self._speed_base = base
 
     def _build_legs(self, g, n, maxr):
         if g.leg_count <= 0:
@@ -289,8 +315,15 @@ class Lizard:
 # --------------------------------------------------------------------------- #
 
 class Player(Lizard):
-    def __init__(self, pos, controller, colorset, index):
-        super().__init__(pos, 'player', scale=1.25, color=colorset[0])
+    def __init__(self, pos, controller, colorset, index, character=None):
+        from . import characters
+        char = character if character is not None else characters.get(characters.DEFAULT)
+        # Shape comes from the character, HUE comes from the player slot: the
+        # colourset is what tells P1 from P2, so letting a character own the hue
+        # would make two players who picked the same one indistinguishable.
+        super().__init__(pos, 'player', genome=char.make_genome(), color=colorset[0])
+        self.character = char
+        self.character_id = char.id
         self.colorset = colorset
         self.ctrl = controller
         self.index = index
@@ -342,13 +375,25 @@ class Player(Lizard):
         self.pollen_mult = 1.0       # from meta-progression (Colheita)
         self.weapons = {}            # weapon id -> level
         self.weapon_state = {}       # weapon id -> per-weapon state
-        self.gain_weapon('cuspe')    # everyone starts with the acid spit
+        # --- character-driven knobs (characters.py sets these via char.apply) ---
+        self.weapon_cap = 6          # VIBORA caps at 2, LARVA grows 1 -> 6
+        self.can_dash = True         # COURACADO cannot dash at all
+        self.knockback_immune = False
+        self.whip_mult = 1.0         # VIBORA's tail hits far harder
+        self.rerolls_per_level = 0   # LAGARTO rerolls its level-up hand
+        self.rerolls = 0
+        self.growth = 0              # LARVA: kills banked toward the next size step
         self.ability = None          # active ability id (from charms/evolution)
         self.ability_cd = 0.0
         # charms (Hollow-Knight-style adaptations in 3 body slots)
         self.armor = 0.0             # fraction of damage blocked (carapaca)
         self.charm_slots = {'head': None, 'back': None, 'tail': None}
         self.charms_owned = []
+        # LAST: the character reads and adjusts fields declared above (armour,
+        # thorns, health, whip cooldown), so it cannot run any earlier.
+        self.gain_weapon(char.weapon)
+        if char.apply:
+            char.apply(self)
 
     @property
     def dashing(self):
@@ -394,7 +439,7 @@ class Player(Lizard):
                 * self.might)
 
     def gain_weapon(self, wid):
-        if wid not in self.weapons and len(self.weapons) < 6:
+        if wid not in self.weapons and len(self.weapons) < self.weapon_cap:
             self.weapons[wid] = 1
             self.weapon_state[wid] = weapons.WEAPONS[wid].new_state()
             return True
@@ -461,7 +506,8 @@ class Player(Lizard):
         dmg *= (1.0 - self.armor)                       # carapaca charm blocks a %
         self.health -= dmg
         self.hit_flash = 1.0
-        self.vel = src_dir * (140 + dmg * 6)
+        if not self.knockback_immune:   # COURACADO does not get moved, by anything
+            self.vel = src_dir * (140 + dmg * 6)
         game.fx.burst(self.pos, self.color, 10 + int(dmg / 2), 200)
         game.fx.spark_burst(self.pos, (255, 240, 200), 8 + int(dmg / 3), 320)
         game.shake(4 + dmg * 0.4)
@@ -503,7 +549,8 @@ class Player(Lizard):
         speed_mul *= drag
         self.dash_cd = max(0.0, self.dash_cd - dt)
 
-        if c.dash_edge and self.dash_cd <= 0 and self.energy >= C.DASH_COST:
+        if c.dash_edge and self.can_dash and self.dash_cd <= 0 \
+                and self.energy >= C.DASH_COST:
             c.consume('dash')
             move = c.move if c.move.length_squared() > 0.1 else self.facing
             self.vel = safe_norm(move) * self.max_speed * (3.5 if self.wings else 3.0)
@@ -669,7 +716,8 @@ class Player(Lizard):
         # scales with `might` like every auto-weapon does. Without this the whip
         # was a flat number for the whole run -- strong on wave 1, irrelevant by
         # wave 15 -- and no upgrade could ever improve it.
-        dmg = C.WHIP_DAMAGE * (C.WHIP_CLUB_MULT if club else 1.0) * self.might
+        dmg = (C.WHIP_DAMAGE * (C.WHIP_CLUB_MULT if club else 1.0)
+               * self.might * self.whip_mult)
         knock = C.WHIP_KNOCK_CLUB if club else C.WHIP_KNOCK
         for e in game.enemies:
             if e.dead or e in self.whip_hits:
@@ -1257,5 +1305,9 @@ class AILizard(Lizard):
             game.add_pollen(max(1, self.score_value // 12))
             game.kills += 1
             game.give_xp(self.xp_value)
+            from . import characters
+            for p in game.players:            # LARVA feeds on the whole run
+                if not p.dead:
+                    characters.larva_growth(p, game)
             if random.random() < 0.15:
                 game.spawn_fruit(self.pos)

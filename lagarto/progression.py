@@ -41,12 +41,27 @@ UNLOCKS = {
                             kind='charm', target='asas', hue=200),
     'charm_glandula':  dict(name='Glandula de Esporos', desc='libera o charm Esporos',
                             cost=70, kind='charm', target='glandula', hue=135),
+    # --- personagens jogaveis --------------------------------------------- #
+    # Dois compraveis com DNA e um por CONQUISTA (modelo Isaac/Rain World):
+    # comprar da escolha desde a primeira run, conquistar da objetivo de longo
+    # prazo. `cost=None` significa "nao esta a venda" -- so se ganha.
+    'char_vibora':     dict(name='Vibora', desc='personagem: a cauda e a arma',
+                            cost=120, kind='character', target='vibora', hue=285),
+    'char_couracado':  dict(name='Couracado', desc='personagem: sem dash, blindado',
+                            cost=150, kind='character', target='couracado', hue=20),
+    'char_larva':      dict(name='Larva', desc='personagem: cresce durante a run',
+                            cost=None, kind='character', target='larva', hue=95,
+                            achieve='chegue a onda 8 numa run',
+                            check=lambda d: d.get('best_wave', 0) >= 8),
 }
 
 WIN_BONUS = 150          # DNA extra por vencer a run
 
+# `best_wave` alimenta as conquistas. save() persiste tudo que estiver aqui
+# (`{k: data.get(k, v) for k, v in DEFAULT.items()}`), entao adicionar a chave
+# basta para ela sobreviver -- mas load() precisa valida-la junto.
 DEFAULT = {'dna': 0, 'upgrades': {}, 'unlocks': [], 'best_score': 0, 'runs': 0,
-           'beat_game': False, 'wins': 0}
+           'beat_game': False, 'wins': 0, 'best_wave': 0, 'total_kills': 0}
 
 
 def path():
@@ -66,6 +81,8 @@ def load():
             data['runs'] = max(0, int(raw.get('runs', 0)))
             data['beat_game'] = bool(raw.get('beat_game', False))
             data['wins'] = max(0, int(raw.get('wins', 0)))
+            data['best_wave'] = max(0, int(raw.get('best_wave', 0)))
+            data['total_kills'] = max(0, int(raw.get('total_kills', 0)))
             ups = raw.get('upgrades', {})
             if isinstance(ups, dict):
                 for k, v in ups.items():
@@ -114,7 +131,9 @@ def buy_upgrade(data, uid):
 
 def buy_unlock(data, uid):
     spec = UNLOCKS.get(uid)
-    if not spec or uid in data['unlocks'] or data['dna'] < spec['cost']:
+    # cost=None -> achievement-only, never purchasable
+    if not spec or spec.get('cost') is None or uid in data['unlocks'] \
+            or data['dna'] < spec['cost']:
         return False
     data['dna'] -= spec['cost']
     data['unlocks'].append(uid)
@@ -166,8 +185,36 @@ def finish_run(data, score, wave, kills, won=False):
     data['dna'] += gained
     data['runs'] += 1
     data['best_score'] = max(data['best_score'], int(score))
+    data['best_wave'] = max(data.get('best_wave', 0), int(wave))
+    data['total_kills'] = data.get('total_kills', 0) + int(kills)
+    check_achievements(data)          # may grant characters -- before save()
     save(data)
     return gained
+
+
+def check_achievements(data):
+    """Grant any achievement-gated unlock whose condition is now met.
+
+    Returns the newly granted specs so the end-of-run screen can announce them --
+    an unlock the player never sees might as well not have happened.
+    """
+    won = []
+    for uid, spec in UNLOCKS.items():
+        check = spec.get('check')
+        if check and uid not in data['unlocks'] and check(data):
+            data['unlocks'].append(uid)
+            won.append(spec)
+    return won
+
+
+def unlock_hint(kind, target):
+    """How this thing is obtained, for the locked row on a select screen."""
+    for spec in UNLOCKS.values():
+        if spec['kind'] == kind and spec['target'] == target:
+            if spec.get('achieve'):
+                return spec['achieve']
+            return f"{spec['cost']} DNA em EVOLUCAO"
+    return ''
 
 
 def endless_unlocked(data):

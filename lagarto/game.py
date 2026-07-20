@@ -23,6 +23,7 @@ from . import ui
 from . import progression
 from . import palette
 from . import weapons
+from . import characters
 from . import charms as charmlib
 from .pickups import Bug, Fruit, Egg
 from .fx import FX, shadow
@@ -106,7 +107,8 @@ class TopStack:
 
 
 class Game:
-    def __init__(self, num_players, controllers, font, bigfont, meta=None, mode='normal'):
+    def __init__(self, num_players, controllers, font, bigfont, meta=None,
+                 mode='normal', chars=None):
         self.mode = mode                     # 'normal' (ends at the final boss) | 'endless'
         self.meta = meta if meta is not None else progression.load()
         self.run_banked = False
@@ -126,7 +128,9 @@ class Game:
         for i in range(num_players):
             off = Vector2(-80 if i == 0 else 80, 0)
             colorset = C.COL_PLAYER if i == 0 else C.COL_PLAYER2
-            pl = Player(Vector2(cx, cy) + off, controllers[i], colorset, i)
+            cid = (chars[i] if chars and i < len(chars) else characters.DEFAULT)
+            pl = Player(Vector2(cx, cy) + off, controllers[i], colorset, i,
+                        character=characters.get(cid))
             progression.apply_to_player(self.meta, pl)     # permanent upgrades
             self.players.append(pl)
 
@@ -279,10 +283,30 @@ class Game:
         self.ui_t = 0.0
         self.pick = None
         self._panels.clear()
+        player.rerolls = player.rerolls_per_level      # LAGARTO's hand reroll
         audio.play('levelup')
         self.fx.popup(player.pos, f"NIVEL {player.level}!", C.COL_WHITE)
         self.fx.ring(player.pos, player.colorset[0])
         self.shake(4)
+
+    def reroll_cards(self):
+        """LAGARTO: redraw the level-up hand. Returns True if it happened.
+
+        Rerolling is what turns a run from something that happens to you into
+        something you build -- it is the whole reason to pick LAGARTO twice.
+        Blocked while an absorption is playing (``ui_busy``) for the same reason
+        picking is: the effect has not been applied yet.
+        """
+        p = self.levelup_player
+        if self.state != 'levelup' or self.ui_busy() or not p or p.rerolls <= 0:
+            return False
+        p.rerolls -= 1
+        self.cards = evolution.roll_cards(p, 3)
+        self.card_idx = 0
+        self._panels.clear()          # cards are cached by index+state
+        audio.play('ui')
+        self.fx.ring(p.pos, p.colorset[0])
+        return True
 
     # ---- choosing: pick -> absorption animation -> effect ---------------- #
     def ui_busy(self):
@@ -1089,8 +1113,11 @@ class Game:
         toff, talpha = ui.drop_in(self.ui_t, 0, 0.0, C.UI_VEIL, rise=22.0)
         if talpha > 0.01:
             title = self.bigfont.render("EVOLUIR", True, C.COL_WHITE)
-            sub = self.font.render("escolha uma mutacao  -  1/2/3, setas+ENTER ou clique",
-                                   True, (190, 190, 210))
+            hint = "escolha uma mutacao  -  1/2/3, setas+ENTER ou clique"
+            p = self.levelup_player
+            if p is not None and p.rerolls > 0:
+                hint += f"   [R] rerrolar ({p.rerolls})"
+            sub = self.font.render(hint, True, (190, 190, 210))
             for im, ty in ((title, 96), (sub, 140)):
                 im = im.copy()
                 im.set_alpha(int(255 * talpha))

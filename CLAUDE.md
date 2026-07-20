@@ -51,6 +51,7 @@ Um módulo por responsabilidade — mantenha assim; não volte para arquivo úni
 | `parts.py` | Desenho de partes pelo genoma: espinhos, chifres, placas, cauda (clava/ferrão), nadadeiras. Reusado por inimigos e evolução. |
 | `lizard.py` | `Lizard` (base construída **do genoma**: espinha + N pernas pareadas/radiais + partes + status slow), `Player` (XP/nível/`grant_part`/energia/dash/língua), `AILizard` (prey/enemy/friend + behaviors chase/ranged/lunge/hop + poison). |
 | `species.py` | **Genomas-template** + metadados (role, xp, score, `grants`, `diet`). `make()` spawna variação. Roster: grazer/critter/frog/fish (presa), runner/tank/snake/horned/spiky/spider/spitter/scorpion + **wasp/bomber/gunner/venomer** (inimigo). |
+| `characters.py` | **Personagens jogáveis**: 4 genomas + modificadores de identidade + uma mecânica exclusiva cada. |
 | `champions.py` | **Campeões**: variantes nomeadas (modelo Rain World) + modificadores empilháveis. `maybe_promote` no spawn, chance crescente por onda. |
 | `evolution.py` | **Cartas de mutação** (`MUTATIONS`: stats + partes) + `roll_cards` + **sinergias nomeadas** (`SYNERGIES`, ex.: ARACNIDEO=legs+venom, FORTALEZA=plates+thorns). |
 | `projectile.py` | `Projectile` (cuspe de veneno, teia de slow, tiro de chefe). Helpers `spit`/`web`. |
@@ -86,6 +87,36 @@ Lagarto, cobra, aranha (radial), escorpião, peixe = **genomas diferentes**, nã
   venom, wings) e partes (espinhos/placas/chifres/pernas/clava). **Sinergias** disparam
   no `apply_mutation`. Input das cartas tratado em `app.py` (1/2/3, setas+ENTER, clique).
 - **Cores randomizadas**: cada spawn usa `genome.random_variation` (hue/sat/val/tamanho).
+
+## Personagens jogáveis (`characters.py`)
+
+**O jogador também é construído de um `Genome`**, então quatro personagens visualmente
+distintos custam **zero arte nova** — `parts.draw_all` lê o genoma todo frame e a silhueta
+acompanha. É a mesma premissa dos inimigos aplicada do outro lado.
+
+| Personagem | Corpo | Mecânica exclusiva |
+|---|---|---|
+| **LAGARTO** (livre) | o padrão | `rerolls_per_level`: rerrola a mão de cartas (`game.reroll_cards`, tecla **R**) |
+| **VIBORA** (loja, 120 DNA) | longa, **sem pernas** | `weapon_cap=2` + rabada rápida e forte — o teto **é** a mecânica |
+| **COURACADO** (loja, 150 DNA) | grande, placas | `can_dash=False` + armadura + espinhos + `knockback_immune` |
+| **LARVA** (conquista: onda 8) | minúscula | `characters.larva_growth`: cresce a cada `CHAR_LARVA_KILLS_PER_STEP` abates, 1 → 6 slots |
+
+- **`Lizard.rebuild_body()`** recomputa **só** o que vem do genoma (espinha, pernas, `max_r`,
+  `max_speed`) e nada mais. Antes o único jeito era re-chamar `__init__`, que apaga
+  hp/armas/nível/aggro — por isso `champions.py` tinha uma lista `_KEEP` de 11 campos.
+  Hoje ela sumiu, junto com a classe de bug que remendava. *`max_speed` acumula
+  multiplicadores (DNA, cartas), então a razão contra `_speed_base` é carregada — recomputar
+  do zero apagaria os upgrades em silêncio.*
+- **Forma vem do personagem, MATIZ vem do slot do jogador.** `Player.__init__` passa
+  `colorset[0]` explicitamente; se o personagem definisse a cor, dois jogadores com o mesmo
+  personagem ficariam indistinguíveis no coop.
+- **`char.apply(self)` é a ÚLTIMA coisa do `__init__`** — ele lê `armor`, `thorns`,
+  `max_health` e `whip_cooldown`, que são declarados acima.
+- **Destrave**: `UNLOCKS` com `kind='character'`. `cost=None` = **não está à venda**, só se
+  ganha (`check_achievements` no `finish_run`). `save()` persiste tudo que estiver em
+  `DEFAULT`, então basta adicionar a chave — mas a validação em `load()` tem que acompanhar.
+- Personagem bloqueado **aparece na lista** com o requisito; recompensa invisível não é
+  recompensa.
 
 ## Inimigos da fase 2 + campeões (`champions.py`)
 

@@ -67,6 +67,26 @@ VENOM_PUDDLE_TICK = 0.55
 # e exatamente o bug do Acido, ja documentado e ja corrigido uma vez.
 VENOM_PUDDLE_LIFE = 2.8
 
+# --- personagens jogaveis (characters.py) ----------------------------------- #
+CHAR_LAGARTO_REROLLS = 1        # rerrolagens da mao de cartas, por nivel
+
+CHAR_VIBORA_WEAPON_CAP = 2      # o teto E a mecanica: com 6 armas o rabo e bonus,
+                                # com 2 ele e o seu dano e voce tem que golpear
+CHAR_VIBORA_WHIP_CD = 0.42      # multiplicador da recarga da rabada
+CHAR_VIBORA_WHIP_MULT = 2.4     # multiplicador do dano da rabada
+CHAR_VIBORA_HP = 0.7            # fragil: ficar no alcance do rabo tem que custar
+
+CHAR_COURACADO_ARMOR = 0.3      # tirar o dash e invasivo -> pago tres vezes:
+CHAR_COURACADO_THORNS = 2       # armadura, dano de contato e imunidade a empurrao
+CHAR_COURACADO_HP = 1.45
+
+CHAR_LARVA_HP = 0.62            # comeca indefesa de verdade
+CHAR_LARVA_KILLS_PER_STEP = 12  # abates por degrau de crescimento
+CHAR_LARVA_SIZE_STEP = 1.13     # cada degrau multiplica o tamanho
+CHAR_LARVA_MAX_SIZE = 1.75
+CHAR_LARVA_HP_STEP = 14
+CHAR_LARVA_MAX_SLOTS = 6
+
 # --- campeoes (champions.py) ------------------------------------------------ #
 # Chance sobe com a onda, no formato do Isaac (~5% cedo, ~20% tarde). Vida dos
 # campeoes fica MODESTA de proposito: campeao e ameaca pelo que FAZ; um que so

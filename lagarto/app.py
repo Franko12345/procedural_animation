@@ -146,18 +146,18 @@ def main():
 
     while True:
         if smoke:
-            num, mode = 1, 'normal'
+            num, mode, chars = 1, 'normal', None
         else:
             chosen = run_menu(screen, font, bigfont, titlefont, joysticks)
             if chosen is None:
                 break
-            num, mode = chosen
+            num, mode, chars = chosen
             if not profile:                  # the options screen may have changed it
                 cfg = settings.load()
                 meter.level = cfg.get('perf', perf.OFF)
 
         controllers = make_controllers(num, joysticks)
-        game = Game(num, controllers, font, bigfont, mode=mode)
+        game = Game(num, controllers, font, bigfont, mode=mode, chars=chars)
         fade.start(0.35)                     # fade in from the menu
         prev_state = game.state
         acc = 0.0
@@ -165,7 +165,15 @@ def main():
         running = True
 
         while running:
-            frame_dt = min(clock.tick(0 if smoke else C.RENDER_FPS) / 1000.0, 0.05)
+            # Two different numbers on purpose. `raw_dt` is how long the frame
+            # really took; `frame_dt` is that clamped, because feeding a huge dt
+            # into the fixed-step accumulator is the spiral of death.
+            # They must NOT be conflated: the perf meter used to read the clamped
+            # value, so it saturated at exactly 0.05s -> a permanent "50 ms /
+            # 20 FPS" readout no matter how bad the real frame was, and its
+            # 1-second window (fed by the same dt) stretched to 2+ real seconds.
+            raw_dt = clock.tick(0 if smoke else C.RENDER_FPS) / 1000.0
+            frame_dt = min(raw_dt, 0.05)
             frames += 1
 
             for ev in pygame.event.get():
@@ -199,9 +207,12 @@ def main():
                             if act == 'quit':
                                 running = False
                     elif game.state in ('over', 'victory') and ev.key == pygame.K_RETURN:
-                        game = Game(num, controllers, font, bigfont, mode=mode)
+                        game = Game(num, controllers, font, bigfont, mode=mode,
+                                    chars=chars)
                     elif game.state == 'levelup' and not game.pick:
-                        if ev.key in (pygame.K_1, pygame.K_2, pygame.K_3):
+                        if ev.key == pygame.K_r:
+                            game.reroll_cards()          # LAGARTO's hand reroll
+                        elif ev.key in (pygame.K_1, pygame.K_2, pygame.K_3):
                             game.choose_card(ev.key - pygame.K_1)
                         elif ev.key in (pygame.K_LEFT, pygame.K_a):
                             game.card_idx = max(0, game.card_idx - 1)
@@ -264,7 +275,8 @@ def main():
                 _camp_nav(game, left=nav.left, right=nav.right, up=nav.up,
                           down=nav.down, confirm=nav.confirm)
             elif game.state in ('over', 'victory') and nav.confirm:
-                game = Game(num, controllers, font, bigfont, mode=mode)
+                game = Game(num, controllers, font, bigfont, mode=mode,
+                            chars=chars)
 
             keys = pygame.key.get_pressed()
             mouse_btn = pygame.mouse.get_pressed()
@@ -312,7 +324,7 @@ def main():
             _t = time.perf_counter()
             display.present()
             present_ms = (time.perf_counter() - _t) * 1000.0
-            meter.frame(frame_dt, step_ms, draw_ms, present_ms, game)
+            meter.frame(raw_dt, step_ms, draw_ms, present_ms, game)
 
             if smoke and frames >= smoke:
                 print(f"[smoke] {frames} frames ok  score={game.score} "

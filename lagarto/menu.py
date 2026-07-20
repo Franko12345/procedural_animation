@@ -10,6 +10,7 @@ from pygame import Vector2
 import pygame
 
 from . import audio
+from . import characters
 from . import charms
 from . import config as C
 from . import display
@@ -371,9 +372,44 @@ def run_menu(screen, font, bigfont, titlefont, joysticks):
     tab_rects = []
     meta = progression.load()
 
+    pending = None       # (num_players, game_mode) waiting on character picks
+    picks = []           # one character id per player, filled in order
+
     def toggle_fs():
         display.toggle_fullscreen()
         settings.save_display(display, audio)
+
+    def handle(r):
+        """Resolve one activation. Returns ('go', value) to leave run_menu.
+
+        All three input paths (keyboard, mouse, gamepad) used to repeat this
+        block verbatim; character select added a second exit condition, and
+        three copies of a two-exit rule is how they drift apart.
+        """
+        nonlocal mode, sel, pending, picks
+        if r == 'quit':
+            return ('go', None)
+        if isinstance(r, tuple) and r[0] == 'pick':
+            ch = characters.CHARACTERS[r[1]]
+            if characters.is_locked(ch, meta):
+                audio.play('ui', 0.35)          # locked: refuse, don't advance
+                return None
+            picks.append(ch.id)
+            audio.play('ui')
+            if pending and len(picks) >= pending[0]:
+                return ('go', (pending[0], pending[1], list(picks)))
+            return None
+        st = _start_for(r, meta)
+        if st:
+            # every start now routes through character select first
+            pending, picks = st, []
+            mode, sel = 'chars', 0
+            return None
+        if r is not None and r not in ('play1', 'play2', 'endless'):
+            mode, sel = r, 0
+            if r == 'main':
+                pending, picks = None, []
+        return None
 
     while True:
         dt = clock.tick(60) / 1000.0
@@ -400,13 +436,9 @@ def run_menu(screen, font, bigfont, titlefont, joysticks):
                     if mode == 'meta' and _buy_meta(meta, items[:-1], sel):
                         audio.play('buy'); meta = progression.load(); continue
                     r = _activate(mode, sel, toggle_fs, len(items))
-                    if r == 'quit':
-                        return None
-                    st = _start_for(r, meta)
-                    if st:
-                        return st
-                    if r is not None and r not in ('play1', 'play2', 'endless'):
-                        mode, sel = r, 0
+                    done = handle(r)
+                    if done is not None:
+                        return done[1]
                 elif ev.key == pygame.K_ESCAPE:
                     if mode == 'main':
                         return None
@@ -424,13 +456,9 @@ def run_menu(screen, font, bigfont, titlefont, joysticks):
                         if mode == 'meta' and _buy_meta(meta, items[:-1], sel):
                             audio.play('buy'); meta = progression.load(); break
                         r = _activate(mode, sel, toggle_fs, len(items))
-                        if r == 'quit':
-                            return None
-                        st = _start_for(r, meta)
-                        if st:
-                            return st
-                        if r is not None and r not in ('play1', 'play2', 'endless'):
-                            mode, sel = r, 0
+                        done = handle(r)
+                        if done is not None:
+                            return done[1]
                         break
 
         # gamepad navigation (same actions as the keyboard)
@@ -448,13 +476,9 @@ def run_menu(screen, font, bigfont, titlefont, joysticks):
             audio.play('buy'); meta = progression.load()
         elif nav.confirm:
             r = _activate(mode, sel, toggle_fs, len(items))
-            if r == 'quit':
-                return None
-            st = _start_for(r, meta)
-            if st:
-                return st
-            if r is not None and r not in ('play1', 'play2', 'endless'):
-                mode, sel = r, 0
+            done = handle(r)
+            if done is not None:
+                return done[1]
         if nav.cancel:
             if mode == 'main':
                 return None
@@ -547,7 +571,7 @@ CONTROLS = (
     "P2:  setas mover  -  IJKL mirar  -  RCtrl dash  -  RShift lingua  -  RAlt rabada",
     "P2 (gamepad):  sticks  -  A dash  -  X lingua  -  Y rabada",
     "",
-    "armas atacam sozinhas - suba de nivel p/ evoluir",
+    "armas atacam sozinhas - suba de nivel p/ evoluir  -  [R] rerrola as cartas (LAGARTO)",
     "F11 tela cheia  -  F3 medidor de FPS  -  ESC pausa",
 )
 
@@ -573,6 +597,8 @@ def _items_for(mode, bkeys, tab, meta):
                 'VOLTAR']
     if mode == 'meta':
         return _meta_entries() + ['VOLTAR']
+    if mode == 'chars':
+        return _char_entries(meta) + ['VOLTAR']
     if mode == 'bestiary':
         return bkeys + ['VOLTAR']
     if mode == 'compendium':
@@ -580,8 +606,23 @@ def _items_for(mode, bkeys, tab, meta):
     return ['VOLTAR']
 
 
+def _char_entries(meta):
+    """One line per character. Locked ones are *shown*, greyed with their
+    requirement -- a reward the player cannot see is not a reward."""
+    out = []
+    for c in characters.CHARACTERS:
+        if characters.is_locked(c, meta):
+            req = progression.unlock_hint('character', c.id)
+            out.append(f'{c.name}  (bloqueado: {req})')
+        else:
+            out.append(f'{c.name}  -  {c.blurb}')
+    return out
+
+
 def _activate(mode, sel, toggle_fs, n_items=0):
     """Return 1/2 to start, a mode name to switch screen, or None for no-op."""
+    if mode == 'chars':
+        return 'main' if sel >= n_items - 1 else ('pick', sel)
     if mode in ('bestiary', 'compendium'):
         return 'main' if sel >= n_items - 1 else None    # only VOLTAR does anything
     if mode == 'meta':

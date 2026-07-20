@@ -18,8 +18,6 @@ because of what it *does*; an enemy that is merely a sponge teaches nothing.
 
 import random
 
-from pygame import Vector2
-
 from . import config as C
 from . import palette
 from .mathutil import safe_norm
@@ -42,22 +40,16 @@ class Champion:
         return palette.vibrant(self.hue, 0.85, 1.0)
 
 
-# Fields that must survive a body rebuild. ``__init__`` resets *every* AILizard
-# attribute, so without this: species.make's metadata (species/xp/score/grants/hp)
-# reverts to the raw genome defaults, and stacking a modifier onto a variant
-# silently erases the variant that was applied first. Both are invisible at spawn
-# and only show up as wrong score/behaviour much later.
-_KEEP = ('species', 'xp_value', 'score_value', 'grants', 'hp', 'max_hp',
-         'champion', 'champion_name', 'champion_ticks',
-         'front_armor', 'death_blast', 'glow_body')
+def _rebuild(c):
+    """Rebuild the body after the genome changed.
 
-
-def _rebuild(c, pos):
-    """Re-run the body build after the genome changed (same trick as _spawn_boss)."""
-    keep = {k: getattr(c, k) for k in _KEEP if hasattr(c, k)}
-    c.__init__(pos, c.kind, genome=c.genome)
-    for k, v in keep.items():
-        setattr(c, k, v)
+    This used to re-run ``__init__`` behind a snapshot of ~11 fields, because
+    ``__init__`` resets everything: species.make's metadata reverted to the raw
+    genome defaults, and stacking a modifier onto a variant erased the variant.
+    ``Lizard.rebuild_body`` only touches genome-derived state, so the snapshot --
+    and the whole class of bug it was patching over -- is gone.
+    """
+    c.rebuild_body()
 
 
 # --------------------------------------------------------------------------- #
@@ -74,8 +66,7 @@ def _filhote(c, game):
     g.size *= 0.55
     g.hue = 205
     g.sat = 0.95
-    pos = Vector2(c.pos)
-    _rebuild(c, pos)
+    _rebuild(c)
     c.hp = 1
     c.max_hp = 1
     # Absolute, not a multiplier. max_speed is `165 * (0.85 + 0.4/size) * speed`,
@@ -99,8 +90,7 @@ def _alfa(c, game):
     g.size *= 1.15
     g.hue = 48
     g.sat = 0.95
-    pos = Vector2(c.pos)
-    _rebuild(c, pos)
+    _rebuild(c)
 
 
 def _alfa_tick(c, dt, game):
@@ -129,8 +119,7 @@ def _espectro(c, game):
     g.hue = 190
     g.sat = 0.12
     g.val = 1.0
-    pos = Vector2(c.pos)
-    _rebuild(c, pos)
+    _rebuild(c)
     c.base_color = c.color
 
 
@@ -157,8 +146,7 @@ def _saltador(c, game):
     g.hue = 178
     g.sat = 0.9
     g.tail = 'club'                 # the heavy tail it launches from: the tell
-    pos = Vector2(c.pos)
-    _rebuild(c, pos)
+    _rebuild(c)
 
 
 def _saltador_tick(c, dt, game):
@@ -181,8 +169,7 @@ def _apice(c, game):
     g.hue = 2
     g.sat = 1.0
     g.horns = max(1, g.horns)
-    pos = Vector2(c.pos)
-    _rebuild(c, pos)
+    _rebuild(c)
     c.max_speed *= 1.15
     c.glow_body = True
     c.xp_value = int(c.xp_value * 1.6)
@@ -196,8 +183,7 @@ def _apice(c, game):
 def _blindado(c, game):
     """Armoured at the front, soft behind: rewards dashing *through* instead of into."""
     c.genome.plates = max(1, c.genome.plates)
-    pos = Vector2(c.pos)
-    _rebuild(c, pos)
+    _rebuild(c)
     c.front_armor = C.CHAMP_ARMOR
 
 
@@ -205,8 +191,7 @@ def _gigante(c, game):
     g = c.genome
     g.size *= 1.5
     g.girth *= 1.1
-    pos = Vector2(c.pos)
-    _rebuild(c, pos)
+    _rebuild(c)
     c.score_value = int(c.score_value * 1.5)
 
 
@@ -214,8 +199,7 @@ def _explosivo(c, game):
     """Leaves a parting gift, so killing it in your own face is a real mistake."""
     c.death_blast = True
     c.genome.spore_sacs = True
-    pos = Vector2(c.pos)
-    _rebuild(c, pos)
+    _rebuild(c)
 
 
 CHAMPIONS = [

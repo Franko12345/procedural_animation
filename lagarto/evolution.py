@@ -118,7 +118,7 @@ def _weapon_cards(player):
             lvl = player.weapons[wid]
             if lvl < w.maxlevel():
                 cards.append(WeaponCard(wid, False, lvl + 1))
-        elif len(player.weapons) < 6:
+        elif len(player.weapons) < getattr(player, 'weapon_cap', 6):
             cards.append(WeaponCard(wid, True, 1))
     return cards
 
