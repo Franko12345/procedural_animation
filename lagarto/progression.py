@@ -19,7 +19,7 @@ from . import settings
 UPGRADES = {
     'vitality':  dict(name='Vitalidade', desc='+12 vida maxima por nivel',
                       hue=5, max_level=5, cost=lambda l: 30 + 25 * l),
-    'might':     dict(name='Potencia', desc='+6% dano das armas por nivel',
+    'might':     dict(name='Potencia', desc='+6% dano por nivel (armas, dash, rabo)',
                       hue=0, max_level=5, cost=lambda l: 40 + 30 * l),
     'haste':     dict(name='Cadencia', desc='-4% recarga das armas por nivel',
                       hue=190, max_level=5, cost=lambda l: 40 + 30 * l),

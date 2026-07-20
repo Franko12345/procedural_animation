@@ -803,11 +803,11 @@ class Game:
                     grant = getattr(e, 'grants', None)
                     if p.venom:
                         e.apply_poison(2.5, 2.5)
-                    dmg = C.DASH_DAMAGE
+                    dmg = p.dash_damage()
                     if where == 'head':                 # weak point
-                        dmg = int(round(dmg * C.CRIT_MULT))
+                        dmg *= C.CRIT_MULT
                         self.crit_fx(e.spine.joints[0])
-                    e.take_hit(self, safe_norm(e.pos - p.pos), dmg)
+                    e.take_hit(self, safe_norm(e.pos - p.pos), int(round(dmg)))
                     if e.dead:
                         self.punch(0.07, 8)          # dash-kill: crunchy freeze
                         # stealing a body part is now a rare treat, not every kill
@@ -824,7 +824,7 @@ class Game:
                     if p.pos.distance_to(n.pos) < p.max_r + n.max_r:
                         p.dash_hits.add(n)
                         # a nest is a big stationary target: a full body slam lands
-                        n.take_hit(self, C.DASH_DAMAGE * 2)
+                        n.take_hit(self, int(round(p.dash_damage() * 2)))
                         self.shake(5)
 
     # ---- draw ----------------------------------------------------------- #

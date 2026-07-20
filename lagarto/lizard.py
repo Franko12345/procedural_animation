@@ -380,6 +380,17 @@ class Player(Lizard):
             game.fx.spark_burst(self.pos, palette.lighten(ch.color, 0.4), 10, 260)
             game.fx.ring(self.pos, ch.color)
 
+    def dash_damage(self):
+        """Damage one dash contact deals.
+
+        Single source of truth on purpose: the nest call site in ``game`` read
+        ``C.DASH_DAMAGE`` directly, so any scaling added at the enemy call site
+        would have silently skipped nests -- the same "two places that must agree"
+        shape as the whip's hitbox vs. its animation span.
+        """
+        return (C.DASH_DAMAGE * (C.DASH_WINGS_MULT if self.wings else 1.0)
+                * self.might)
+
     def gain_weapon(self, wid):
         if wid not in self.weapons and len(self.weapons) < 6:
             self.weapons[wid] = 1

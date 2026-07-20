@@ -54,8 +54,17 @@ PICK_HOLD = 0.56         # fica parado no centro ate aqui (da tempo de ler)
 PICK_END = 0.86          # atinge o jogador -> efeito aplicado
 PICK_ROUTE_END = 0.50    # rotas: versao curta (so expande e avanca)
 
-# dano de UM dash (antes o dash reaplicava 3 por frame = ~30 por investida)
-DASH_DAMAGE = 5
+# Dano de UM dash (antes o dash reaplicava 3 por frame = ~30 por investida).
+# Mesmo tratamento da rabada: base menor + escala com `might`, porque 5 fixo era
+# igual na onda 1 e na onda 20. Membranas ja melhorava velocidade/duracao/custo
+# do dash mas NAO o dano, apesar de a carta prometer "dash mais forte" -- agora
+# `DASH_WINGS_MULT` cumpre a promessa e da ao dash o mesmo par base+upgrade que a
+# cauda tem com a clava.
+#   nu ............... 4  (critico 8)
+#   + membranas ...... 6  (critico 12)
+#   + membranas e 3 Vigor  10 (critico 21)
+DASH_DAMAGE = 4
+DASH_WINGS_MULT = 1.5
 
 # colisao macia: atravessar inimigo custa ate 55% da velocidade em vez de te empurrar
 CONTACT_DRAG = 0.55

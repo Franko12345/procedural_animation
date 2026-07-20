@@ -222,8 +222,15 @@ Q**, P2 **RAlt**, gamepad **Y**). Custa `C.WHIP_COST`, cooldown `Player.whip_coo
   `_whip_hit` multiplica por `player.might`, então **Vigor** (+20%/carta) e **Potência**
   (DNA, +6%/nível) finalmente melhoram o golpe, e `WHIP_CLUB_MULT` (2.6) faz da clava *o*
   upgrade que transforma a cauda em arma: 2 nua → 5 com clava → 12 com clava+Vigor+DNA.
-  **O dash continua sem escalar** (`C.DASH_DAMAGE` fixo) — mesmo formato de problema,
-  ainda não decidido.
+- **O dash levou o mesmo tratamento** (`Player.dash_damage()`): base 5 → 4, ×
+  `DASH_WINGS_MULT` (1.5) com Membranas, × `might`. **Membranas já melhorava
+  velocidade/duração/cooldown/custo do dash mas *não* o dano**, apesar de a carta prometer
+  "dash mais forte" — agora cumpre. 4 nu → 6 com membranas → 13 com membranas+Vigor+DNA.
+  *O cálculo vive num método porque havia **dois** call sites lendo `C.DASH_DAMAGE` direto
+  (inimigo e ninho): escala adicionada num deles pularia o outro em silêncio.*
+- **Descrições de carta agora dizem a verdade**: `might` afeta armas **e** dash **e**
+  rabada, não só armas. Ao adicionar escala nova, corrija o texto da carta junto — a
+  promessa não-cumprida de Membranas passou despercebida por muito tempo.
 - **A hitbox usa a MESMA seção que se move** (`_whip_span` serve os dois). Quando só as 3
   últimas juntas eram testadas e a seção que balança cresceu para 6, a cauda passava
   visivelmente por cima do inimigo sem acertar.
