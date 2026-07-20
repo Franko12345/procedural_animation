@@ -35,6 +35,30 @@ from .rounds import RoundManager
 from .mathutil import vfrom_angle as _vfrom_angle
 
 
+def _bar_tail(surf, bx, by, h, color, phase, t):
+    """A little lizard TAIL wagging off the top of the bar.
+
+    Same vocabulary as the real body (``spine.RADII_PROFILE``): a curved chain
+    that tapers to a point, not a stick with a bead on the end. Drawn as a run of
+    filled circles shrinking base->tip; the sway grows toward the tip so the last
+    segments whip like a follow-through.
+    """
+    n = 9
+    length = h * 1.5                       # long and whippy, still clears the label row
+    r0 = max(2.0, h * 0.32)                # slimmer root than a leaf
+    core = palette.lighten(color, 0.3)
+    for k in range(n):
+        f = k / (n - 1)
+        py = by - f * length
+        # tip sways most; a phase per tail so they don't wag in unison
+        px = bx + math.sin(t * 3.4 + phase + f * 2.6) * (h * 0.62) * f * f
+        r = max(1, int(r0 * (1.0 - f) ** 1.3 + 0.8))   # curved taper -> pointed tip
+        pygame.draw.circle(surf, color, (int(px), int(py)), r)
+        if r > 2:                                   # top-left highlight = light source
+            pygame.draw.circle(surf, core,
+                               (int(px - r * 0.3), int(py - r * 0.3)), max(1, r // 2))
+
+
 def _bio_bar(surf, x, y, w, h, frac, color, t, flagella=0, glow=None):
     """An organic 'membrane sac' bar instead of a flat rectangle.
 
@@ -65,14 +89,7 @@ def _bio_bar(surf, x, y, w, h, frac, color, t, flagella=0, glow=None):
         pygame.draw.circle(surf, palette.lighten(color, 0.5), tip, max(2, h // 3))
         for k in range(flagella):
             fx = x + int(fw * (k + 0.5) / max(1, flagella))
-            sway = math.sin(t * 4.0 + k * 1.7) * 0.55
-            base = (fx, y + 2)
-            mid = (fx + int(h * 0.45 * sway), y - int(h * 0.55))
-            tipf = (fx + int(h * 0.8 * sway), y - int(h * 1.05))
-            pygame.draw.lines(surf, palette.lighten(color, 0.2), False,
-                              [base, mid, tipf], max(1, h // 8))
-            pygame.draw.circle(surf, palette.lighten(color, 0.5),
-                               (int(tipf[0]), int(tipf[1])), max(1, h // 6))
+            _bar_tail(surf, fx, y + 1, h, color, phase=k * 2.1, t=t)
     if glow:
         palette.glow(surf, (x + fw, y + h // 2), h, color, 0.25)
     # living rim
