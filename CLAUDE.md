@@ -216,6 +216,14 @@ Q**, P2 **RAlt**, gamepad **Y**). Custa `C.WHIP_COST`, cooldown `Player.whip_coo
 - **Modificadores da cauda** (era tudo cosmético antes): `club` → `WHIP_CLUB_MULT` de dano
   + `WHIP_KNOCK_CLUB` de empurrão + shake maior; `sting` → `apply_poison`. *Nota: o ferrão
   dos **inimigos** aplica `apply_slow`, o do jogador envenena — divergência proposital.*
+- **A cauda nua é fraca de propósito; o dano vem dos upgrades.** Antes o golpe era **5
+  fixo e não escalava com nada** — `might` era lido só pelas armas — então a rabada era
+  idêntica na onda 1 e na onda 20: dominava cedo e virava irrelevante tarde. Hoje
+  `_whip_hit` multiplica por `player.might`, então **Vigor** (+20%/carta) e **Potência**
+  (DNA, +6%/nível) finalmente melhoram o golpe, e `WHIP_CLUB_MULT` (2.6) faz da clava *o*
+  upgrade que transforma a cauda em arma: 2 nua → 5 com clava → 12 com clava+Vigor+DNA.
+  **O dash continua sem escalar** (`C.DASH_DAMAGE` fixo) — mesmo formato de problema,
+  ainda não decidido.
 - **A hitbox usa a MESMA seção que se move** (`_whip_span` serve os dois). Quando só as 3
   últimas juntas eram testadas e a seção que balança cresceu para 6, a cauda passava
   visivelmente por cima do inimigo sem acertar.
@@ -389,9 +397,10 @@ ser **consequência de erro de posição**. Vida a mais vira esponja e ainda faz
   `ENEMY_DMG_BASE` (11), `ENEMY_DMG_SIZE` (0.5) e uma **escada por onda em degraus**
   (`ENEMY_DMG_STEP`/`ENEMY_DMG_PER_STEP`) — rampa contínua o jogador não percebe, degrau
   ele sente. Corredor 16→26 da onda 1 à 20; tanque 26→36. Projétil: `ENEMY_PROJ_DMG` (10).
-- **`ENEMY_HP_MULT` 3.0 → 2.2.** O 3.0 tinha sido subido para compensar a hitbox de corpo
-  inteiro **e** os bugs de dano (dash multi-hit, ácido empilhando), e nunca foi revisitado
-  depois que os bugs foram corrigidos.
+- **`ENEMY_HP_MULT`: 3.0 → 2.2 (medição) → 3.5 (playtest).** O bot headless mediu o TTK das
+  **armas** e concluiu 2.2; jogando de verdade quem mata é o **dash + a rabada**, muito
+  mais rápidos, e a sensação era de inimigos de papel. **Lição: o bot mede atrito, não
+  dificuldade** — use-o para comparar antes/depois, nunca para decidir o valor final.
 - **Não mexer nos i-frames** (`hit_flash > 0.45`) — são o que mantém o jogo justo.
 
 **Medição (bot headless dirigido, `--smoke` não serve para isso).** Dois estilos: `kite`

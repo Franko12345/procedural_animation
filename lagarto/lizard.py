@@ -653,7 +653,10 @@ class Player(Lizard):
         reach = self.max_r * 1.6
         club = self.genome.tail == 'club'
         sting = self.genome.tail == 'sting'
-        dmg = C.WHIP_DAMAGE * (C.WHIP_CLUB_MULT if club else 1.0)
+        # scales with `might` like every auto-weapon does. Without this the whip
+        # was a flat number for the whole run -- strong on wave 1, irrelevant by
+        # wave 15 -- and no upgrade could ever improve it.
+        dmg = C.WHIP_DAMAGE * (C.WHIP_CLUB_MULT if club else 1.0) * self.might
         knock = C.WHIP_KNOCK_CLUB if club else C.WHIP_KNOCK
         for e in game.enemies:
             if e.dead or e in self.whip_hits:

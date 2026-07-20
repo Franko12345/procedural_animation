@@ -18,13 +18,13 @@ MAX_STEPS = 5            # cap sim steps per frame -> avoids the "spiral of deat
 RUN_FINAL_WAVE = 20      # modo normal: onda do chefe final (vitoria)
 
 FRIEND_HP = 6            # aliados agora tomam dano de verdade -> precisam aguentar
-# Vida dos inimigos. Estava em 3.0: foi subido duas vezes, primeiro para compensar
-# a hitbox de corpo inteiro e depois os bugs de dano (dash multi-hit, acido
-# empilhando) -- e nunca revisitado depois que os bugs foram corrigidos. Medido
-# com bot headless: a 3.0 um corredor da onda 1 tem 12 de vida contra o cuspe Nv1
-# de 1 de dano a cada 1,05s, ou seja 12,6s de fogo por inimigo, e jogar passivo
-# NAO limpa a onda 1 em 6 minutos. A dificuldade vem do dano (abaixo), nao daqui.
-ENEMY_HP_MULT = 2.2
+# Vida dos inimigos. Historico: 3.0 -> 2.2 (medicao) -> 3.5 (playtest do usuario,
+# que manda). O bot headless media o TTK das ARMAS e concluiu 2.2; jogando de
+# verdade quem mata e o dash + a rabada, que sao muito mais rapidos, entao a
+# sensacao real era de inimigos de papel. Licao: o bot mede atrito, nao dificuldade.
+# O preco de 3.5 e que jogar passivo fica ainda mais inviavel (ver CLAUDE.md,
+# "Balanceamento 2a passada") -- a dificuldade continua vindo do dano, nao daqui.
+ENEMY_HP_MULT = 3.5
 
 # --- dano dos inimigos ----------------------------------------------------- #
 # Sobe DANO, nao vida. Num jogo de ataque automatico a unica agencia do jogador e
@@ -75,11 +75,17 @@ WHIP_SWEEP = 150
 WHIP_TIME = 0.68         # duracao do golpe (dois lados cabem aqui). Mais lento le
                          # melhor: da peso e da tempo de ver a cauda passar.
 WHIP_COST = 10
-# Depois que o golpe passou a mover a CAUDA (e nao o jogador), ele so alcanca o
-# arco atras/ao lado -- medido 1-2 alvos por golpe, nao 4-5. Entao o dano por
-# acerto voltou para perto do dash; o que paga a diferenca e o cooldown maior.
-WHIP_DAMAGE = 5
-WHIP_CLUB_MULT = 1.6     # dano com cauda-clava (3 -> 4.8, critico ~10)
+# A cauda NUA e fraca de proposito: sem upgrade ela vale pelo empurrao e pelo
+# controle de espaco, nao pelo dano. O dano de verdade vem dos modificadores.
+# Antes era 5 fixo e NAO escalava com nada (`might` so era lido pelas armas), ou
+# seja a rabada era identica na onda 1 e na onda 20: dominava cedo e sumia tarde.
+# Hoje `_whip_hit` multiplica por `player.might`, entao Vigor (+20%/carta) e
+# Potencia (DNA, +6%/nivel) finalmente melhoram o golpe.
+#   nua .............. 2   (critico 4)
+#   + cauda-clava .... 5,2 (critico 10,4)
+#   + clava e 3 Vigor  9   (critico 18)
+WHIP_DAMAGE = 2
+WHIP_CLUB_MULT = 2.6     # a clava e o upgrade que transforma a cauda em arma
 WHIP_KNOCK = 170         # empurrao base (a clava usa WHIP_KNOCK_CLUB)
 WHIP_KNOCK_CLUB = 460
 # A simulacao e fixa em SIM_HZ e o desenho NAO interpola entre estados, entao
