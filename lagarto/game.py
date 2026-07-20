@@ -5,6 +5,7 @@ escalating predator waves and draws everything (background, shadows, entities,
 particles, HUD, game-over).
 """
 
+import copy
 import math
 import random
 from pygame import Vector2
@@ -605,8 +606,20 @@ class Game:
     def spawn_fruit(self, pos):
         self.pickups.append(Fruit(pos + vfrom_angle(random.uniform(0, 360), 20)))
 
-    def spawn_projectile(self, proj):
+    def spawn_projectile(self, proj, mirror=True):
         self.projectiles.append(proj)
+        # Retaguarda mirrors every friendly shot backwards. It lives HERE because
+        # this is the single choke point every weapon already goes through --
+        # implementing it per-weapon would be eight copies of one rule.
+        if not (mirror and not proj.hostile):
+            return
+        if not any(getattr(p, 'amount_back', False) for p in self.players if not p.dead):
+            return
+        back = copy.copy(proj)
+        back.vel = -Vector2(proj.vel)
+        back.pos = Vector2(proj.pos)
+        back.trail = []
+        self.spawn_projectile(back, mirror=False)      # mirror=False: no recursion
 
     def spawn_puddle(self, puddle):
         if len(self.puddles) < 40:
@@ -839,12 +852,18 @@ class Game:
                         dmg *= C.CRIT_MULT
                         self.crit_fx(e.spine.joints[0])
                     e.take_hit(self, safe_norm(e.pos - p.pos), int(round(dmg)))
+                    # Marked AFTER the dash's own hit: marking first meant the
+                    # dash spent the crit it had just created, so the item did
+                    # nothing the player could ever observe.
+                    if p.dash_marks and not e.dead:
+                        e.marked = True
                     if e.dead:
                         self.punch(0.07, 8)          # dash-kill: crunchy freeze
                         # stealing a body part is now a rare treat, not every kill
                         if grant and random.random() < 0.12:
                             p.grant_part(grant, self)
-                        p.dash_cd *= 0.35           # chain: a kill refreshes the dash
+                        # Ricochete turns the chain into a full refresh
+                        p.dash_cd = 0.0 if p.dash_chain_bonus else p.dash_cd * 0.35
                         p.energy = min(p.max_energy, p.energy + 6)
                     self.shake(6)
             # dashing through a nest damages it
@@ -978,6 +997,39 @@ class Game:
             if p.down:
                 ui.text(surf, self.font, f"CAIDO {p.revive:0.0f}s - toque p/ reviver",
                         (x, dy + 34), C.COL_ENEMY)
+            # Active item: its own corner, not a fourth cooldown dial (the dial
+            # row is a 216px panel at 68px pitch -- a fourth lands outside it).
+            # Top-right when it is free; in co-op that corner IS P2's panel, so
+            # each player gets it under their own dials instead.
+            if p.ability:
+                from . import items as itemlib
+                it = itemlib.BY_ID.get(p.ability)
+                if it is not None:
+                    if len(self.players) == 1:
+                        ix, iy = C.WIDTH - 52, 46
+                    else:
+                        ix = (x + 20) if i == 0 else (x + bw - 20)
+                        iy = dy + 62
+                    full = p.ability_charge >= 1.0
+                    col = it.color if full else (96, 100, 128)
+                    if full:
+                        pulse = 0.5 + 0.5 * math.sin(self.time * 6)
+                        palette.glow(surf, (ix, iy), 30, it.color, 0.28 + 0.2 * pulse)
+                    icons.draw(surf, it.icon, (ix, iy), 13, col, glow=False)
+                    pygame.draw.circle(surf, (36, 40, 58), (ix, iy), 18, 3)
+                    if p.ability_charge > 0:
+                        pygame.draw.arc(surf, col, (ix - 18, iy - 18, 36, 36),
+                                        math.pi / 2,
+                                        math.pi / 2 + p.ability_charge * C.TAU, 3)
+                    lbl = "E" if i == 0 else "U"
+                    if len(self.players) == 1:
+                        ui.text(surf, self.smallfont, lbl, (ix, iy + 24), col,
+                                align='center')
+                        ui.text(surf, self.smallfont, it.name, (ix - 26, iy - 7),
+                                col, align='right')
+                    else:
+                        ui.text(surf, self.smallfont, lbl, (ix + 22, iy - 8), col)
+
             # equipped weapons live in the bottom corners so they never collide
             # with the health/energy bars or the cooldown dials
             wy = C.HEIGHT - 34

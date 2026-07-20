@@ -385,8 +385,33 @@ class Player(Lizard):
         # round, so refilling there made them effectively unlimited)
         self.rerolls = 0
         self.growth = 0              # LARVA: kills banked toward the next size step
-        self.ability = None          # active ability id (from charms/evolution)
+        # --- items (items.py) ---
+        self.items = []              # owned item ids, in pickup order
+        self.ability = None          # equipped ACTIVE item id (the socket)
         self.ability_cd = 0.0
+        self.ability_charge = 0.0    # 0..1, for the HUD ring
+        self.ability_kills = 0       # the real counter (integers do not drift)
+        self.shed_t = 0.0            # Muda de Pele / Casulo: extra i-frames
+        self._trail_cd = 0.0         # spacing of the dash's corrosive puddles
+        # mechanic-rewriting passives. Each is read at exactly ONE call site --
+        # the dash taught us what happens when the same rule lives in two places.
+        self.dash_trail = False      # dash leaves a corrosive puddle
+        self.dash_marks = False      # dashing through marks the enemy
+        self.dash_chain_bonus = False
+        self.tongue_throw = False    # tongue throws instead of pulling
+        self.tongue_drain = False
+        self.whip_darts = False      # whip fires darts from the arc tips
+        self.whip_reflect = False    # whip bats enemy shots back
+        self.whip_full = False       # whip sweeps the whole circle
+        self.kill_blast = False
+        self.kill_heal = False
+        self.poison_spreads = False
+        self.pollen_magnet = False
+        self.amount_back = False     # weapons also fire backwards
+        self.adrenaline = False
+        self.extra_life = False
+        self.used_extra_life = False
+        self.shed_on_hurt = False    # Casulo: extra i-frames after being hit
         # charms (Hollow-Knight-style adaptations in 3 body slots)
         self.armor = 0.0             # fraction of damage blocked (carapaca)
         self.charm_slots = {'head': None, 'back': None, 'tail': None}
@@ -429,6 +454,17 @@ class Player(Lizard):
             game.fx.spark_burst(self.pos, palette.lighten(ch.color, 0.4), 10, 260)
             game.fx.ring(self.pos, ch.color)
 
+    def damage_mult(self):
+        """Every player damage source multiplies by this.
+
+        Adrenalina lives here rather than in each weapon/dash/whip: a global rule
+        written once cannot drift out of sync with the sources that read it.
+        """
+        m = self.might
+        if self.adrenaline and self.health < self.max_health * C.ITEM_ADRENALINE_HP:
+            m *= C.ITEM_ADRENALINE_MULT
+        return m
+
     def dash_damage(self):
         """Damage one dash contact deals.
 
@@ -438,7 +474,7 @@ class Player(Lizard):
         shape as the whip's hitbox vs. its animation span.
         """
         return (C.DASH_DAMAGE * (C.DASH_WINGS_MULT if self.wings else 1.0)
-                * self.might)
+                * self.damage_mult())
 
     def gain_weapon(self, wid):
         if wid not in self.weapons and len(self.weapons) < self.weapon_cap:
@@ -503,7 +539,7 @@ class Player(Lizard):
         game.shake(4)
 
     def hurt(self, game, src_dir, dmg=10):
-        if self.dashing or self.hit_flash > 0.45 or self.down:
+        if self.dashing or self.hit_flash > 0.45 or self.down or self.shed_t > 0:
             return
         dmg *= (1.0 - self.armor)                       # carapaca charm blocks a %
         self.health -= dmg
@@ -513,7 +549,20 @@ class Player(Lizard):
         game.fx.burst(self.pos, self.color, 10 + int(dmg / 2), 200)
         game.fx.spark_burst(self.pos, (255, 240, 200), 8 + int(dmg / 3), 320)
         game.shake(4 + dmg * 0.4)
-        if self.health <= 0:
+        if self.shed_on_hurt:
+            self.shed_t = max(self.shed_t, C.ITEM_CASULO_TIME)
+        if self.health <= 0 and self.extra_life and not self.used_extra_life:
+            # Segundo Folego: one escape per run, and it has to be LOUD or the
+            # player will not know it happened
+            self.used_extra_life = True
+            self.health = self.max_health * 0.5
+            self.shed_t = C.ITEM_MUDA_TIME
+            game.punch(0.12, 16, flash=0.5)
+            game.fx.ring(self.pos, (255, 240, 160))
+            game.fx.spark_burst(self.pos, (255, 240, 160), 34, 460)
+            game.fx.popup(self.pos, "SEGUNDO FOLEGO!", (255, 240, 160))
+            audio.play('levelup', 0.9)
+        elif self.health <= 0:
             self.health = 0
             self.down = True
             self.revive = 6.0
@@ -552,6 +601,15 @@ class Player(Lizard):
             speed_mul = 3.4 if self.wings else 2.9
             drag = 1.0
             game.fx.trail(self.pos, self.color)
+            if self.dash_trail:
+                self._trail_cd -= dt
+                if self._trail_cd <= 0:
+                    from . import weapons as W
+                    self._trail_cd = C.ITEM_TRAIL_DROP
+                    # hostile=False -> `dmg` is DPS and hits ENEMIES (see Puddle)
+                    game.spawn_puddle(W.Puddle(self.pos, C.ITEM_TRAIL_R,
+                                               C.ITEM_TRAIL_DMG, C.ITEM_TRAIL_LIFE,
+                                               hue=95))
         speed_mul *= drag
         self.dash_cd = max(0.0, self.dash_cd - dt)
 
@@ -600,6 +658,16 @@ class Player(Lizard):
                     else:
                         game.eat(self, t)
                 self.tongue_target = None
+
+        # --- active item ------------------------------------------------- #
+        # Same buffer/consume contract as dash and whip: the press survives a
+        # frame that ran zero sim steps, and is eaten only when it actually fires.
+        self.shed_t = max(0.0, self.shed_t - dt)
+        if c.item_edge and self.ability and self.ability_charge >= 1.0:
+            from . import items as itemlib
+            if itemlib.use_active(self, game):
+                c.consume('item')
+                audio.play('levelup', 0.5)
 
         # --- tail whip ("rabada") ---------------------------------------- #
         self.whip_cd = max(0.0, self.whip_cd - dt)
@@ -723,7 +791,7 @@ class Player(Lizard):
         # was a flat number for the whole run -- strong on wave 1, irrelevant by
         # wave 15 -- and no upgrade could ever improve it.
         dmg = (C.WHIP_DAMAGE * (C.WHIP_CLUB_MULT if club else 1.0)
-               * self.might * self.whip_mult)
+               * self.damage_mult() * self.whip_mult)
         knock = C.WHIP_KNOCK_CLUB if club else C.WHIP_KNOCK
         for e in game.enemies:
             if e.dead or e in self.whip_hits:
@@ -817,6 +885,7 @@ class AILizard(Lizard):
         # drops this while camouflaged -- otherwise its own label floats above it
         # in full colour and gives away the ambush the variant exists to make.
         self.champion_vis = 1.0
+        self.marked = False       # Presa Marcada: next hit lands as a crit
         self.front_armor = 0.0        # BLINDADO: fraction blocked from the front
         self.death_blast = False      # EXPLOSIVO: parting AoE
 
@@ -1273,7 +1342,36 @@ class AILizard(Lizard):
             if thorns:                            # attacker gets pricked
                 self.take_hit(game, safe_norm(self.pos - target.pos), thorns)
 
+    def _death_item_fx(self, game):
+        """On-death effects owned by player items (Estopim, Contagio).
+
+        One place, not one per item: both need "who died, where, and was it
+        poisoned", and splitting that across call sites is how the dash ended up
+        with two copies of its damage rule.
+        """
+        blast = any(p.kill_blast for p in game.players if not p.dead)
+        spread = any(p.poison_spreads for p in game.players if not p.dead)
+        if not (blast or spread):
+            return
+        pos = Vector2(self.pos)
+        if blast:
+            game.fx.burst(pos, (255, 170, 90), 18, 300)
+            game.fx.ring(pos, (255, 150, 80))
+        poisoned = self.poison_t > 0
+        for e in game.enemies:
+            if e is self or e.dead:
+                continue
+            d = e.pos.distance_to(pos)
+            if blast and d < C.ITEM_KILL_BLAST_R + e.max_r:
+                e.take_hit(game, safe_norm(e.pos - pos), C.ITEM_KILL_BLAST_DMG)
+            if spread and poisoned and d < C.ITEM_SPREAD_R + e.max_r:
+                e.apply_poison(self.poison_dps, 2.6)
+
     def take_hit(self, game, direction, dmg):
+        if self.marked:                  # Presa Marcada, consumed on use
+            self.marked = False
+            dmg *= C.CRIT_MULT
+            game.crit_fx(self.spine.joints[0])
         if self.front_armor > 0 and direction.length_squared() > 1e-6:
             # `direction` is the knockback, i.e. it points AWAY from the attacker,
             # so the attacker sits at -direction. Blocking the front makes going
@@ -1312,8 +1410,14 @@ class AILizard(Lizard):
             game.kills += 1
             game.give_xp(self.xp_value)
             from . import characters
+            from . import items as itemlib
             for p in game.players:            # LARVA feeds on the whole run
-                if not p.dead:
-                    characters.larva_growth(p, game)
+                if p.dead:
+                    continue
+                characters.larva_growth(p, game)
+                itemlib.add_charge(p)         # kills charge the active item
+                if p.kill_heal:
+                    p.health = min(p.max_health, p.health + C.ITEM_KILL_HEAL)
+            self._death_item_fx(game)
             if random.random() < 0.15:
                 game.spawn_fruit(self.pos)

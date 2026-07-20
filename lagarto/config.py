@@ -67,6 +67,37 @@ VENOM_PUDDLE_TICK = 0.55
 # e exatamente o bug do Acido, ja documentado e ja corrigido uma vez.
 VENOM_PUDDLE_LIFE = 2.8
 
+# --- itens (items.py) ------------------------------------------------------- #
+# Qualidade 0-4 no molde do Isaac: enviesa a chance de ser oferecido, nao trava.
+# Um item forte pode existir sem ser comum; um fraco pode existir sem ser cilada.
+ITEM_QUALITY_WEIGHT = (2.2, 1.6, 1.0, 0.6, 0.3)
+ITEM_CHARGE_KILLS = 14   # abates para carregar o ativo (liga o recurso ao combo)
+
+ITEM_PULSO_R = 190
+ITEM_PULSO_DMG = 14
+ITEM_PULSO_KNOCK = 520
+ITEM_MUDA_TIME = 1.1     # segundos de invulnerabilidade da muda de pele
+ITEM_CHAMADO_COUNT = 3
+ITEM_FERRAO_COUNT = 8
+ITEM_FERRAO_DMG = 6
+
+# passivos de mecanica
+ITEM_TRAIL_R = 44        # raio do rastro corrosivo do dash
+ITEM_TRAIL_DMG = 5       # dano por tick da poca (a poca tem cadencia propria)
+ITEM_TRAIL_LIFE = 1.6
+ITEM_TRAIL_DROP = 0.07   # espacamento entre pocas do rastro
+ITEM_CASULO_TIME = 0.45  # i-frames extras do Casulo ao levar dano
+ITEM_KILL_BLAST_R = 92
+ITEM_KILL_BLAST_DMG = 7
+ITEM_KILL_HEAL = 1.5
+ITEM_MAGNET_R = 260
+ITEM_THROW_SPEED = 900   # arremesso da lingua
+ITEM_ADRENALINE_HP = 0.35   # abaixo desta fracao de vida...
+ITEM_ADRENALINE_MULT = 1.6  # ...o dano sobe isto
+ITEM_DRAIN = 4.0         # vida drenada pela lingua por acerto
+ITEM_DART_DMG = 5        # farpas disparadas pela rabada
+ITEM_SPREAD_R = 130      # alcance do contagio
+
 # --- personagens jogaveis (characters.py) ----------------------------------- #
 CHAR_LAGARTO_REROLLS = 1        # rerrolagens da mao de cartas, por ROUND
 
