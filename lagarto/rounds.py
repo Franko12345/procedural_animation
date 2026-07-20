@@ -14,6 +14,7 @@ from pygame import Vector2
 import pygame
 
 from . import audio
+from . import champions
 from . import config as C
 from . import palette
 from . import species
@@ -24,12 +25,21 @@ from .mathutil import vfrom_angle, clamp
 THEMES = {
     'enxame':     dict(banner='ENXAME', pool=['runner', 'runner', 'spiky', 'snake'],
                        budget=1.3, cap=7),
-    'cuspidores': dict(banner='CHUVA DE CUSPIDORES', pool=['spitter', 'spitter', 'runner'],
+    'cuspidores': dict(banner='CHUVA DE CUSPIDORES',
+                       pool=['spitter', 'spitter', 'gunner', 'runner'],
                        budget=0.85, cap=5),
     'tanques':    dict(banner='MARCHA DOS TANQUES', pool=['tank', 'horned', 'tank'],
                        budget=0.6, cap=4),
     'aranhas':    dict(banner='NOITE DAS ARANHAS', pool=['spider', 'spider', 'scorpion'],
                        budget=0.85, cap=5),
+    # phase-2 themes: each one attacks a different player habit
+    'revoada':    dict(banner='REVOADA', pool=['wasp', 'wasp', 'wasp', 'runner'],
+                       budget=1.2, cap=8),      # flyers ignore the horde -> you must
+    'estouro':    dict(banner='CAMPO MINADO',   # keep moving, never body-block
+                       pool=['bomber', 'bomber', 'runner', 'gunner'],
+                       budget=0.9, cap=6),
+    'praga':      dict(banner='PRAGA', pool=['venomer', 'venomer', 'spitter', 'wasp'],
+                       budget=0.8, cap=5),      # ground denial -> stop camping
     'invasao':    dict(banner='INVASAO', pool=list(species.ENEMY_SPECIES),
                        budget=0.9, cap=6),
 }
@@ -55,9 +65,15 @@ class SpawnMark:
             e.hp += self.hp_bonus
             e.sync_max_hp()
             e.max_speed *= self.speed_mul
+            # champion roll happens *after* the wave scaling, so an elite is
+            # elite relative to its own wave rather than to wave 1
+            ch = champions.maybe_promote(e, game, game.rounds.wave)
             game.enemies.append(e)
             game.fx.ring(self.pos, e.color)
             game.fx.burst(self.pos, e.color, 10, 160)
+            if ch is not None:                # champions announce themselves
+                game.fx.ring(self.pos, ch.color())
+                game.fx.spark_burst(self.pos, ch.color(), 14, 300)
             self.done = True
 
     def draw(self, surf, cam):

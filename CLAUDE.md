@@ -50,7 +50,8 @@ Um módulo por responsabilidade — mantenha assim; não volte para arquivo úni
 | `leg.py` | `Leg`: foot-planting (limiar + arco) + **IK de 2 ossos**. Suporta modo **radial** (aranha) via `rest_angle`. |
 | `parts.py` | Desenho de partes pelo genoma: espinhos, chifres, placas, cauda (clava/ferrão), nadadeiras. Reusado por inimigos e evolução. |
 | `lizard.py` | `Lizard` (base construída **do genoma**: espinha + N pernas pareadas/radiais + partes + status slow), `Player` (XP/nível/`grant_part`/energia/dash/língua), `AILizard` (prey/enemy/friend + behaviors chase/ranged/lunge/hop + poison). |
-| `species.py` | **Genomas-template** + metadados (role, xp, score, `grants`, `diet`). `make()` spawna variação. Roster: grazer/critter/frog/fish (presa), runner/tank/snake/horned/spiky/spider/spitter/scorpion (inimigo). |
+| `species.py` | **Genomas-template** + metadados (role, xp, score, `grants`, `diet`). `make()` spawna variação. Roster: grazer/critter/frog/fish (presa), runner/tank/snake/horned/spiky/spider/spitter/scorpion + **wasp/bomber/gunner/venomer** (inimigo). |
+| `champions.py` | **Campeões**: variantes nomeadas (modelo Rain World) + modificadores empilháveis. `maybe_promote` no spawn, chance crescente por onda. |
 | `evolution.py` | **Cartas de mutação** (`MUTATIONS`: stats + partes) + `roll_cards` + **sinergias nomeadas** (`SYNERGIES`, ex.: ARACNIDEO=legs+venom, FORTALEZA=plates+thorns). |
 | `projectile.py` | `Projectile` (cuspe de veneno, teia de slow, tiro de chefe). Helpers `spit`/`web`. |
 | `pickups.py` | `Bug` (skitter/foge), `Fruit` (cura), `Egg` (choca um amigo). Todos com glow. |
@@ -85,6 +86,55 @@ Lagarto, cobra, aranha (radial), escorpião, peixe = **genomas diferentes**, nã
   venom, wings) e partes (espinhos/placas/chifres/pernas/clava). **Sinergias** disparam
   no `apply_mutation`. Input das cartas tratado em `app.py` (1/2/3, setas+ENTER, clique).
 - **Cores randomizadas**: cada spawn usa `genome.random_variation` (hue/sat/val/tamanho).
+
+## Inimigos da fase 2 + campeões (`champions.py`)
+
+Quatro comportamentos novos, cada um atacando um **hábito** diferente do jogador — é
+assim que inimigo novo vira decisão nova, e não só mais um saco de vida:
+
+| Espécie | `behavior` | Ataca o hábito de |
+|---|---|---|
+| **VESPA** | `fly` | esconder-se atrás da horda — `collision._samples` **pula voadores**, então eles não empurram nem são empurrados e vêm em linha reta |
+| **ESTOURADOR** | `bomber` | ficar parado — pavio de `BOMBER_FUSE`, e depois de aceso ele **desacelera** |
+| **METRALHADOR** | `gunner` | campo aberto — rajada de `GUNNER_BURST`, dano baixo por tiro |
+| **ENVENENADOR** | `venom` | acampar num ponto — cospe onde você **está** e deixa poça |
+
+**Telegrafo é tempo E visibilidade.** A primeira versão do pavio tinha os 0,85 s (>27
+frames) e **nada para ver** além de faíscas — inútil. Hoje `_draw_fuse` desenha a
+**pegada da explosão no chão**, que responde a única pergunta que importa: *estou dentro?*
+Regra: ao criar um ataque de área, desenhe o raio, não só um aviso.
+
+**Poça hostil (`weapons.Puddle(hostile=True)`): o campo `dmg` MUDA de significado.**
+`hostile=False` → dano por **segundo** (multiplicado por `dt`, alimenta o acumulador de
+`AILizard.damage`). `hostile=True` → dano por **tick**, com cadência própria
+(`VENOM_PUDDLE_TICK`). *Os i-frames do jogador não servem de limitador* — reabrem a cada
+~0,17 s e mediram **42 de dano por segundo**. E `VENOM_PUDDLE_LIFE` **tem que ser menor
+que `VENOM_CD`**, senão as poças se sobrepõem e empilham: o mesmo bug do `Acido`, de novo.
+
+### Campeões: variantes + modificadores
+
+**Variantes** são criaturas com identidade, no modelo das raças de lagarto do **Rain
+World**: o traço visual **explica** a habilidade. FILHOTE (minúsculo, 1 de vida, veloz) ·
+ALFA (**antenas** porque comanda a matilha) · ESPECTRO (**pálido** porque embosca) ·
+SALTADOR (**cauda-clava** porque é dela que ele se lança) · APICE. **Modificadores**
+(BLINDADO/GIGANTE/EXPLOSIVO) são mecânicos puros e **empilham** sobre uma variante —
+"APICE BLINDADO" é outra luta sem uma linha de comportamento nova.
+
+Três armadilhas já corrigidas:
+- **`_rebuild` chama `__init__`, que reseta TUDO.** Sem a lista `_KEEP`, os metadados de
+  `species.make` (species/xp/score/grants/hp) voltavam ao padrão do genoma **e** empilhar
+  um modificador apagava a variante aplicada antes. Ambos invisíveis no spawn.
+- **Velocidade de variante é ABSOLUTA, não multiplicador.** `max_speed` é
+  `165*(0.85+0.4/size)*speed`, então encolher **já** acelera muito; multiplicar por cima
+  deu **5,75x a velocidade do jogador** (indesviável). E um multiplicador faria um
+  "filhote de tanque" mais lento que o jogador, negando a única coisa que a variante
+  significa. `CHAMP_FILHOTE_SPEED` fica entre andar e dashar: te alcança se você caminhar,
+  perde se você dashar.
+- **A camuflagem tem que valer para o rótulo também** (`champion_vis`): o nome e a aura do
+  ESPECTRO flutuavam em cor cheia sobre um corpo invisível, entregando a emboscada.
+
+`palette.glow` novo com raio/cor contínuos (pavio, aura) **foi medido**: 363 entradas,
+12,9 MB, **zero misses novos** em 9 000 frames com 14 criaturas — o quantizador absorve.
 
 ## Bestiário / IA
 

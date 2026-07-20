@@ -37,6 +37,60 @@ ENEMY_DMG_SIZE = 0.5         # era 0.4 -- predador maior bate mais forte
 ENEMY_DMG_STEP = 4           # a cada N ondas sobe um degrau
 ENEMY_DMG_PER_STEP = 2.0     # quanto sobe por degrau
 ENEMY_PROJ_DMG = 10          # cuspe inimigo (era 8); lento e telegrafado -> da p/ desviar
+# --- inimigos da fase 2 ---------------------------------------------------- #
+# Bombardeiro (kamikaze). A regra do Mulliboom (Isaac): depois que o pavio acende
+# ele DESACELERA e a explosao sai onde ele parar, entao andar embora sempre
+# funciona. Uma carga que te persegue ate detonar nao e telegrafo, e so dano.
+BOMBER_TRIGGER = 130     # distancia que acende o pavio
+BOMBER_FUSE = 0.85       # >27 frames de aviso (250ms de reacao + duracao do dash)
+BOMBER_RADIUS = 108
+BOMBER_DMG = 26          # no centro; a borda da ~45% disso (falloff)
+BOMBER_SPLASH = 4        # fogo amigo: bombardeiros afinam a propria horda
+
+# Metralhador: pressao continua, nao pico. Dano baixo por tiro, rajada rapida.
+GUNNER_BURST = 4         # tiros por rajada
+GUNNER_BURST_GAP = 0.13  # intervalo dentro da rajada
+GUNNER_RELOAD = 1.9      # respiro entre rajadas -> da pra quebrar a linha de tiro
+GUNNER_DMG = 5
+GUNNER_SPREAD = 7.0      # graus de dispersao
+
+# Venenoso: negacao de area. Mira onde voce ESTA e a pocas cai la, entao quem
+# pune e ficar parado -- empurra o jogador a se mover, sem ser um acerto direto.
+VENOM_WINDUP = 0.5
+VENOM_CD = 3.1
+VENOM_SPIT_SPEED = 260
+VENOM_SPIT_DMG = 6
+VENOM_PUDDLE_R = 62
+VENOM_PUDDLE_DMG = 7     # dano POR TICK (a poca tem cadencia propria), nao dps
+VENOM_PUDDLE_TICK = 0.55
+# Tem que ser MENOR que VENOM_CD, senao as pocas se sobrepoem e o dano empilha --
+# e exatamente o bug do Acido, ja documentado e ja corrigido uma vez.
+VENOM_PUDDLE_LIFE = 2.8
+
+# --- campeoes (champions.py) ------------------------------------------------ #
+# Chance sobe com a onda, no formato do Isaac (~5% cedo, ~20% tarde). Vida dos
+# campeoes fica MODESTA de proposito: campeao e ameaca pelo que FAZ; um que so
+# tem mais vida nao ensina nada e vira pedagio.
+CHAMP_CHANCE_BASE = 0.05
+CHAMP_CHANCE_PER_WAVE = 0.012
+CHAMP_CHANCE_MAX = 0.22
+CHAMP_MODIFIER_CHANCE = 0.28   # variante que ainda ganha um modificador em cima
+
+# Velocidade ABSOLUTA do filhote (jogador ~224, dash ~672): mais rapido que andar,
+# mais lento que um dash. Ele te alcanca se voce so caminhar, e voce escapa se
+# usar o dash -- e o que torna "minusculo e veloz" uma ameaca justa e nao um golpe
+# inevitavel. Relativo nao serve: um filhote de tanque sairia mais lento que voce.
+CHAMP_FILHOTE_SPEED = 440
+CHAMP_ALFA_RANGE = 360   # alcance do chamado e da deteccao
+CHAMP_ALFA_CD = 4.5
+CHAMP_ALFA_TIME = 3.0    # duracao do frenesi nos aliados
+CHAMP_ALFA_SPEED = 1.35
+CHAMP_ESPECTRO_REVEAL = 330   # distancia em que a camuflagem se desfaz
+CHAMP_SALTADOR_RANGE = 420
+CHAMP_SALTADOR_CD = 2.4
+CHAMP_SALTADOR_POWER = 3.1
+CHAMP_ARMOR = 0.6        # fracao bloqueada de frente (por tras leva normal)
+
 CRIT_MULT = 2.0          # dano ao acertar a cabeca (ponto fraco)
 AGGRO_TIME = 5.0         # segundos que um aliado segura o aggro apos bater
 FRIEND_LIFE = 45.0       # aliados sao temporarios (segundos)

@@ -296,13 +296,31 @@ class Enxame(Weapon):
 # --------------------------------------------------------------------------- #
 
 class Puddle:
-    def __init__(self, pos, r, dmg, life, hue):
+    """A patch of ground that hurts whatever stands in it.
+
+    ``hostile`` flips who it hurts, and **the meaning of `dmg` flips with it**:
+      hostile=False (player's acid) -- `dmg` is damage per SECOND; update()
+          multiplies by dt and feeds AILizard.damage()'s fractional accumulator.
+      hostile=True (enemy venom)    -- `dmg` is damage per TICK, paced by this
+          puddle's own `tick` timer. Player i-frames are NOT the rate limiter:
+          they reopen every ~0.17s, which measured out at 42 damage a second.
+    Mixing those up is the "60x damage" footgun this codebase has hit before, so
+    the two paths are kept visibly apart below.
+
+    Callers must also keep `life` shorter than the spawner's cooldown, or the
+    puddles overlap and stack -- the exact bug already fixed once in `Acido`.
+    """
+
+    def __init__(self, pos, r, dmg, life, hue, hostile=False, tick=0.5):
         self.pos = Vector2(pos)
         self.r = r
         self.dmg = dmg
         self.life = life
         self.maxlife = life
         self.hue = hue
+        self.hostile = hostile
+        self.tick = tick
+        self.tick_t = 0.0
         self.dead = False
         self.bubbles = [(random.uniform(-r * 0.6, r * 0.6), random.uniform(-r * 0.6, r * 0.6),
                          random.uniform(0.2, 1.0)) for _ in range(6)]
@@ -314,8 +332,18 @@ class Puddle:
         if self.life <= 0:
             self.dead = True
             return
-        for e in _enemies_in(game, self.pos, self.r + 8):
-            e.damage(game, self.dmg * dt)
+        if self.hostile:
+            self.tick_t -= dt                 # own cadence: i-frames are far too fast
+            if self.tick_t <= 0:
+                self.tick_t = self.tick
+                for p in game.players:
+                    if p.dead or p.down:
+                        continue
+                    if p.pos.distance_to(self.pos) < self.r + p.max_r * 0.4:
+                        p.hurt(game, safe_norm(p.pos - self.pos), self.dmg)
+        else:
+            for e in _enemies_in(game, self.pos, self.r + 8):
+                e.damage(game, self.dmg * dt)     # `dmg` is dps -> must scale by dt
 
     def draw(self, surf, cam):
         f = clamp(self.life / self.maxlife, 0, 1)

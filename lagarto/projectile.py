@@ -30,6 +30,9 @@ class Projectile:
         self.spin = 0.0
         self.homing = False             # if set, the game curves it toward an enemy
         self.trail = []                 # recent world positions -> a Gungeon streak
+        # optional payload: dict(r, dmg, life, hue) -> the game drops a puddle
+        # wherever this projectile ends, whether it connected or simply landed
+        self.puddle = None
 
     def update(self, dt):
         self.trail.append((self.pos.x, self.pos.y))

@@ -48,6 +48,28 @@ SPECIES = {
                                    sat=0.7, tail='sting', speed=0.95, behavior='chase',
                                    hp=8, diet=('prey',))),
 
+    # ---- phase 2: enemies that change how you must MOVE ------------------- #
+    # Each one attacks a different habit: the flyer beats hiding behind the
+    # horde, the bomber beats standing still, the gunner beats open ground and
+    # the venomer beats camping a spot.
+    'wasp': dict(role='enemy', xp=5, score=45, grants=None,
+                 genome=Genome(name='wasp', size=0.6, length=0.7, leg_count=0,
+                               wings=True, antennae=True, hue=52, sat=0.95,
+                               speed=1.55, behavior='fly', hp=3, diet=('prey',))),
+    'bomber': dict(role='enemy', xp=7, score=65, grants=None,
+                   genome=Genome(name='bomber', size=0.95, girth=1.45, length=0.7,
+                                 leg_count=4, hue=28, sat=0.95, val=1.0,
+                                 speed=1.0, behavior='bomber', hp=3,
+                                 spore_sacs=True, diet=())),
+    'gunner': dict(role='enemy', xp=7, score=60, grants=None,
+                   genome=Genome(name='gunner', size=0.9, leg_count=4, hue=200,
+                                 sat=0.85, speed=0.9, behavior='gunner', hp=5,
+                                 extra_eyes=2, diet=('prey',))),
+    'venomer': dict(role='enemy', xp=8, score=70, grants='sting',
+                    genome=Genome(name='venomer', size=1.05, leg_count=4, hue=100,
+                                  sat=0.9, speed=0.8, behavior='venom', hp=6,
+                                  spore_sacs=True, tail='sting', diet=('prey',))),
+
     # ---- extra prey ------------------------------------------------------- #
     'frog': dict(role='prey', xp=3, score=18, grants=None,
                  genome=Genome(name='frog', size=0.7, leg_count=4, length=0.6, girth=1.3,
@@ -86,6 +108,16 @@ LORE = {
                             'antes de disparar — da para desviar de quem repara.'),
     'scorpion': ('ESCORPIAO', 'Arrasta um ferrao curvo na cauda que envenena e retarda. '
                               'Quem sobrevive ao ferrao pode herda-lo.'),
+    'wasp':    ('VESPA', 'Nao toca o chao: atravessa a horda em linha reta e vem '
+                         'direto a voce. Esconder-se atras dos outros nao adianta.'),
+    'bomber':  ('ESTOURADOR', 'Corpo inchado de gas. Ao chegar perto acende o pavio '
+                              'e desacelera — dali em diante, o estouro sai onde ele '
+                              'parar. Sempre da pra sair andando.'),
+    'gunner':  ('METRALHADOR', 'Mantem distancia media e despeja rajadas curtas. '
+                               'Pouco dano por tiro, muita pressao: quebre a linha.'),
+    'venomer': ('ENVENENADOR', 'Cospe veneno onde voce esta e deixa uma poca que '
+                               'corroi. Nao mira para acertar, mira para tomar o '
+                               'terreno.'),
 }
 
 

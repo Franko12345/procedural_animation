@@ -26,6 +26,13 @@ FRIENDLY = ('player', 'friend')   # allies pass through each other (no clunky bu
 def _samples(creatures):
     out = []
     for c in creatures:
+        # Flyers are simply absent from the whole system: they neither push nor
+        # are pushed, so they cross the horde in a straight line instead of
+        # getting stuck behind it. Dropping them here (rather than filtering in
+        # the pair loop) also keeps them out of the player's `clog` drag, which
+        # is right -- you cannot be slowed by wading through something airborne.
+        if getattr(c, 'flying', False):
+            continue
         js = c.spine.joints
         rs = c.spine.radii
         m = len(js)

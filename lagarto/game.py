@@ -634,6 +634,14 @@ class Game:
                             n.take_hit(self, pr.dmg)
                             pr.dead = True
                             break
+        # Payload projectiles leave their puddle wherever they ended, and a shot
+        # can die on four different paths above (expiry, out of bounds, hitting a
+        # player, hitting a nest). Doing this in one sweep instead of at each
+        # `pr.dead = True` means a new death path can never silently skip it.
+        for pr in self.projectiles:
+            if pr.dead and pr.puddle:
+                self.spawn_puddle(weapons.Puddle(pr.pos, hostile=True, **pr.puddle))
+                pr.puddle = None
         self.projectiles = [p for p in self.projectiles if not p.dead]
 
     # ---- eating / growth ------------------------------------------------ #

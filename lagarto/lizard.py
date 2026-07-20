@@ -13,8 +13,10 @@ import pygame
 
 from . import config as C
 from . import audio
+from . import fonts
 from . import palette
 from . import parts
+from . import ui
 from . import weapons
 from .genome import basic_lizard
 from .mathutil import clamp, lerp, approach, vfrom_angle, safe_norm, angle_of
@@ -746,6 +748,23 @@ class AILizard(Lizard):
         self.lunge_t = 0.0            # >0 telegraphing, <0 mid-lunge
         self.shoot_cd = 0.0
         self.shoot_charge = 0.0      # >0 = winding up a shot (telegraph)
+        # --- behaviours added in phase 2 ---
+        self.flying = self.genome.behavior == 'fly'   # collision.py skips flyers
+        self.bob = random.uniform(0, C.TAU)           # flyer's hover wobble
+        self.fuse = 0.0               # bomber: >0 = lit, counts down to the blast
+        self._blown = False           # bomber: already detonated (recursion guard)
+        self.burst_left = 0           # gunner: shots left in the current burst
+        # --- champion layer (see champions.py; None on a plain spawn) ---
+        self.champion = None
+        self.champion_name = ''
+        self.champion_ticks = []      # per-frame hooks from the applied champions
+        self.rally_t = 0.0            # ALFA's call: temporary speed boost
+        # How strongly the champion advertises itself (aura + name). ESPECTRO
+        # drops this while camouflaged -- otherwise its own label floats above it
+        # in full colour and gives away the ambush the variant exists to make.
+        self.champion_vis = 1.0
+        self.front_armor = 0.0        # BLINDADO: fraction blocked from the front
+        self.death_blast = False      # EXPLOSIVO: parting AoE
 
     def apply_poison(self, dps, dur):
         self.poison_dps = max(self.poison_dps, dps)
@@ -812,6 +831,9 @@ class AILizard(Lizard):
             return
         self.shoot_cd = max(0.0, self.shoot_cd - dt)
         self.aggro_t = max(0.0, self.aggro_t - dt)
+        self.rally_t = max(0.0, self.rally_t - dt)
+        for hook in self.champion_ticks:
+            hook(self, dt, game)
         if self.aggro is not None and (self.aggro.dead or self.aggro_t <= 0):
             self.aggro = None
         d = Vector2()
@@ -834,6 +856,14 @@ class AILizard(Lizard):
                     d, speed = self._ai_ranged(dt, game, target)
                 elif beh == 'lunge':
                     d, speed = self._ai_lunge(dt, game, target)
+                elif beh == 'fly':
+                    d, speed = self._ai_fly(dt, game, target)
+                elif beh == 'bomber':
+                    d, speed = self._ai_bomber(dt, game, target)
+                elif beh == 'gunner':
+                    d, speed = self._ai_gunner(dt, game, target)
+                elif beh == 'venom':
+                    d, speed = self._ai_venom(dt, game, target)
                 else:
                     d, speed = self._ai_melee(dt, game, target)
             elif 'prey' in self.genome.diet:
@@ -866,6 +896,8 @@ class AILizard(Lizard):
                     speed = clamp(off / 200, 0.4, 1.3)
                 else:
                     d = self.wander_dir(dt) * 0.3
+        if self.rally_t > 0:               # roused by an ALFA's call
+            speed *= C.CHAMP_ALFA_SPEED
         self.steer(d, dt, speed)
         self.integrate(dt, on_plant=game.fx.dust if self.on_screen else None)
 
@@ -922,6 +954,144 @@ class AILizard(Lizard):
             return Vector2(), 0.0
         return to, 0.95
 
+    # ---- phase-2 behaviours ------------------------------------------------ #
+    def _ai_fly(self, dt, game, target):
+        """Straight-line hunter that ignores the horde (collision skips flyers).
+
+        It has no legs to plant, so the read comes entirely from the hover bob --
+        without it a flyer looks like a ground lizard sliding, and the player has
+        no way to know it cannot be body-blocked.
+        """
+        self.bob += dt * 7.0
+        to = safe_norm(target.pos - self.pos)
+        dist = target.pos.distance_to(self.pos)
+        if dist < (self.max_r + target.max_r) * 1.1 and self.attack_cd <= 0:
+            self._contact(game, target)
+        drift = Vector2(-to.y, to.x) * math.sin(self.bob) * 0.35
+        return safe_norm(to + drift), 1.15
+
+    def _ai_bomber(self, dt, game, target):
+        """Kamikaze whose fuse, once lit, is a promise it cannot take back.
+
+        The Mulliboom rule: after the fuse lights the bomber *slows down* and the
+        blast happens wherever it ends up, so walking away always works. A charge
+        that tracks you until it detonates is not a telegraph, it is just damage.
+        """
+        to = safe_norm(target.pos - self.pos)
+        dist = target.pos.distance_to(self.pos)
+        if self.fuse > 0:
+            self.fuse -= dt
+            if random.random() < dt * 40:
+                game.fx.burst(self.spine.joints[0], (255, 210, 120), 1, 90)
+            if self.fuse <= 0:
+                self.explode(game)
+            return to, 0.25                       # committed and slow: dodgeable
+        if dist < C.BOMBER_TRIGGER:
+            self.fuse = C.BOMBER_FUSE
+            audio.play('nest', 0.5)
+            game.fx.ring(self.pos, (255, 170, 90))
+        return to, 1.05
+
+    def _ai_gunner(self, dt, game, target):
+        """High rate of fire, low damage per shot: pressure, not burst.
+
+        Holds mid-range and fires a burst, so the threat is a *stream* you have to
+        break line with, unlike the spitter's single telegraphed spike.
+        """
+        to = safe_norm(target.pos - self.pos)
+        dist = target.pos.distance_to(self.pos)
+        mouth = self.spine.joints[0] + self.spine.head_dir() * self.max_r
+        if self.burst_left > 0 and self.shoot_cd <= 0:
+            self.burst_left -= 1
+            self.shoot_cd = C.GUNNER_BURST_GAP
+            spread = random.uniform(-C.GUNNER_SPREAD, C.GUNNER_SPREAD)
+            aim = self.pos + (target.pos - self.pos).rotate(spread)
+            game.spawn_projectile(game_spit(mouth, aim, self.color,
+                                            dmg=C.GUNNER_DMG, effect=None,
+                                            speed=300, radius=5))
+            game.fx.spark_burst(mouth, self.color, 3, 150)
+        elif self.burst_left <= 0 and self.shoot_cd <= 0 and dist < 460:
+            self.burst_left = C.GUNNER_BURST
+            self.shoot_cd = C.GUNNER_RELOAD
+        if dist < 240:
+            d = -to
+        elif dist > 400:
+            d = to
+        else:
+            d = Vector2(-to.y, to.x) * (1 if int(self.wobble) % 2 else -1)
+        return d, 0.8
+
+    def _ai_venom(self, dt, game, target):
+        """Lobs venom that leaves a puddle where it lands -- area denial.
+
+        The shot is aimed at where you *are* and its life is set so it lands
+        there, which makes it a zoning tool rather than a hit: standing still is
+        what punishes you, so it pushes the player to keep moving.
+        """
+        to = safe_norm(target.pos - self.pos)
+        dist = target.pos.distance_to(self.pos)
+        mouth = self.spine.joints[0] + self.spine.head_dir() * self.max_r
+        if self.shoot_charge > 0:
+            self.shoot_charge -= dt
+            if random.random() < dt * 30:
+                game.fx.burst(mouth, (150, 240, 110), 1, 60)
+            if self.shoot_charge <= 0:
+                pr = game_spit(mouth, target.pos, (140, 235, 100),
+                               dmg=C.VENOM_SPIT_DMG, effect='poison',
+                               speed=C.VENOM_SPIT_SPEED, radius=7)
+                # land ON the aim point: life = travel time, so the puddle is
+                # dropped where the telegraph pointed instead of flying past
+                travel = mouth.distance_to(target.pos) / C.VENOM_SPIT_SPEED
+                pr.life = max(0.12, min(travel, 2.2))
+                pr.puddle = dict(r=C.VENOM_PUDDLE_R, dmg=C.VENOM_PUDDLE_DMG,
+                                 life=C.VENOM_PUDDLE_LIFE, hue=100,
+                                 tick=C.VENOM_PUDDLE_TICK)
+                game.spawn_projectile(pr)
+                game.fx.spark_burst(mouth, (150, 240, 110), 6, 190)
+            return to * 0.05, 0.0
+        if self.shoot_cd <= 0 and dist < 430:
+            self.shoot_cd = C.VENOM_CD
+            self.shoot_charge = C.VENOM_WINDUP
+        if dist < 250:
+            d = -to
+        elif dist > 390:
+            d = to
+        else:
+            d = Vector2(-to.y, to.x) * (1 if int(self.wobble) % 2 else -1)
+        return d, 0.72
+
+    def explode(self, game):
+        """Bomber blast: one hit per victim, radius damage, then the bomber dies.
+
+        ``_blown`` is set *first*: this ends by calling ``die``, and ``die``
+        detonates unexploded bombers -- without the flag the two call each other.
+        """
+        if self._blown:
+            return
+        self._blown = True
+        pos = Vector2(self.pos)
+        r = C.BOMBER_RADIUS
+        game.fx.burst(pos, (255, 180, 90), 34, 420)
+        game.fx.spark_burst(pos, (255, 240, 180), 18, 480)
+        game.fx.ring(pos, (255, 140, 70))
+        game.shake(11)
+        audio.play('hit', 0.7)
+        for p in game.players:
+            if p.dead or p.down:
+                continue
+            d = p.pos.distance_to(pos)
+            if d < r + p.max_r:
+                # falloff so the edge of the blast is a graze, not a full hit
+                f = 1.0 - clamp((d - p.max_r) / max(1.0, r), 0, 1) * 0.55
+                p.hurt(game, safe_norm(p.pos - pos), C.BOMBER_DMG * f)
+        for e in game.enemies:      # friendly fire: bombers thin their own horde
+            if e is self or e.dead:
+                continue
+            if e.pos.distance_to(pos) < r + e.max_r:
+                e.take_hit(game, safe_norm(e.pos - pos), C.BOMBER_SPLASH)
+        if not self.dead:
+            self.die(game)
+
     def _hop(self, dt):
         # frogs: periodic forward hops instead of a smooth glide
         self.wander_t -= dt
@@ -954,9 +1124,63 @@ class AILizard(Lizard):
             # blink faster as the ally is about to leave
             if int(self.life * (12 if self.life < 2 else 6)) % 2 == 0:
                 return
+        if self.fuse > 0:
+            self._draw_fuse(surf, cam)
+        if self.champion is not None:
+            self._draw_champion_aura(surf, cam)
         self._draw_weakpoint(surf, cam)      # behind the body: reads as a halo
         super().draw(surf, cam)
         self._draw_health(surf, cam)
+        if self.champion is not None:
+            self._draw_champion_name(surf, cam)
+
+    def _draw_fuse(self, surf, cam):
+        """Draw the blast footprint while the fuse burns.
+
+        The timing rule (>=27 frames of warning) is only half of a telegraph --
+        the first version had the time but nothing to *see*, just a few sparks,
+        so the player had no way to act on it. Showing the actual radius on the
+        ground answers the only question that matters: am I standing in it?
+        """
+        sp = cam.w2s(self.pos)
+        r = int(C.BOMBER_RADIUS * cam.zoom)
+        f = 1.0 - clamp(self.fuse / max(1e-4, C.BOMBER_FUSE), 0, 1)   # 0 -> 1
+        # flashes faster the closer it gets: reads as urgency without a timer
+        blink = 0.5 + 0.5 * math.sin(f * f * 46)
+        col = palette.mix((255, 170, 60), (255, 250, 220), f)
+        palette.glow(surf, sp, r, col, (0.16 + 0.30 * f) * (0.55 + 0.45 * blink))
+        pygame.draw.circle(surf, col, sp, r, max(2, int((1 + 2 * f) * cam.zoom)))
+        # the body swells and whitens as it is about to go
+        palette.glow(surf, cam.w2s(self.spine.joints[0]),
+                     int(self.max_r * (1.6 + 1.4 * f) * cam.zoom), col,
+                     0.35 + 0.4 * blink)
+
+    def _draw_champion_aura(self, surf, cam):
+        """Behind the body, breathing: says 'elite' before you are in its range."""
+        if self.champion_vis <= 0.02:
+            return
+        sp = cam.w2s(self.pos)
+        r = max(10, int(self.max_r * 2.6 * cam.zoom))
+        pulse = 0.5 + 0.5 * math.sin(self.wobble * 2.0)
+        palette.glow(surf, sp, r, self.champion.color(),
+                     (0.30 + 0.16 * pulse) * self.champion_vis)
+
+    def _draw_champion_name(self, surf, cam):
+        """A champion has to be *identifiable*, or the player cannot learn it.
+
+        Sits above the health bar, and only on screen -- an off-screen name would
+        just be text floating at the edge of the world.
+        """
+        if not self.on_screen or cam.zoom < 0.5 or self.champion_vis <= 0.05:
+            return
+        head = self.spine.joints[0]
+        sp = cam.w2s(head + Vector2(0, -self.max_r * 2.0))
+        # fade the label by mixing toward the ground, not with alpha: ui.text
+        # hands back a shared cached surface, so set_alpha would tint every other
+        # champion drawing the same string this frame
+        col = palette.mix((48, 52, 62), self.champion.color(), self.champion_vis)
+        ui.text(surf, fonts.get(13), self.champion_name,
+                (sp[0], sp[1] - 16), col, align='center')
 
     def _draw_health(self, surf, cam):
         """Small bar above the head, only while hurt -- keeps the screen clean."""
@@ -996,6 +1220,14 @@ class AILizard(Lizard):
                 self.take_hit(game, safe_norm(self.pos - target.pos), thorns)
 
     def take_hit(self, game, direction, dmg):
+        if self.front_armor > 0 and direction.length_squared() > 1e-6:
+            # `direction` is the knockback, i.e. it points AWAY from the attacker,
+            # so the attacker sits at -direction. Blocking the front makes going
+            # around (or dashing straight through) the counter-play -- which is
+            # what the dash already wants you to do.
+            if self.spine.head_dir().dot(-safe_norm(direction)) > 0.25:
+                dmg = dmg * (1.0 - self.front_armor)
+                game.fx.spark_burst(self.spine.joints[0], (215, 225, 255), 5, 180)
         self.hit_flash = 1.0
         self.vel = direction * 200
         game.fx.burst(self.pos, self.color, 10, 180)
@@ -1006,6 +1238,11 @@ class AILizard(Lizard):
 
     def die(self, game):
         self.dead = True
+        # A bomber killed before its fuse runs out still goes off -- otherwise the
+        # safe play is to shoot it from range and its whole threat evaporates.
+        # `_blown` guards the recursion: explode() ends by calling die().
+        if self.genome.behavior == 'bomber' or self.death_blast:
+            self.explode(game)          # no-op if it already went off (_blown)
         if getattr(self, 'is_boss', False):
             game.punch(0.22, 20, flash=0.9)      # boss death: big stop + flash
             game.fx.spark_burst(self.pos, (255, 240, 200), 46, 520)
