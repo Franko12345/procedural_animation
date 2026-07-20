@@ -106,7 +106,18 @@ class Perf:
         self.step_ms = s[1] / n
         self.draw_ms = s[2] / n
         self.present_ms = s[3] / n
+        pl = next((p for p in game.players if not p.dead), None) if game else None
+        speed = None
+        if pl is not None:
+            import lagarto.config as _C
+            clog = 1.0 - _C.CONTACT_DRAG * pl.clog_f
+            slow = pl.slow_mul if pl.slow_t > 0 else 1.0
+            gap = min([e.pos.distance_to(pl.pos) - e.max_r - pl.max_r
+                       for e in game.enemies if not e.dead], default=9999)
+            speed = dict(pct=100.0 * pl.vel.length() / max(1.0, pl.max_speed),
+                         clog=100.0 * clog, slow=100.0 * slow, gap=max(0.0, gap))
         self.snap = dict(
+            speed=speed,
             glow_entries=entries,
             glow_mb=nbytes / (1 << 20),
             glow_miss_s=(misses - self._last_misses) / self._acc,
@@ -165,6 +176,17 @@ class Perf:
                  f"poca {d.get('puddles', 0):2d}", (206, 208, 226)),
                 (f"RSS {d.get('rss_mb', 0):6.1f} MB", (206, 208, 226)),
             ]
+            # Speed breakdown. "I am slow and I do not know why" came up three
+            # times, and each time the cause was a different multiplier; a
+            # synthetic bot could not reproduce the last one at all. So the game
+            # states, live, exactly which factor is eating the speed.
+            sp = d.get('speed')
+            if sp:
+                bad = sp['pct'] < 80
+                lines.append(
+                    (f"VEL {sp['pct']:3.0f}%   colisao {sp['clog']:3.0f}%  "
+                     f"lentidao {sp['slow']:3.0f}%  inim a {sp['gap']:4.0f}px",
+                     (255, 150, 120) if bad else (150, 240, 170)))
         w = max(font.size(t)[0] for t, _ in lines) + 16
         h = len(lines) * 20 + 10
         x = C.WIDTH - w - 10

@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "music-generator": {
+      "source": "aviz85/claude-skills-library",
+      "sourceType": "github",
+      "skillPath": "skills/music-generator/SKILL.md",
+      "computedHash": "e86729ef74e968140b54504ecdc8c19faa07625fd98d21fc5cce39cf9d74072c"
+    }
+  }
+}
