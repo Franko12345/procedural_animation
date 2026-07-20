@@ -658,13 +658,32 @@ class Player(Lizard):
                 self.tongue_t = 0.0
                 t = self.tongue_target
                 if t and not t.dead:
-                    if getattr(t, 'kind', None) == 'enemy':    # whip: hurt + yank in
+                    if getattr(t, 'kind', None) == 'enemy':    # tongue: hurt + move
                         t.take_hit(game, safe_norm(t.pos - self.pos), 2)
-                        t.vel += safe_norm(self.pos - t.pos) * 200
+                        if self.tongue_throw:      # Arremesso: fling OUT, not in
+                            t.vel += safe_norm(t.pos - self.pos) * C.ITEM_THROW_SPEED
+                        else:
+                            t.vel += safe_norm(self.pos - t.pos) * 200   # yank in
+                        if self.tongue_drain:      # Sanguessuga: steal life
+                            self.health = min(self.max_health,
+                                              self.health + C.ITEM_DRAIN)
+                            game.fx.popup(self.pos, "+vida", (120, 240, 140))
                         game.fx.spark_burst(t.pos, (255, 240, 200), 7, 240)
                     else:
                         game.eat(self, t)
                 self.tongue_target = None
+
+        # Iman de Polen: coletaveis (fruta/inseto/ovo) driftam ate voce. Pollen is
+        # a counter, not a world pickup, so the magnet pulls the things you can
+        # actually pick up -- and killing near them is how you bank pollen anyway.
+        if self.pollen_magnet:
+            for pk in game.pickups:
+                if pk.dead:
+                    continue
+                d = pk.pos - self.pos
+                dist = d.length()
+                if 1.0 < dist < C.ITEM_MAGNET_R:
+                    pk.pos += safe_norm(d) * -min(dist, C.ITEM_MAGNET_PULL * dt)
 
         # --- active item ------------------------------------------------- #
         # Same buffer/consume contract as dash and whip: the press survives a
@@ -697,6 +716,8 @@ class Player(Lizard):
             # the whip read as a forward lunge. Driving the head along the arc (and
             # muting steer while it runs) is what makes the tail crack sideways.
             self.whip_dir = Vector2(-self.facing.y, self.facing.x) * side
+            if self.whip_darts:                 # Farpas: piercing barbs off the arc
+                self._fire_whip_darts(game)
             audio.play('dash', 0.65)
             game.shake(3)
         if self.whip_t > 0:
@@ -762,7 +783,8 @@ class Player(Lizard):
         # the middle and out the other in a single press. Starts and ends at 0
         # with matching slope, so it eases in and out on its own.
         env = math.sin(self.whip_t * 2.0 * math.pi)
-        total = side * C.WHIP_SWEEP * env
+        sweep = C.WHIP_SWEEP * (C.ITEM_SPIRAL_MULT if self.whip_full else 1.0)
+        total = side * sweep * env
         # Spread the bend across every joint instead of turning the whole section
         # at the pivot -- that hinge is what read as "a rigid chunk rotating".
         # The ramp toward the tip is GENTLE on purpose: a steep one (quadratic)
@@ -777,6 +799,41 @@ class Player(Lizard):
             ang += total * w[idx] * inv
             js[i] = js[i - 1] + vfrom_angle(ang, self.spine.link)
 
+    def _fire_whip_darts(self, game):
+        """Farpas de Cauda: a fan of PIERCING barbs thrown along the swing.
+
+        Fired once at swing start (not per frame). Piercing so they read as the
+        tail flinging shrapnel through the horde, not single-target pokes.
+        """
+        from .projectile import Projectile
+        base = angle_of(self.whip_dir)
+        tail = self.spine.joints[-1]
+        for k in range(C.ITEM_DART_COUNT):
+            off = (k - (C.ITEM_DART_COUNT - 1) / 2) * C.ITEM_DART_SPREAD
+            v = vfrom_angle(base + off, C.ITEM_DART_SPEED)
+            pr = Projectile(tail, v, (255, 210, 120),
+                            dmg=int(round(C.ITEM_DART_DMG * self.damage_mult())),
+                            radius=5, hostile=False, life=0.9)
+            pr.pierce = True
+            game.spawn_projectile(pr)
+        game.fx.spark_burst(tail, (255, 220, 150), 8, 300)
+
+    def _whip_reflect(self, game):
+        """Contragolpe: the swinging tail bats enemy shots back at their owners."""
+        js = self.spine.joints
+        pv, _k = self._whip_span()
+        tail = js[pv + 1:] if pv is not None else js[-3:]
+        reach = self.max_r * 1.6
+        for pr in game.projectiles:
+            if not pr.hostile:
+                continue
+            if any(pr.pos.distance_to(j) < reach for j in tail):
+                pr.hostile = False              # now it hits enemies
+                pr.vel = -pr.vel
+                pr.color = (255, 230, 150)
+                pr.dmg = max(pr.dmg, int(round(8 * self.damage_mult())))
+                game.fx.spark_burst(pr.pos, (255, 240, 180), 5, 240)
+
     def _whip_hit(self, game):
         """The real tail joints are the hitbox -- what you see is what hits.
 
@@ -786,6 +843,8 @@ class Player(Lizard):
         """
         if self.whip_t < 0.06 or self.whip_t > 0.97:
             return                      # only the very start/end don't connect
+        if self.whip_reflect:
+            self._whip_reflect(game)
         js = self.spine.joints
         pv, _k = self._whip_span()
         tail = js[pv + 1:] if pv is not None else js[-3:]

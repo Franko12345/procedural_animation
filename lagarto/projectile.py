@@ -29,6 +29,11 @@ class Projectile:
         self.dead = False
         self.spin = 0.0
         self.homing = False             # if set, the game curves it toward an enemy
+        # piercing shots pass THROUGH enemies (Farpas de Cauda). `_pierced` is the
+        # per-projectile "already hit" set, same idea as dash_hits/whip_hits: it
+        # runs every frame it overlaps, so without it one dart hits 30x.
+        self.pierce = False
+        self._pierced = None
         self.trail = []                 # recent world positions -> a Gungeon streak
         # optional payload: dict(r, dmg, life, hue) -> the game drops a puddle
         # wherever this projectile ends, whether it connected or simply landed

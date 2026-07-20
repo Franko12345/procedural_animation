@@ -206,9 +206,12 @@ def main():
                             act, cfg = _pause_pick(game, _toggle_fs, meter)
                             if act == 'quit':
                                 running = False
-                    elif game.state in ('over', 'victory') and ev.key == pygame.K_RETURN:
-                        game = Game(num, controllers, font, bigfont, mode=mode,
-                                    chars=chars)
+                    elif game.state in ('over', 'victory'):
+                        if ev.key == pygame.K_RETURN:
+                            game = Game(num, controllers, font, bigfont, mode=mode,
+                                        chars=chars)                # ENTER: nova run
+                        elif ev.key == pygame.K_ESCAPE:
+                            running = False                          # ESC: volta ao menu
                     elif game.state == 'levelup' and not game.pick:
                         if ev.key == pygame.K_r:
                             game.reroll_cards()          # LAGARTO's hand reroll
@@ -251,6 +254,14 @@ def main():
 
             # gamepad navigation for the upgrade/camp screens (mirrors the keyboard)
             nav.poll(joysticks, frame_dt)
+            # Start opens/closes pause with a controller (ESC is keyboard-only), so
+            # a pad-only player can actually reach the pause menu. Mirrors the ESC
+            # path: back out of a sub-screen first, else toggle.
+            if nav.start and game.state not in ('over', 'victory', 'levelup', 'camp'):
+                if game.state == 'pause' and game.pause_back():
+                    pass
+                else:
+                    game.toggle_pause()
             if game.pick:                    # a choice is being absorbed: hands off
                 pass
             elif game.state == 'levelup' and game.cards:
@@ -274,9 +285,12 @@ def main():
             elif game.state == 'camp' and game.camp:
                 _camp_nav(game, left=nav.left, right=nav.right, up=nav.up,
                           down=nav.down, confirm=nav.confirm)
-            elif game.state in ('over', 'victory') and nav.confirm:
-                game = Game(num, controllers, font, bigfont, mode=mode,
-                            chars=chars)
+            elif game.state in ('over', 'victory'):
+                if nav.confirm:                          # A: nova run
+                    game = Game(num, controllers, font, bigfont, mode=mode,
+                                chars=chars)
+                elif nav.cancel:                         # B: volta ao menu
+                    running = False
 
             keys = pygame.key.get_pressed()
             mouse_btn = pygame.mouse.get_pressed()

@@ -657,6 +657,8 @@ class Game:
                 for e in self.enemies:
                     if e.dead:
                         continue
+                    if pr.pierce and pr._pierced is not None and e in pr._pierced:
+                        continue                # piercing shot already went through
                     where = e.hit_test(pr.pos, pr.radius)
                     if where:
                         dmg = pr.dmg
@@ -666,8 +668,13 @@ class Game:
                         e.take_hit(self, safe_norm(pr.vel), dmg)
                         if pr.effect == 'poison':
                             e.apply_poison(3.0, 3.0)
-                        pr.dead = True
-                        break
+                        if pr.pierce:           # pass through, remember this enemy
+                            if pr._pierced is None:
+                                pr._pierced = set()
+                            pr._pierced.add(e)
+                        else:
+                            pr.dead = True
+                            break
                 if not pr.dead:                     # player shots also chip nests
                     for n in self.rounds.nests:
                         if not n.dead and n.pos.distance_to(pr.pos) < n.max_r + pr.radius:
@@ -1586,7 +1593,7 @@ class Game:
         surf.blit(bonus, (cx - bonus.get_width() // 2, y + 58))
         unl = self.font.render("MODO INFINITO DESBLOQUEADO no menu", True, (245, 220, 120))
         surf.blit(unl, (cx - unl.get_width() // 2, y + 88))
-        h = self.font.render("Enter: jogar de novo    Esc: menu", True, (200, 214, 206))
+        h = self.font.render("Enter/A: jogar de novo     Esc/B: voltar ao menu", True, (200, 214, 206))
         surf.blit(h, (cx - h.get_width() // 2, y + 124))
 
     def _draw_over(self, surf):
@@ -1609,5 +1616,5 @@ class Game:
         tot = self.font.render(f"DNA total: {self.meta['dna']}   (gaste no menu > EVOLUCAO)",
                                True, (170, 210, 185))
         surf.blit(tot, (C.WIDTH // 2 - tot.get_width() // 2, cy + 76))
-        h = self.font.render("Enter: jogar de novo    Esc: menu", True, (200, 200, 220))
+        h = self.font.render("Enter/A: jogar de novo     Esc/B: voltar ao menu", True, (200, 200, 220))
         surf.blit(h, (C.WIDTH // 2 - h.get_width() // 2, cy + 110))

@@ -168,6 +168,16 @@ class Pad:
             return self._cb(pygame.CONTROLLER_BUTTON_B)
         return _btn(self.joy, 1)
 
+    def start(self):
+        """Start/Options button -- opens and closes the pause menu.
+
+        Without this a controller-only player could navigate the pause screen but
+        had no way to *open* it (ESC was keyboard-only).
+        """
+        if self.ctrl:
+            return self._cb(pygame.CONTROLLER_BUTTON_START)
+        return _btn(self.joy, 7)
+
 
 class MenuNav:
     """Turns pad sticks/d-pads into discrete menu events (with key-repeat).
@@ -183,19 +193,19 @@ class MenuNav:
     def __init__(self):
         self._dir = (0, 0)
         self._t = 0.0
-        self._pa = self._pb = False
+        self._pa = self._pb = self._ps = False
         self.up = self.down = self.left = self.right = False
-        self.confirm = self.cancel = False
+        self.confirm = self.cancel = self.start = False
 
     def poll(self, pads, dt):
         self.up = self.down = self.left = self.right = False
-        self.confirm = self.cancel = False
+        self.confirm = self.cancel = self.start = False
         if not pads:
             self._dir = (0, 0)
-            self._pa = self._pb = False
+            self._pa = self._pb = self._ps = False
             return
         x = y = 0.0
-        a = b = False
+        a = b = s = False
         for p in pads:
             m = p.move()
             if abs(m.x) > abs(x):
@@ -204,6 +214,7 @@ class MenuNav:
                 y = m.y
             a = a or p.confirm()
             b = b or p.cancel()
+            s = s or p.start()
 
         dx = 1 if x > self.DEAD else (-1 if x < -self.DEAD else 0)
         dy = 1 if y > self.DEAD else (-1 if y < -self.DEAD else 0)
@@ -224,7 +235,8 @@ class MenuNav:
 
         self.confirm = a and not self._pa
         self.cancel = b and not self._pb
-        self._pa, self._pb = a, b
+        self.start = s and not self._ps
+        self._pa, self._pb, self._ps = a, b, s
 
 
 def describe_joysticks(pads):

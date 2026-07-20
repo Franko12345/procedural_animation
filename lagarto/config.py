@@ -96,6 +96,11 @@ ITEM_ADRENALINE_HP = 0.35   # abaixo desta fracao de vida...
 ITEM_ADRENALINE_MULT = 1.6  # ...o dano sobe isto
 ITEM_DRAIN = 4.0         # vida drenada pela lingua por acerto
 ITEM_DART_DMG = 5        # farpas disparadas pela rabada
+ITEM_DART_COUNT = 5      # quantas farpas por golpe
+ITEM_DART_SPREAD = 16    # graus entre farpas
+ITEM_DART_SPEED = 520
+ITEM_SPIRAL_MULT = 2.4   # multiplica a varredura da rabada (Cauda em Espiral)
+ITEM_MAGNET_PULL = 420   # velocidade com que o ima puxa coletaveis (px/s)
 ITEM_SPREAD_R = 130      # alcance do contagio
 
 # Synergy Factor (Gungeon): multiplica o PESO de uma carta que avanca uma

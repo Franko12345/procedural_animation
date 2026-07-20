@@ -435,17 +435,17 @@ def run_menu(screen, font, bigfont, titlefont, joysticks):
                 if ev.key == pygame.K_F11:
                     toggle_fs()
                 elif ev.key in (pygame.K_DOWN, pygame.K_s):
-                    sel = (sel + 1) % len(items)
+                    sel = (sel + 1) % len(items); audio.play('ui', 0.5)
                 elif ev.key in (pygame.K_UP, pygame.K_w):
-                    sel = (sel - 1) % len(items)
+                    sel = (sel - 1) % len(items); audio.play('ui', 0.5)
                 elif ev.key in (pygame.K_LEFT, pygame.K_a) and mode == 'chars':
-                    sel = (sel - 1) % len(items)
+                    sel = (sel - 1) % len(items); audio.play('ui', 0.5)
                 elif ev.key in (pygame.K_RIGHT, pygame.K_d) and mode == 'chars':
-                    sel = (sel + 1) % len(items)
+                    sel = (sel + 1) % len(items); audio.play('ui', 0.5)
                 elif ev.key in (pygame.K_LEFT, pygame.K_a) and mode == 'compendium':
-                    tab, sel = (tab - 1) % 4, 0
+                    tab, sel = (tab - 1) % 4, 0; audio.play('ui', 0.5)
                 elif ev.key in (pygame.K_RIGHT, pygame.K_d) and mode == 'compendium':
-                    tab, sel = (tab + 1) % 4, 0
+                    tab, sel = (tab + 1) % 4, 0; audio.play('ui', 0.5)
                 elif ev.key in (pygame.K_RETURN, pygame.K_SPACE):
                     if mode == 'meta' and _buy_meta(meta, items[:-1], sel):
                         audio.play('buy'); meta = progression.load(); continue
@@ -485,9 +485,14 @@ def run_menu(screen, font, bigfont, titlefont, joysticks):
             sel = (sel - 1) % len(items); audio.play('ui', 0.5)
         if mode == 'compendium':
             if nav.left:
-                tab, sel = (tab - 1) % 4, 0
+                tab, sel = (tab - 1) % 4, 0; audio.play('ui', 0.5)
             if nav.right:
-                tab, sel = (tab + 1) % 4, 0
+                tab, sel = (tab + 1) % 4, 0; audio.play('ui', 0.5)
+        elif mode == 'chars':               # cards are horizontal: stick L/R moves
+            if nav.left:
+                sel = (sel - 1) % len(items); audio.play('ui', 0.5)
+            if nav.right:
+                sel = (sel + 1) % len(items); audio.play('ui', 0.5)
         if nav.confirm and mode == 'meta' and _buy_meta(meta, items[:-1], sel):
             audio.play('buy'); meta = progression.load()
         elif nav.confirm:
@@ -498,6 +503,8 @@ def run_menu(screen, font, bigfont, titlefont, joysticks):
         if nav.cancel:
             if mode == 'main':
                 return None
+            if mode == 'chars':             # clear the pending pick, like ESC does
+                pending, picks = None, []
             mode, sel = 'main', 0
 
         # input may have switched screens this frame -> refresh the item list so we
