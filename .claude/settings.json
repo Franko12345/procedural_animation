@@ -1,5 +1,6 @@
 {
   "enabledPlugins": {
-    "pixel-plugin@pixel-plugin": true
+    "pixel-plugin@pixel-plugin": true,
+    "fullstack-dev-skills@fullstack-dev-skills": true
   }
 }
