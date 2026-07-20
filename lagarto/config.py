@@ -50,11 +50,14 @@ DASH_COST = 14
 TONGUE_COST = 8
 
 # rabada: golpe de cauda. A clava aumenta o dano e o empurrao; o ferrao envenena.
-WHIP_REACH = 110         # quanto a cabeca varre para o lado no golpe (px)
+WHIP_SWEEP = 115         # graus que a secao da cauda gira em bloco (leva a ponta longe)
+WHIP_CURL = 42           # atraso total distribuido nos segmentos: da o "estalo".
+                         # Curl alto demais ENROLA a cauda sob a barriga em vez de varrer.
 WHIP_COST = 10
-# A rabada acerta VARIOS inimigos por golpe (varredura), entao o dano por acerto
-# tem que ser menor que o do dash, que e alvo unico. Medido: 4 alvos num golpe.
-WHIP_DAMAGE = 3
+# Depois que o golpe passou a mover a CAUDA (e nao o jogador), ele so alcanca o
+# arco atras/ao lado -- medido 1-2 alvos por golpe, nao 4-5. Entao o dano por
+# acerto voltou para perto do dash; o que paga a diferenca e o cooldown maior.
+WHIP_DAMAGE = 5
 WHIP_CLUB_MULT = 1.6     # dano com cauda-clava (3 -> 4.8, critico ~10)
 WHIP_KNOCK = 170         # empurrao base (a clava usa WHIP_KNOCK_CLUB)
 WHIP_KNOCK_CLUB = 460

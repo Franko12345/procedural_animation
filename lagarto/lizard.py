@@ -491,11 +491,7 @@ class Player(Lizard):
             game.fx.spark_burst(self.pos, palette.lighten(self.color, 0.3), 12, 340)
             game.shake(5)
 
-        if self.whip_t > 0:
-            # the swing owns the body: let steer fight it and the arc collapses
-            self.steer(Vector2(), dt, speed_mul)
-        else:
-            self.steer(c.move, dt, speed_mul)
+        self.steer(c.move, dt, speed_mul)
         self.integrate(dt, on_plant=game.fx.dust)
         self._whip_arc(dt)
 
@@ -568,22 +564,45 @@ class Player(Lizard):
             self.health = min(self.max_health, self.health + self.regen * dt)
 
     def _whip_arc(self, dt):
-        """Sweep the head sideways through the swing; the spine does the rest.
+        """Curl the TAIL sideways through the swing, leaving the head where it is.
 
-        Applied to ``pos`` AFTER integrate so steer/velocity can't cancel it, and
-        the spine is re-resolved so the body (and the tail hitbox) match the same
-        frame. ``sin(t*pi)`` is the out-and-back envelope the tongue also uses.
+        The spine is follow-the-leader, so it can only be *driven* from the head --
+        which is exactly why an earlier version swung the whole player instead of
+        the tail. Here the last few joints are rebuilt from a pivot with a
+        per-segment angle offset: link distances stay exact, and the club/sting
+        art follows for free because ``parts.draw_tail`` reads js[-1]/js[-2].
+
+        This override survives to draw time only because player contact is soft
+        (``collision.py``): the player is never pushed, so ``separate`` skips the
+        re-resolve that would otherwise wipe it the same frame.
         """
         if self.whip_t <= 0 or self.whip_dir.length_squared() < 1e-6:
             return
-        # derivative of the sin envelope -> speed along the arc, so it whips out
-        # fast and eases back instead of teleporting
-        swing = math.cos(self.whip_t * math.pi) * math.pi
-        self.pos += self.whip_dir * swing * C.WHIP_REACH * dt / 0.34
-        m = self.max_r
-        self.pos.x = min(max(self.pos.x, m), C.WORLD_W - m)
-        self.pos.y = min(max(self.pos.y, m), C.WORLD_H - m)
-        self.spine.resolve(self.pos)
+        js = self.spine.joints
+        n = len(js)
+        k = max(3, n // 3)                      # how much of the tail whips
+        pv = n - k - 1                          # pivot joint (behind the legs)
+        if pv < 1:
+            return
+        # Anchor the swing to the BODY (straight back from the pivot), not to last
+        # frame's tail: spine.resolve rebuilds joint directions from their previous
+        # positions, so anchoring to the tail fed the curl back into itself and the
+        # swing cancelled out to a wobble.
+        back = js[pv] - js[max(0, pv - 2)]
+        if back.length_squared() < 1e-6:
+            return
+        # SWEEP rotates the whole tail section about the pivot -- that is what
+        # carries the tip across an arc (a pure curl just coils it up and barely
+        # reaches). CURL adds per-segment lag so it cracks instead of swinging
+        # like a stick.
+        cross = back.x * self.whip_dir.y - back.y * self.whip_dir.x
+        side = 1.0 if cross > 0 else -1.0
+        env = math.sin(self.whip_t * math.pi)
+        ang = angle_of(back) + side * C.WHIP_SWEEP * env
+        curl = side * C.WHIP_CURL * env / k
+        for i in range(pv + 1, n):
+            js[i] = js[i - 1] + vfrom_angle(ang, self.spine.link)
+            ang += curl
 
     def _whip_hit(self, game):
         """The real tail joints are the hitbox -- what you see is what hits.

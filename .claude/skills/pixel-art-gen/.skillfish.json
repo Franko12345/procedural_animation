@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "name": "pixel-art-gen",
+  "owner": "thejacedev",
+  "repo": "claude-code-skills",
+  "path": "plugins/pixel-art-gen/skills/pixel-art-gen",
+  "branch": "main",
+  "sha": "328b0822a7fc154c7680c0fab35c2483bed24fb4",
+  "source": "manual"
+}

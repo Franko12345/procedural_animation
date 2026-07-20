@@ -189,13 +189,19 @@ inimigo leva dano + é puxado; custa energia), **habilidade ativa** (a fazer no 
 
 **Rabada (`Player._whip_hit`)** — golpe de cauda manual, botão próprio (**meio do mouse /
 Q**, P2 **RAlt**, gamepad **Y**). Custa `C.WHIP_COST`, cooldown `Player.whip_cooldown`.
-- **Como a cauda se move** (`Player._whip_arc`): a espinha é follow-the-leader e
-  `spine.resolve` **reescreve todas as juntas todo frame** — *deslocar junta não funciona*.
-  O golpe **dirige a cabeça num arco lateral** (envelope `sin(t*pi)`, igual à língua),
-  aplicado em `pos` **depois** do `integrate`, com o `steer` **mudo durante o golpe**.
-  *Já foi um impulso na velocidade: o `steer` apagava a componente lateral em poucos frames
-  e sobrava só o que apontava para onde você já ia — lia como lunge para frente.* O lado
-  vem do produto vetorial com o inimigo mais próximo (senão alterna). Dial: `C.WHIP_REACH`.
+- **Como a cauda se move** (`Player._whip_arc`): quem varre é a **cauda**, não o jogador.
+  A espinha é follow-the-leader, então só dá para *dirigi-la pela cabeça* — por isso as
+  duas primeiras tentativas erraram o alvo (impulso na velocidade e depois arco na cabeça:
+  ambas jogavam o **corpo inteiro** de lado). A solução é **reconstruir as últimas juntas**
+  a partir de um pivô: `WHIP_SWEEP` gira a seção em bloco (é o que leva a ponta longe) e
+  `WHIP_CURL` adiciona atraso por segmento (o "estalo"). *Curl alto demais **enrola** a
+  cauda sob a barriga em vez de varrer.*
+  - Ancorar o ângulo no **corpo** (`js[pv] - js[pv-2]`), **nunca na cauda do frame
+    anterior**: `spine.resolve` deriva direção das posições anteriores, então ancorar na
+    cauda realimenta a curva e o balanço se cancela num tremor.
+  - A sobrescrita **sobrevive até o desenho** só porque o contato do jogador é macio —
+    ele nunca é empurrado, então `collision.separate` pula o re-resolve dele. Se o contato
+    voltar a ser duro, isto quebra.
 - **Hitbox = as juntas reais** (`spine.joints[-3:]`) com alcance explícito `max_r*1.15`
   (o `radii` da ponta é ~0.22*max_r, pequeno demais). O que você vê é o que acerta;
   cabeça do inimigo ainda dá crítico.
@@ -204,10 +210,11 @@ Q**, P2 **RAlt**, gamepad **Y**). Custa `C.WHIP_COST`, cooldown `Player.whip_coo
 - **Modificadores da cauda** (era tudo cosmético antes): `club` → `WHIP_CLUB_MULT` de dano
   + `WHIP_KNOCK_CLUB` de empurrão + shake maior; `sting` → `apply_poison`. *Nota: o ferrão
   dos **inimigos** aplica `apply_slow`, o do jogador envenena — divergência proposital.*
-- **Dano por acerto é MENOR que o do dash de propósito**: a rabada é **varredura** e acerta
-  vários inimigos por golpe (medido: até 4-5), enquanto o dash é alvo único. Confirmado que
-  **não** há acerto repetido no mesmo alvo (`whip_hits`) e que a cauda **não fere fora do
-  golpe** — o que fazia parecer forte era a largura, não repetição.
+- **Alcance = o arco atrás/ao lado** (medido: 1-2 alvos por golpe), não a tela toda. Quando
+  o golpe ainda movia o corpo, pegava 4-5 e o dano por acerto tinha sido baixado para
+  compensar; com a cauda sozinha voltou para perto do dash, e quem paga a diferença é o
+  cooldown maior. Confirmado que **não** há acerto repetido no mesmo alvo (`whip_hits`) e
+  que a cauda **não fere fora do golpe**.
 - `take_hit` **atribui** `vel`, então o empurrão extra vem **depois** da chamada.
 
 **Dano do dash — um acerto por investida.** `_collisions` roda **todo frame**, então
