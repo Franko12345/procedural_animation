@@ -89,6 +89,32 @@ campo de altura (`world.py` não tem `ground_y_at`/elevação) — a técnica de
 raycast-de-pé-no-chão do doc pressupõe câmera lateral (é como Rain World roda).
 Não se aplica aqui; pulada sem substituto, não é regressão.
 
+### Fase A — bugs reportados no overshoot da cauda (corrigidos)
+Playtest: cauda esticando MUITO ao mover + streaks gigantes no menu. Duas causas:
+- [x] **`menu.py` reimplementa `Lizard.integrate()` em 3 lugares** (`_step_backdrop`,
+      `_preview_step`, `_char_preview_step` — armadilha "dois call sites" de novo,
+      agora em 3) e nenhum atualizava `tail_spring`: a mola ficava CONGELADA na
+      posição de construção enquanto o corpo perambulava pela tela toda, e o
+      "overshoot" virava um rastro fixo do tamanho da tela. Corrigido: as 3
+      funções agora atualizam `tail_spring.target`/`update(dt)` igual ao
+      `integrate()`; `_make_backdrop` também resincroniza a mola após
+      reposicionar (senão o 1º frame já nasce esticado).
+- [x] **Mola sem teto**: o lag de regime de um spring-damper escala linear com a
+      velocidade do alvo (`lag_regime = damping*v/stiffness`) — a 672 px/s do
+      dash isso já dava ~50px, mais que o próprio `max_r`. `TAIL_SPRING_MAX_LAG`
+      (0.45 × `max_r`) limita o deslocamento cosmético não importa a
+      velocidade/teleporte, corrigindo os dois bugs de uma vez (o cap sozinho já
+      teria evitado o streak do menu, mesmo sem synca-la).
+- [x] **Rabada quebrada**: `_whip_arc` sobrescreve as MESMAS juntas da cauda que
+      o `_cosmetic_joints()` desenha, e roda DEPOIS do `integrate()` no mesmo
+      frame — a mola (perseguindo a posição pré-golpe) brigava com o arco
+      desenhado à mão, embotando/distorcendo o golpe visível. `_cosmetic_joints`
+      agora se desliga inteiro enquanto `whip_t > 0` (a rabada já é uma animação
+      autoral; a mola não deve competir com ela).
+- [x] Verificado: `--smoke 400` verde, screenshot do menu (sem streak),
+      screenshot da rabada (arco liso de novo), `test_boss.py`/`test_king.py`
+      ainda passam.
+
 ### Fase A (01 §3,7,8 parcial) — springs, damping/weight por genoma
 - [x] `lagarto/anim.py` novo: `SpringDamper`, `Vector2Spring`, `PhaseOscillator`,
       `Anticipation` — genéricos, sem depender de `Lizard`/`Genome`.

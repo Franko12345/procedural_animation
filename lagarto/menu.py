@@ -42,6 +42,8 @@ def _make_backdrop():
     for d in demo:
         d.pos = cam.pos + Vector2(random.uniform(-420, 420), random.uniform(-280, 280))
         d.spine.resolve(d.pos)
+        if d.tail_spring is not None:      # else the spring chases from wherever
+            d.tail_spring.value = d.tail_spring.target = Vector2(d.spine.joints[-1])
     return demo, cam, World()
 
 
@@ -61,6 +63,9 @@ def _step_backdrop(demo, cam, world, dt):
             d.facing = safe_norm(d.vel)
         for leg in d.legs:
             leg.update(d.spine, d.vel, dt, None)
+        if d.tail_spring is not None:
+            d.tail_spring.target = d.spine.joints[-1]
+            d.tail_spring.update(dt)
         d.squash = approach(d.squash, 1 + clamp(d.vel.length() / d.max_speed, 0, 1) * 0.16,
                             9, dt)
 
@@ -177,6 +182,9 @@ def _preview_step(c, cam, dt, t):
         c.facing = safe_norm(c.vel)
     for leg in c.legs:
         leg.update(c.spine, c.vel, dt, None)
+    if c.tail_spring is not None:
+        c.tail_spring.target = c.spine.joints[-1]
+        c.tail_spring.update(dt)
     c.squash = approach(c.squash, 1 + clamp(c.vel.length() / c.max_speed, 0, 1) * 0.16, 9, dt)
     c.wobble += dt * 6
     cam.pos = Vector2(c.pos)
@@ -692,6 +700,9 @@ def _char_preview_step(c, cam, dt, t):
         c.facing = safe_norm(c.vel)
     for leg in c.legs:
         leg.update(c.spine, c.vel, dt, None)
+    if c.tail_spring is not None:
+        c.tail_spring.target = c.spine.joints[-1]
+        c.tail_spring.update(dt)
     c.squash = approach(c.squash, 1 + clamp(c.vel.length() / c.max_speed, 0, 1) * 0.16,
                         9, dt)
     c.wobble += dt * 6

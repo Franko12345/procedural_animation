@@ -26,6 +26,12 @@ from .projectile import spit as game_spit
 from .anim import Vector2Spring
 
 TAIL_SPRING_JOINTS = 4          # how many tail joints get cosmetic overshoot
+TAIL_SPRING_MAX_LAG = 0.45      # cap on overshoot, as a fraction of max_r -- a
+                                # spring's steady-state lag scales with target
+                                # speed with no ceiling, so an uncapped spring
+                                # turns a dash (or any large jump, e.g. a menu
+                                # backdrop lizard being repositioned) into a
+                                # tail stretched way past the body's own length
 
 TAU = C.TAU
 
@@ -336,8 +342,14 @@ class Lizard:
     def _cosmetic_joints(self):
         """Physical joints with the last few tail joints blended toward
         ``tail_spring`` (overshoot/lag) -- draw-only, so hit-test/legs/eyes
-        (which read ``spine.joints`` directly) are never thrown off."""
-        if self.tail_spring is None:
+        (which read ``spine.joints`` directly) are never thrown off.
+
+        Suppressed while the tail-whip is swinging (``whip_t`` > 0): that
+        directly overwrites these same joints with a hand-tuned arc
+        (``_whip_arc``), and the spring -- still chasing last frame's
+        pre-whip position -- fought it, visibly dulling/glitching the swing.
+        """
+        if self.tail_spring is None or getattr(self, 'whip_t', 0.0) > 0:
             return None
         js = list(self.spine.joints)
         n = len(js)
@@ -345,6 +357,9 @@ class Lizard:
         if k <= 0:
             return None
         lag = self.tail_spring.value - js[-1]
+        cap = self.max_r * TAIL_SPRING_MAX_LAG
+        if lag.length_squared() > cap * cap:
+            lag.scale_to_length(cap)
         for i in range(n - k, n):
             t = (i - (n - k - 1)) / k          # ramps 0 -> 1 toward the tip
             js[i] = js[i] + lag * t
