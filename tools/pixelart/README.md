@@ -20,6 +20,17 @@ Saida em `assets/`:
 - `assets/props/` — 80x80: `tent_beetle` (a loja do besouro).
 - `assets/icons/` — 24x24: `pickup_fruit pickup_egg pickup_bug` (coletaveis do
   mundo, ids proprios — `pickups.py` ainda desenha em codigo, sem dispatch por id).
+- `assets/icons/` — 32x32: 9 charms (`antenas presas olhos carapaca espinhos asas
+  glandula nectar clava`). `glandula`/`nectar` dividiam o mesmo desenhador `_sac`
+  no `icons.py` — aqui saem visualmente distintos (glandula = cacho verde de
+  esporos, nectar = gota ambar unica).
+
+**Colisao de id conhecida, NAO resolvida em arte:** o charm de cauda `ferrao`
+("rabada envenena") usa o **mesmo id** que a arma `Ferrão Teleguiado` no dict de
+`icons.py` — as duas sao `id='ferrao'`. Ja existe `assets/icons/ferrao.png` (lote 3,
+desenhado para a ARMA). Gerar um segundo PNG pro charm exigiria ids separados no
+codigo (`icons.py`/`charms.py`) antes — **nao gerado** de proposito, pra nao ligar
+o PNG errado num dos dois usos quando a Fase 7 acoplar.
 
 Regerar (renderiza ao lado do script):
 ```bash
@@ -28,6 +39,7 @@ python tools/pixelart/batch3.py    # 7 armas restantes
 python tools/pixelart/batch4.py    # 8 stat icons (1a passada)
 python tools/pixelart/batch4b.py   # refinamento de might + dash
 python tools/pixelart/batch5.py    # pickups (fruta/ovo/inseto)
+python tools/pixelart/batch6.py    # 9 charms
 ```
 
 ## v1 — `mkicons.py` (personagens 16x16, legado)
