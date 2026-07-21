@@ -12,7 +12,7 @@ WIDTH, HEIGHT = 1120, 720
 # NEAREST (not smoothscale) -- chunky visible pixels. 1 = off (old crisp-vector
 # look). Pure post-process: doesn't touch world/UI coordinates, hitboxes, or
 # any drawing code, so nothing else needs to know this exists.
-PIXEL_SCALE = 3
+PIXEL_SCALE = 1
 WORLD_W, WORLD_H = 3200, 3200
 
 # --- timing (fixed simulation step, render decoupled) ---------------------- #
