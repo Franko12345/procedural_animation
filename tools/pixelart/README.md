@@ -18,6 +18,8 @@ Saida em `assets/`:
   a Fase 7 ligar via `lagarto/assets.py`, o fallback `icons.draw` cobre qualquer
   id sem PNG.
 - `assets/props/` — 80x80: `tent_beetle` (a loja do besouro).
+- `assets/icons/` — 24x24: `pickup_fruit pickup_egg pickup_bug` (coletaveis do
+  mundo, ids proprios — `pickups.py` ainda desenha em codigo, sem dispatch por id).
 
 Regerar (renderiza ao lado do script):
 ```bash
@@ -25,6 +27,7 @@ python tools/pixelart/batch2.py    # coin/health/cuspe/tent
 python tools/pixelart/batch3.py    # 7 armas restantes
 python tools/pixelart/batch4.py    # 8 stat icons (1a passada)
 python tools/pixelart/batch4b.py   # refinamento de might + dash
+python tools/pixelart/batch5.py    # pickups (fruta/ovo/inseto)
 ```
 
 ## v1 — `mkicons.py` (personagens 16x16, legado)
