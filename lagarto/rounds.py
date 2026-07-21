@@ -315,7 +315,7 @@ class RoundManager:
             gen.size *= 1.35                 # the final boss towers over the rest
             boss.__init__(pos, 'enemy', genome=gen)
             boss.species = key
-        boss.hp = int((90 + 55 * tier) * (2.0 if self.is_final else 1.0))
+        boss.hp = int((90 + 200 * tier) * (2.0 if self.is_final else 1.0))
         boss.max_hp = boss.hp
         boss.is_boss = True
         boss.glow_body = True                # bosses get the player-grade glow

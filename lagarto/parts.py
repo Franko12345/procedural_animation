@@ -28,7 +28,8 @@ def draw_spikes(surf, cam, creature):
     g = creature.genome
     if g.spikes <= 0:
         return
-    js, rad = creature.spine.joints, creature.spine.radii
+    js = creature._cosmetic_joints() or creature.spine.joints
+    rad = creature.spine.radii
     n = len(js)
     hi = palette.lighten(creature.color, 0.35)
     body = palette.lighten(creature.color, 0.05)
@@ -57,7 +58,8 @@ def draw_plates(surf, cam, creature):
     g = creature.genome
     if g.plates <= 0:
         return
-    js, rad = creature.spine.joints, creature.spine.radii
+    js = creature._cosmetic_joints() or creature.spine.joints
+    rad = creature.spine.radii
     edge = palette.lighten(creature.color, 0.28)
     w = max(1, int((1 + g.plates) * cam.zoom))
     for i in range(1, len(js) - 1):
@@ -72,7 +74,11 @@ def draw_plates(surf, cam, creature):
 
 
 def draw_horns(surf, cam, creature):
-    """Smooth, curved, tapered horns sweeping forward from the head."""
+    """Smooth, curved, tapered horns sweeping forward from the head.
+
+    Rigid on purpose (bone, not hair): no sway, no lag -- they move only
+    because the head they're attached to moves.
+    """
     g = creature.genome
     if g.horns <= 0:
         return
@@ -81,22 +87,13 @@ def draw_horns(surf, cam, creature):
     perp = Vector2(-d.y, d.x)
     r = creature.max_r
     fill = palette.lighten(creature.color, 0.25)
-    # real secondary motion (plans/01 #3): head_dir_spring lags a beat behind
-    # the actual head direction, so this is ~0 moving straight and grows
-    # during a turn -- horns lean toward where the head WAS pointing, like
-    # hair blown back, instead of an idle canned wave
-    hds = getattr(creature, 'head_dir_spring', None)
-    lean = (hds.value - d) * 0.5 if hds is not None else Vector2()
     for k in range(min(g.horns, 3)):
         spread = 0.3 + k * 0.24
-        # phase-offset sway (plans/01 #5): taller/farther horns lag a bit more,
-        # same "wave down the chain" idea already used for spikes/fins/antennae
-        sway = math.sin(creature.wobble * 1.6 + k * 0.9) * 0.12
         for s in (-1, 1):
             base = head + perp * (s * r * spread) - d * (r * 0.05)
-            out = safe_norm(d * 0.85 + perp * (s * (0.4 + sway)) + lean)
+            out = safe_norm(d * 0.85 + perp * (s * 0.4))
             mid = base + out * (r * 0.72)
-            tipdir = safe_norm(d * 0.95 - perp * (s * (0.12 - sway * 1.5)) + lean * 1.4)
+            tipdir = safe_norm(d * 0.95 - perp * (s * 0.12))
             tip = mid + tipdir * (r * 0.7)
             wv = perp * (s * r * 0.17)
             _poly(surf, cam, [base + wv, mid + wv * 0.5, tip, mid - wv * 0.5, base - wv],
@@ -145,7 +142,8 @@ def draw_fins(surf, cam, creature):
     g = creature.genome
     if g.fins <= 0:
         return
-    js, rad = creature.spine.joints, creature.spine.radii
+    js = creature._cosmetic_joints() or creature.spine.joints
+    rad = creature.spine.radii
     col = palette.lighten(creature.color, 0.3)
     n = len(js)
     for i in (n // 3, 2 * n // 3):

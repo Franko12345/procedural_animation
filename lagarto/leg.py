@@ -34,23 +34,26 @@ class Leg:
         self.partner = None            # diagonal partner (won't both step at once)
         self.lift = 0.0
 
-    def rest_target(self, spine, vel):
+    def rest_target(self, spine, vel, pull=1.0):
+        """``pull`` < 1 gathers the foot in toward the body (anticipation --
+        a real crouch/coil instead of a body-only squash), > 1 reaches it
+        further out (the launch)."""
         i = self.idx
         j = spine.joints
         fwd = safe_norm(j[i - 1] - j[i]) if i >= 1 else spine.head_dir()
         if self.rest_angle is not None:
             ang = angle_of(fwd) + self.rest_angle
-            base = j[i] + vfrom_angle(ang, self.reach)
+            base = j[i] + vfrom_angle(ang, self.reach * pull)
             return base + vel * 0.10
         perp = Vector2(-fwd.y, fwd.x) * self.side
-        base = j[i] + fwd * self.fwd_off + perp * self.side_off
+        base = j[i] + fwd * (self.fwd_off * pull) + perp * (self.side_off * pull)
         return base + vel * 0.12       # anticipate where the body is going
 
     def init_foot(self, spine):
         self.foot = Vector2(self.rest_target(spine, Vector2()))
 
-    def update(self, spine, vel, dt, on_plant):
-        target = self.rest_target(spine, vel)
+    def update(self, spine, vel, dt, on_plant, pull=1.0):
+        target = self.rest_target(spine, vel, pull)
         if self.foot is None:
             self.foot = Vector2(target)
         if self.stepping:

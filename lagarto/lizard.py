@@ -33,7 +33,6 @@ TAIL_SPRING_MAX_LAG = 0.45      # cap on overshoot, as a fraction of max_r -- a
                                 # backdrop lizard being repositioned) into a
                                 # tail stretched way past the body's own length
 TAIL_SPRING_STIFFNESS = 10.0
-HEAD_SPRING_STIFFNESS = 16.0
 # Personality via animation (plans/01 #11): a boss's mood (already computed by
 # BossAI for pattern/speed choice) also tightens its own secondary-motion
 # springs -- calm reads loose/idle, enraged/cornered reads tense/twitchy.
@@ -68,6 +67,10 @@ class Lizard:
         self.facing = Vector2(1, 0)
         self.color = color or g.color()
         self.squash = 1.0
+        self.leg_pull = 1.0      # anticipation hook, twin of squat_bias: < 1 pulls
+                                 # legs in toward the body (a real crouch/coil),
+                                 # > 1 reaches them out (the launch); same
+                                 # decays-on-its-own contract, see integrate()
         self.squat_bias = 1.0    # anticipation hook (plans/01 #8): a caller sets
                                  # this < 1 every frame of its own wind-up window
                                  # (hop/lunge/ranged/dash); integrate() multiplies
@@ -132,15 +135,8 @@ class Lizard:
                 self.tail_spring.target = tip     # keep momentum across a rebuild
             else:
                 self.tail_spring = Vector2Spring(tip, stiffness=TAIL_SPRING_STIFFNESS, damping=0.75)
-            hd = self.spine.head_dir()
-            if not (keep_pose and getattr(self, 'head_dir_spring', None) is not None):
-                # secondary motion for horns (plans/01 #3, stiffness/damping from
-                # its own table): tracks where the head WAS pointing a moment ago,
-                # so a quick turn leaves horns lagging behind like hair blown back
-                self.head_dir_spring = Vector2Spring(hd, stiffness=HEAD_SPRING_STIFFNESS, damping=0.85)
         else:
             self.tail_spring = None
-            self.head_dir_spring = None
         self.legs = self._build_legs(g, n, maxr)
         for leg in self.legs:
             leg.init_foot(self.spine)
@@ -341,10 +337,11 @@ class Lizard:
         if self.vel.length_squared() > 1:
             self.facing = safe_norm(self.vel)
         for leg in self.legs:
-            leg.update(self.spine, self.vel, dt, on_plant)
+            leg.update(self.spine, self.vel, dt, on_plant, self.leg_pull)
         if self.arms:
             self._resolve_arms(dt)
         self.update_secondary_springs(dt)
+        self.leg_pull = approach(self.leg_pull, 1.0, 6, dt)  # decays if no one re-asserts it
 
         if self.genome.linear_damping > 0:
             self.vel *= math.exp(-self.genome.linear_damping * 3.0 * dt)
@@ -372,9 +369,6 @@ class Lizard:
         if self.tail_spring is not None:
             self.tail_spring.target = self.spine.joints[-1]
             self.tail_spring.update(dt)
-        if self.head_dir_spring is not None:
-            self.head_dir_spring.target = self.spine.head_dir()
-            self.head_dir_spring.update(dt)
 
     def reset_secondary_springs(self):
         """Snap every cosmetic spring to the current pose -- call after
@@ -382,9 +376,6 @@ class Lizard:
         the spring spends its next few frames chasing a stale anchor."""
         if self.tail_spring is not None:
             self.tail_spring.value = self.tail_spring.target = Vector2(self.spine.joints[-1])
-        if self.head_dir_spring is not None:
-            hd = self.spine.head_dir()
-            self.head_dir_spring.value = self.head_dir_spring.target = Vector2(hd)
 
     def _cosmetic_joints(self):
         """Physical joints with the last few tail joints blended toward
@@ -449,18 +440,26 @@ class Lizard:
             self._draw_segmented(surf, cam)
             return
 
-        poly = [cam.w2s(p) for p in self.spine.body_polygon_smooth(squish, self._cosmetic_joints())]
+        cj = self._cosmetic_joints()
+        base = self.color
+        if self.hit_flash > 0:
+            base = tuple(int(lerp(base[i], 255, self.hit_flash)) for i in range(3))
+        quads, head_fan, tail_fan, ring = self.spine.body_render_smooth(squish, cj)
+        for q in quads:
+            pygame.draw.polygon(surf, base, [cam.w2s(p) for p in q])
+        if len(head_fan) >= 3:
+            pygame.draw.polygon(surf, base, [cam.w2s(p) for p in head_fan])
+        if len(tail_fan) >= 3:
+            pygame.draw.polygon(surf, base, [cam.w2s(p) for p in tail_fan])
+        poly = [cam.w2s(p) for p in ring]
         if len(poly) >= 3:
-            base = self.color
-            if self.hit_flash > 0:
-                base = tuple(int(lerp(base[i], 255, self.hit_flash)) for i in range(3))
-            pygame.draw.polygon(surf, base, poly)
             # rim light: a bright edge just inside the dark ink outline
             pygame.draw.polygon(surf, palette.lighten(base, 0.55), poly, max(1, int(3 * cam.zoom)))
             pygame.draw.polygon(surf, C.COL_INK, poly, max(1, int(2 * cam.zoom)))
 
         spot = tuple(int(x * 0.8) for x in self.color)
-        js, rad = self.spine.joints, self.spine.radii
+        js = cj or self.spine.joints
+        rad = self.spine.radii
         for i in range(2, len(js) - 2, 2):
             pygame.draw.circle(surf, spot, cam.w2s(js[i]),
                                max(1, int(rad[i] * 0.32 * cam.zoom)))
@@ -1697,15 +1696,13 @@ class AILizard(Lizard):
         return to, 1.0                              # commit to closing (it is slow anyway)
 
     def _apply_mood_pose(self):
-        """Personality via animation (plans/01 #11): bias the SAME secondary
-        springs that already draw the tail/horns by the boss's current mood --
-        calm stays loose, enraged/cornered snap back faster and read tense,
-        with zero new state or draw calls."""
+        """Personality via animation (plans/01 #11): bias the SAME tail spring
+        that already draws the tail by the boss's current mood -- calm stays
+        loose, enraged/cornered snap back faster and read tense, with zero
+        new state or draw calls."""
         mult = BOSS_MOOD_SPRING_MULT.get(self.boss_ai.mood, 1.0)
         if self.tail_spring is not None:
             self.tail_spring.stiffness = TAIL_SPRING_STIFFNESS * mult
-        if self.head_dir_spring is not None:
-            self.head_dir_spring.stiffness = HEAD_SPRING_STIFFNESS * mult
 
     def explode(self, game):
         """Bomber blast: one hit per victim, radius damage, then the bomber dies.
@@ -1740,15 +1737,21 @@ class AILizard(Lizard):
             self.die(game)
 
     def _hop(self, dt):
-        # frogs: periodic forward hops instead of a smooth glide
+        # frogs: periodic forward hops instead of a smooth glide. The tell is
+        # the LEGS gathering in under the body (leg_pull), not a body-only
+        # squash -- a squash-only cue read as "wobbling side to side" since
+        # nothing else in the silhouette visibly moved (feedback: the width
+        # change alone wasn't legible as "about to jump").
         self.wander_t -= dt
-        if 0 < self.wander_t < 0.15:           # about to launch -- crouch first
-            self.squat_bias = 0.82
+        if 0 < self.wander_t < 0.18:           # about to launch -- gather in
+            self.leg_pull = approach(self.leg_pull, 0.55, 16, dt)
+            self.squat_bias = 0.85
         if self.wander_t <= 0:
             self.wander_t = random.uniform(0.7, 1.3)
             self.wander = vfrom_angle(random.uniform(0, 360))
             self.vel += self.wander * self.max_speed * 1.4
-            self.squat_bias = 1.5              # pop out of the crouch on launch
+            self.leg_pull = 1.6                # legs kick out on launch
+            self.squat_bias = 1.4              # pop out of the crouch on launch
         return Vector2()
 
     def _draw_weakpoint(self, surf, cam):

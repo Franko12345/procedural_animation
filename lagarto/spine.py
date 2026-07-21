@@ -9,7 +9,7 @@ from pygame import Vector2
 
 from .mathutil import angle_of, clamp_angle, vfrom_angle, safe_norm, lerp, catmull_rom
 
-SMOOTH_SUBDIV = 3   # extra points per segment for the smoothed outline (plans/01 #6)
+SMOOTH_SUBDIV = 1   # extra points per segment for the smoothed outline (plans/01 #6)
 
 # thickness profile sampled along the body (head -> tail); kept above zero at the
 # tail so the two body rims never cross into a sharp "blade".
@@ -48,23 +48,6 @@ class Spine:
     def head_dir(self):
         return safe_norm(self.joints[0] - self.joints[1])
 
-    def outline(self, scale=1.0, joints=None):
-        """Left/right rim points for the filled body polygon.
-
-        ``joints`` lets a caller draw with cosmetic (spring-lagged) positions
-        while ``self.joints`` -- used by hit-test, legs, eyes -- stays exact.
-        """
-        j = joints if joints is not None else self.joints
-        rad = self.radii
-        n = len(j)
-        left, right = [], []
-        for i in range(n):
-            fwd = safe_norm(j[i] - j[i + 1]) if i < n - 1 else safe_norm(j[i - 1] - j[i])
-            perp = Vector2(-fwd.y, fwd.x) * (rad[i] * scale)
-            left.append(j[i] + perp)
-            right.append(j[i] - perp)
-        return left, right
-
     def _smooth_samples(self, joints=None):
         """Denser (pos, radius) samples via Catmull-Rom -- softens the visible
         polygon facets of a low-joint-count body without moving the physical
@@ -82,22 +65,34 @@ class Spine:
                 radii.append(lerp(rad[i], rad[i + 1], t))
         return pts, radii
 
-    def outline_smooth(self, scale=1.0, joints=None):
-        """Same as ``outline()`` but along the Catmull-Rom-subdivided chain."""
+    def body_render_smooth(self, scale=1.0, joints=None):
+        """Everything ``Lizard.draw()`` needs for the 'normal' body, computed
+        ONCE: quads for the fill (+ head/tail cap fans) and one ring for the
+        outline stroke. Sharing the smoothed samples between the two matters
+        -- computing them twice (quads from one pass, stroke from another)
+        measured barely faster than an all-smooth quad strip despite far
+        fewer quads, because the repeated Catmull-Rom pass was the real cost.
+
+        Filled as a STRIP of small quads, not one big ring: a tight curl makes
+        the ring self-intersect, and pygame's fill rule opens a hole exactly
+        where it crosses itself (the body reads as transparent where it curls
+        onto itself). Each quad is simple on its own, so filling them one at a
+        time never hits that cancellation. The stroke can still use the single
+        ring -- pygame strokes edge-by-edge, so self-crossing there is harmless.
+        """
         pts, radii = self._smooth_samples(joints)
-        left, right = [], []
         m = len(pts)
+        left, right = [], []
         for i in range(m):
             fwd = safe_norm(pts[i] - pts[i + 1]) if i < m - 1 else safe_norm(pts[i - 1] - pts[i])
             perp = Vector2(-fwd.y, fwd.x) * (radii[i] * scale)
             left.append(pts[i] + perp)
             right.append(pts[i] - perp)
-        return left, right
-
-    def body_polygon_smooth(self, scale=1.0, joints=None):
-        """Single non-self-crossing ring around the whole body, smoothed."""
-        left, right = self.outline_smooth(scale, joints)
-        return left + self.tail_cap(scale, joints) + right[::-1] + self.head_cap(scale)
+        quads = [(left[i], left[i + 1], right[i + 1], right[i]) for i in range(m - 1)]
+        head_fan = self.head_cap(scale)
+        tail_fan = self.tail_cap(scale, joints)
+        ring = left + tail_fan + right[::-1] + head_fan
+        return quads, head_fan, tail_fan, ring
 
     def _cap(self, center, outward, r, reverse):
         """Semicircle of points around ``center`` opening along ``outward``."""
@@ -118,8 +113,3 @@ class Spine:
         n = len(j)
         back = safe_norm(j[n - 1] - j[n - 2])
         return self._cap(j[n - 1], back, self.radii[n - 1] * scale, True)
-
-    def body_polygon(self, scale=1.0, joints=None):
-        """Single non-self-crossing ring around the whole body."""
-        left, right = self.outline(scale, joints)
-        return left + self.tail_cap(scale, joints) + right[::-1] + self.head_cap(scale)

@@ -144,22 +144,19 @@ Playtest: cauda esticando MUITO ao mover + streaks gigantes no menu. Duas causas
 - [ ] Ground Adaptation (§4) — **decisão de arquitetura, não pendência**: jogo é
       top-down flat, sem campo de altura; ver nota acima.
 
-### Fase C (01 §3,11 — feito, versão enxuta)
-- [x] **Spring-damper real em chifres** (§3, tabela cita stiffness=16/damping=0.85
-      — usado ao pé da letra): `head_dir_spring` (`Vector2Spring`) persegue a
-      direção da cabeça; a defasagem vira "lean" em `draw_horns` — chifre
-      atrasa de verdade numa curva rápida, não é mais só seno de idle.
-      **Um terceiro call site já apareceria congelado** (mesma armadilha do
-      `tail_spring`) — extraído `Lizard.update_secondary_springs`/
-      `reset_secondary_springs`, ponto único que os 3 bypasses do `menu.py` e o
-      `integrate()` chamam, em vez de reimplementar de novo.
-- [x] **Personalidade emergente (§11), versão grounded**: em vez de um sistema
-      de mood genérico sem consumidor, reusa o mood que `BossAI` já calcula —
-      `AILizard._apply_mood_pose` escala a `stiffness` de `tail_spring`/
-      `head_dir_spring` pelo mood (`BOSS_MOOD_SPRING_MULT`): calm = solto,
-      enraged/cornered = tenso/nervoso. Zero desenho novo, mesmas molas reagem
-      mais rápido. Testado: chefe encurralado mede stiffness 14.0 (base 10 ×
-      1.4), mood 'cornered' correto.
+### Fase C (01 §3,11 — feito, depois revertido em parte por feedback)
+- [x] ~~Spring-damper em chifres (`head_dir_spring`, lean numa curva)~~ —
+      **revertido**. Feedback direto: "o chifre é pra ser rígido" — chifre é
+      osso, não cabelo; o doc pedia spring-damper aqui, mas a decisão do
+      usuário vence. `draw_horns` voltou a ser 100% rígido (só acompanha a
+      cabeça, zero sway/lag) e `head_dir_spring` foi removido por inteiro
+      (ficaria morto — nada mais lia `.value`, só o mood-pose mexia na
+      `.stiffness` de uma mola que não desenhava nada).
+- [x] **Personalidade emergente (§11), versão grounded**: reusa o mood que
+      `BossAI` já calcula — `AILizard._apply_mood_pose` escala a `stiffness`
+      do `tail_spring` pelo mood (`BOSS_MOOD_SPRING_MULT`): calm = solto,
+      enraged/cornered = tenso/nervoso. Zero desenho novo. Testado: chefe
+      encurralado mede stiffness 14.0 (base 10 × 1.4), mood 'cornered' correto.
 - [ ] **"Dois esqueletos" genérico (§10), full `CosmeticSkeleton`** — decisão:
       NÃO construído como classe própria. Tentáculo/centopeia já resolveram o
       problema de corpo contínuo do jeito deles (`_arm_polygon`/segmentos);
@@ -350,6 +347,38 @@ janela de espera (telegrafo) sem mudar QUANDO o ataque dispara — só como ele
 - [ ] Pose por estado de IA (caçando agachado/fugindo baixo/agressivo arqueado)
       — não feito, é um sistema novo de verdade, não uma reutilização de timer
       existente como os itens acima.
+
+### Correções de playtest (feedback direto, pós doc-04) — feito
+- [x] **Chifre rígido**: ver Fase C acima — revertido lean+sway, `head_dir_spring`
+      removido por inteiro.
+- [x] **Windup do sapo não lia como windup** ("parece que ele só está se
+      mexendo de um lado pro outro"): `squat_bias` sozinho (só largura do
+      corpo) não bastava — sem outra parte do corpo mudando junto, o olho não
+      tinha o que comparar. `Leg.rest_target`/`update` ganharam um parâmetro
+      `pull` (novo `Lizard.leg_pull`, mesmo contrato do `squat_bias`: cai
+      sozinho pra 1.0) que aproxima o pé do corpo (agachar/juntar as pernas)
+      antes do salto e afasta no lançamento — movimento de MEMBRO de verdade,
+      não só respiração de largura. `_hop` usa os dois juntos agora.
+- [x] **Cauda "desconexa" dos espinhos/carapaça/nadadeiras**: bug real que eu
+      introduzi — `draw_tail` (clava/ferrão) já lia `_cosmetic_joints()`, mas
+      `draw_spikes`/`draw_plates`/`draw_fins` (parts.py) e os pontos de
+      textura do corpo (`Lizard.draw`) continuaram lendo `spine.joints` cru.
+      Como só a cauda tem overshoot/onda, a silhueta migrava mas os espinhos/
+      placas/nadadeiras ficavam grudados na posição física — os 4 lugares
+      agora leem a mesma junta cosmética.
+- [x] **Corpo "transparente" ao se auto-intersectar** (dash/curva fechada
+      dobrando o próprio corpo — screenshot mostrou um buraco exatamente onde
+      o contorno cruzava a si mesmo): a silhueta é UM polígono (anel) só;
+      pygame preenche por regra par-ímpar, então um anel que se auto-cruza
+      abre um "buraco" onde se cruza — lido como transparência. Trocado o
+      preenchimento por uma FAIXA de quads pequenos (um por segmento físico +
+      leques de cabeça/cauda) — cada quad é simples por si só mesmo com o
+      corpo enrolado num laço, então nunca abre esse buraco; o contorno
+      (stroke) continua sendo o anel único de sempre (stroke desenha aresta
+      por aresta, auto-cruzamento não afeta). Custo medido: ~5.8ms/frame com
+      7 inimigos (cap real do jogo) — igual ao antes da suavização
+      Catmull-Rom; só em testes sintéticos com 13+ inimigos (acima de
+      qualquer cap real) o custo dobra.
 
 ## Fase M: música adaptativa
 - [ ] Stems por intensidade via `/music-generator`; mixar ao vivo por vida/inimigos/combo/chefe
