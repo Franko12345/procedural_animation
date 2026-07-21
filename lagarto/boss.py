@@ -166,13 +166,41 @@ def charge_attack(boss, game, target):
 
 
 def pincha_bite(boss, game, target):
-    """Quick short-range strike (Centopeiadeira's pincers) -- fast windup, no
-    projectile, just a contact check at the reach the telegraph line showed."""
-    reach = boss.max_r * C.BOSS_PINCHA_REACH
+    """Quick short-range strike -- fast windup, no projectile, just a contact
+    check at the reach the telegraph line showed. Dials come from the pattern
+    dict (default = Centopeiadeira's pincers); Kraken-Mor's tentacle swipe
+    reuses this exact function with a longer reach instead of new code."""
+    pat = PATTERNS[boss.boss_ai.pattern_id]
+    reach = boss.max_r * pat.get('reach', C.BOSS_PINCHA_REACH)
+    dmg = pat.get('dmg', C.BOSS_PINCHA_DMG)
     if target.pos.distance_to(boss.pos) < reach:
-        target.hurt(game, safe_norm(target.pos - boss.pos), C.BOSS_PINCHA_DMG)
+        target.hurt(game, safe_norm(target.pos - boss.pos), dmg)
         game.fx.spark_burst(boss.spine.joints[0], boss.color, 10, 260)
         game.shake(4)
+
+
+def _select_arms_rain(boss, game, target):
+    """Picks the 2-3 slam points at WINDUP START (not fire time), so the
+    telegraph can show them as growing circles for the whole windup -- called
+    once by the FSM via the pattern's ``select`` hook (see ``tick()``)."""
+    n = C.BOSS_ARMS_RAIN_COUNT
+    boss._rain_points = [Vector2(target.pos) + vfrom_angle(random.uniform(0, 360),
+                         random.uniform(0, C.BOSS_ARMS_RAIN_SPREAD)) for _ in range(n)]
+
+
+def arms_rain(boss, game, target):
+    """Fires at windup end -- damages wherever ``_select_arms_rain`` marked."""
+    for pt in getattr(boss, '_rain_points', []):
+        for p in game.players:
+            if p.dead or p.down:
+                continue
+            if p.pos.distance_to(pt) < C.BOSS_ARMS_RAIN_RADIUS + p.max_r * 0.4:
+                p.hurt(game, safe_norm(p.pos - pt), C.BOSS_ARMS_RAIN_DMG)
+        game.fx.ring(pt, boss.color)
+        game.fx.burst(pt, palette.lighten(boss.color, 0.3), 14, 260)
+    boss._rain_points = []
+    game.shake(6)
+    audio.play('hit', 0.4)
 
 
 PATTERNS = {
@@ -182,6 +210,11 @@ PATTERNS = {
     'summon': dict(fn=summon_adds, windup=C.BOSS_SUMMON_WINDUP, telegraph='horn'),
     'shockwave': dict(fn=shockwave, windup=C.BOSS_SHOCKWAVE_WINDUP, telegraph='shockwave'),
     'pincha': dict(fn=pincha_bite, windup=C.BOSS_PINCHA_WINDUP, telegraph='line'),
+    # Kraken-Mor's tentacle swipe: same pincha_bite fn, just a longer/harder
+    # reach via the pattern dict -- no new logic for a longer arm
+    'swipe': dict(fn=pincha_bite, windup=0.5, telegraph='line', reach=2.4, dmg=13),
+    'arms_rain': dict(fn=arms_rain, select=_select_arms_rain,
+                      windup=C.BOSS_ARMS_RAIN_WINDUP, telegraph='rain'),
     'deathroll': dict(fn=spiral_pattern, windup=0.5, telegraph='spiral',
                       shots=C.BOSS_DEATHROLL_SHOTS, turn=C.BOSS_DEATHROLL_TURN,
                       gap=C.BOSS_DEATHROLL_GAP, shot_speed=260, shot_dmg=8),
@@ -190,6 +223,10 @@ PATTERNS = {
     # regular centipede's dig/erupt state machine, telegraphs included for
     # free -- AILizard.draw() already checks self.burrowed/burrow_state)
     'burrow': dict(fn=None, windup=0.05, telegraph=None, burrow=True),
+    # same idea as burrow: no `fn`, BossAI.tick delegates every frame to the
+    # octopus's own AILizard._ai_grapple (reach/root/snap+pull+slow, telegraph
+    # included -- Lizard.draw already shows the arms converging via arm_target)
+    'grapple': dict(fn=None, windup=0.05, telegraph=None, grapple=True),
     'spiral': dict(fn=spiral_pattern, windup=C.BOSS_SPIRAL_WINDUP, telegraph='spiral'),
     'charge': dict(fn=charge_attack, windup=C.BOSS_CHARGE_WINDUP, telegraph='line', charge=True),
 }
@@ -299,6 +336,28 @@ def centipede_on_phase(boss, phase_i):
     boss.genome.length = max(0.5, boss.genome.length - C.CENT_BOSS_SHRINK)
     boss.genome.speed *= C.CENT_BOSS_SPEED_BUMP
     boss.rebuild_body(keep_pose=True)
+
+
+# --------------------------------------------------------------------------- #
+#  Kraken-Mor (onda 15 / tier 3): reels you in, then rains arms on the arena. #
+# --------------------------------------------------------------------------- #
+
+def kraken_phases():
+    return [
+        dict(hp_frac=1.0, patterns=['grapple', 'fan', 'swipe'], cd_mul=1.0),
+        dict(hp_frac=0.66, patterns=['grapple', 'fan', 'swipe', 'arms_rain'], cd_mul=1.0),
+        dict(hp_frac=0.33, patterns=['grapple', 'spiral', 'swipe', 'arms_rain'], cd_mul=0.75),
+    ]
+
+
+def kraken_personality():
+    """Paciente até doer: prefere fechar a distância (grapple) sempre que
+    puder, e vira frenético (arms_rain/spiral) só quando raivoso."""
+    return BossPersonality(pattern_weights={
+        'grapple': {'calm': 1.6, 'agitated': 1.3},
+        'arms_rain': {'enraged': 1.8, 'cornered': 1.5},
+        'spiral': {'enraged': 1.4},
+    })
 
 
 # --------------------------------------------------------------------------- #
@@ -428,6 +487,9 @@ class BossAI:
                 self.state = 'windup'
                 self.t = PATTERNS[pid]['windup'] * self.personality.windup_mult(self.mood)
                 self._windup_target = Vector2(target.pos)
+                select = PATTERNS[pid].get('select')
+                if select:
+                    select(b, game, target)
                 return Vector2(), 0.0
             speed = C.BOSS_APPROACH_SPEED * speed_mul if dist > 240 else 0.0
             return to, speed
@@ -439,6 +501,10 @@ class BossAI:
                 if pat.get('burrow'):
                     self.state = 'burrowing'
                     self._burrow_seen_under = False
+                    return Vector2(), 0.0
+                if pat.get('grapple'):
+                    self.state = 'grappling'
+                    self._grapple_seen_windup = False
                     return Vector2(), 0.0
                 pat['fn'](b, game, target)
                 if self.pattern_id == 'summon':
@@ -461,6 +527,18 @@ class BossAI:
             elif self._burrow_seen_under and b.burrow_state == 'surface':
                 self.state = 'recover'
                 self.t = 0.5
+            return d, speed
+
+        if self.state == 'grappling':
+            # delegates every frame to the regular octopus's OWN reach/snap
+            # cycle (AILizard._ai_grapple) -- one windup-to-snap(or-miss)
+            # cycle, then back to the normal pattern rotation
+            d, speed = b._ai_grapple(dt, game, target)
+            if b.grapple_t > 0:
+                self._grapple_seen_windup = True
+            elif self._grapple_seen_windup:
+                self.state = 'recover'
+                self.t = 0.6
             return d, speed
 
         if self.state == 'charging':
@@ -540,3 +618,9 @@ class BossAI:
                 ang = (360 / n_spokes) * i + prog * 300
                 end = mouth + vfrom_angle(ang, rr / max(cam.zoom, 1e-4))
                 pygame.draw.line(surf, col, sp, cam.w2s(end), max(1, int(2 * cam.zoom)))
+        elif kind == 'rain':
+            r = int(C.BOSS_ARMS_RAIN_RADIUS * cam.zoom * (0.3 + 0.7 * prog))
+            for pt in getattr(b, '_rain_points', []):
+                psp = cam.w2s(pt)
+                pygame.draw.circle(surf, col, psp, r, max(1, int((1 + 2 * prog) * cam.zoom)))
+                palette.glow(surf, psp, r, col, (0.12 + 0.2 * prog) * (0.5 + 0.5 * blink))

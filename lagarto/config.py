@@ -350,3 +350,10 @@ BOSS_DEATHROLL_GAP = 0.03    # spiral normal: 0.05
 # Centopeiadeira (onda 10 / tier 2) -- "Degradacao": encolhe e acelera por fase
 CENT_BOSS_SHRINK = 0.18      # genome.length perdido por transicao
 CENT_BOSS_SPEED_BUMP = 1.25  # genome.speed x por transicao
+
+# Kraken-Mor (onda 15 / tier 3)
+BOSS_ARMS_RAIN_WINDUP = 0.6
+BOSS_ARMS_RAIN_COUNT = 3
+BOSS_ARMS_RAIN_SPREAD = 220  # raio em volta do alvo onde os pontos caem
+BOSS_ARMS_RAIN_RADIUS = 90
+BOSS_ARMS_RAIN_DMG = 12

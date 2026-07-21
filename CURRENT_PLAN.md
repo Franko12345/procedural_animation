@@ -196,7 +196,7 @@ Playtest: cauda esticando MUITO ao mover + streaks gigantes no menu. Duas causas
 - [ ] Arena design (pilares/corredor/poças) por chefe — ainda não precisou
       (Rei Lagarto usa clareira aberta); entra quando um chefe pedir (Muralha).
 
-### Fase 03: 10 chefes + PRIMORDIAL (2/11 prontos)
+### Fase 03: 10 chefes + PRIMORDIAL (3/11 prontos)
 
 **Remapeamento de onda (decisão, não desvio silencioso):** o doc 03 dá cada chefe
 uma onda narrativa (5,7,8,9...), mas o motor só sorteia chefe a cada `BOSS_EVERY`
@@ -225,11 +225,29 @@ cadência do jogo.
       menor e mais rápido, menos hitbox. Novo padrão `pincha` (mordida curta,
       windup 0.3s). Testado: burrow real (foto), encolhe 60→53 juntas +
       acelera 1.11→1.39 no corte de fase, morte.
+- [x] **KRAKEN-MOR** (tier3/onda15, corpo=`octopus` 2.3x): fase 1
+      `grapple+fan+swipe`, fase 2 (66%) soma `arms_rain`, fase 3 (33%) troca
+      `fan`→`spiral` + cd 0.75x. **Grapple reaproveitado por inteiro** (mesmo
+      truque do burrow): novo estado `'grappling'` delega pro
+      `AILizard._ai_grapple` já existente — braços convergindo (`arm_target`)
+      é o telegrafo de graça. Novo padrão `swipe` (mesma função `pincha_bite`
+      do centopeia, só com alcance/dano maiores via dict — zero código novo).
+      Novo padrão genérico `arms_rain` (2-3 pontos marcados perto do alvo,
+      crescem no chão, estouram) — introduziu o hook `select` no FSM (chamado
+      na ESCOLHA do padrão, não no fim do windup) porque os pontos precisam
+      existir durante todo o telegrafo, não só na hora de bater; reusável por
+      qualquer chefe futuro com ataque de área em múltiplos pontos (Mãe-
+      Escaravelho/Primordial). Personalidade: prefere fechar com grapple
+      quando calmo, só fica frenética (arms_rain/spiral) com raiva. Testado:
+      braços convergindo (foto), pontos de arms_rain no chão (foto), fase 2,
+      morte — mais os 3 testes anteriores continuam verdes (spiral_pattern e
+      pincha_bite viraram compartilhados nesta rodada).
 - [ ] Tiers sem chefe autoral em `NAMED_BOSSES` caem no chefe genérico antigo
       (aleatório do tema) — não regride, só ainda não tem conteúdo autoral.
-- [ ] Próximos: tier3/onda15 (a escolher) → is_final/onda20 PRIMORDIAL →
-      tier5+ (infinito): Terror Alado, Mãe-Escaravelho, Kraken-Mor, Aranha-Rei,
-      Olho-Sísmico, Serpente Cristal, Muralha, ANKH
+- [ ] Próximos: is_final/onda20 PRIMORDIAL → tier5+ (infinito): Terror Alado,
+      Mãe-Escaravelho, Aranha-Rei, Olho-Sísmico, Serpente Cristal, Muralha
+      (precisa de sistema de arena/confinamento que ainda não existe — mundo
+      é aberto contínuo, sem salas discretas), ANKH
 - [ ] Corpos novos que faltam: `winged` (Terror Alado), `orbital` (Olho-
       Sísmico), `wall` (Muralha) — crystal reusa `segmented` com estética nova
 - [ ] Gerar pixel art só se necessário no caminho (ícones novos, não sprites do bicho)

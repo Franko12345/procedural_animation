@@ -65,6 +65,11 @@ NAMED_BOSSES = {
             personality=lambda: bossai.centipede_personality(),
             on_phase=bossai.centipede_on_phase, scar=None,
             overrides=dict(hue=15, sat=0.25, val=0.55, length=1.7)),
+    # doc 03 chama de "onda 10" -- tier3 = onda15 e o proximo slot real
+    3: dict(species='octopus', name='KRAKEN-MOR',
+            phases=lambda: bossai.kraken_phases(),
+            personality=lambda: bossai.kraken_personality(),
+            scar=None, overrides=dict(hue=275, sat=0.75, val=0.5)),
 }
 
 
