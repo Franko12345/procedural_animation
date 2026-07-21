@@ -88,6 +88,9 @@ def spit(pos, target_pos, color, dmg=8, effect='poison', speed=230, radius=8,
 
 
 def web(pos, target_pos, color=(220, 230, 240), speed=190):
-    """Slow-moving web that slows whatever it hits."""
+    """Slow-moving web that slows whatever it hits -- the player's own Teia
+    weapon, so ``hostile=False`` (hits creatures). It was hardcoded True: since
+    this spawns right at the player's own mouth, it slowed the PLAYER who fired
+    it almost every cast instead of the enemy it was aimed at."""
     v = safe_norm(Vector2(target_pos) - Vector2(pos)) * speed
-    return Projectile(pos, v, color, dmg=0, effect='slow', life=4.0, radius=9, hostile=True)
+    return Projectile(pos, v, color, dmg=0, effect='slow', life=4.0, radius=9, hostile=False)

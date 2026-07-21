@@ -850,6 +850,8 @@ class Game:
                         e.take_hit(self, safe_norm(pr.vel), dmg)
                         if pr.effect == 'poison':
                             e.apply_poison(3.0, 3.0)
+                        elif pr.effect == 'slow':
+                            e.apply_slow(0.5, 1.6)
                         if pr.pierce:           # pass through, remember this enemy
                             if pr._pierced is None:
                                 pr._pierced = set()
