@@ -105,12 +105,98 @@ detalhadas (loja do besouro etc.) em 64/80. Mais organico, curvas, AA.
       + `icons.draw` tenta PNG primeiro, cai pro procedural se `None`. Verificado em
       runtime real (screenshot HUD + carta EVOLUIR mostrando `xp.png` de verdade).
       Invariante "zero assets" quebrada de proposito, documentado no CLAUDE.md.
-- [ ] `build.py --add-data` p/ empacotar `assets/` no executavel PyInstaller.
+- [x] `build.py --add-data` p/ empacotar `assets/` no executavel PyInstaller (`9b1ba7c`).
 - [ ] Nitidez: pre-escala NEAREST por fator inteiro antes do `present()` borrar
-      (hoje `smoothscale`, aceito por ora).
+      (hoje `smoothscale`; aceito por ora — confirmado visualmente nitido nos
+      screenshots reais de HUD/carta, baixa prioridade).
 - [ ] `tent_beetle.png` gerado mas **NAO ligado** — `_draw_camp_pois` continua
       procedural (tem a animacao de queda do ceu; integrar o PNG e mais invasivo).
 - [ ] Assets restantes possiveis: props do acampamento (portas, ninho), flora/mundo.
 
 Geradores versionados em `tools/pixelart/` (reproduzivel). Build sem `assets/`
 continua rodando (fallback procedural cobre qualquer PNG faltando).
+
+### Ajustes pendentes
+
+- [ ] Fazer dificuldade escalar mais rapidamente durante a run.
+- [ ] Aumentar progressivamente HP, velocidade, quantidade de inimigos e campeões um pouco mais rapido.
+- [ ] Evitar efeito snowball onde jogador deixa de correr risco no meio da partida.
+
+---
+
+### Correções pendentes
+
+- [ ] Investigar lentidão que aparece após crescer alguns níveis. Desta vez não houve queda de FPS, apenas colisões excessivas. Suspeita principal: hitboxes ou broadphase. ![alt text](image-1.png) ![alt text](image.png)
+- [ ] Instrumentar sistema de colisão para medir:
+  - número de hitboxes
+  - testes de colisão por frame
+  - tempo gasto em broadphase e narrowphase
+- [ ] Verificar se `rebuild_body()` está duplicando segmentos ou colliders.
+- [ ] Confirmar que segmentos antigos são removidos corretamente da estrutura de colisão.
+
+### Renderização
+
+- [ ] Tornar outline consistente em todas as partes do corpo.
+- [ ] Adicionar outline nas pernas.
+- [ ] Adicionar outline na língua.
+- [ ] Melhorar continuidade do outline entre segmentos.
+- [ ] Aumentar levemente a pixelização da imagem.
+
+### Língua
+
+- [ ] Aumentar espessura da língua.
+- [ ] Reescrever animação usando cinemática inversa (IK).
+- [ ] Movimento procedural semelhante ao de um camaleão.
+- [ ] Alongamento, retração e curvatura mais naturais.
+- [ ] Estudar língua do camaleão real.
+- [ ] Analisar língua do lagarto de Rain World como referência.
+
+### Evoluções
+
+- [ ] Remover cauda-clava da árvore de evolução.
+- [ ] Manter cauda-clava apenas como Charm.
+
+### Assets restantes
+
+- [ ] Pré-escalar usando NEAREST antes de `present()`.
+- [ ] Integrar `tent_beetle.png` ao acampamento.
+- [ ] Criar props restantes (portas, ninho, flora e elementos do mapa).
+
+---
+
+## Pesquisa — animação procedural
+
+Objetivo: absorver técnicas para elevar qualidade de movimentação de criaturas, chefes e jogador.
+
+### Referências
+
+- [ ] Estudar profundamente:
+  - https://www.youtube.com/watch?v=sVntwsrjNe4
+  - https://medium.com/@merxon22/recreating-rainworlds-2d-procedural-animation-part-1-4d882f947e9f
+  - https://www.youtube.com/watch?v=PcpkBzcRdSU
+  - https://youtu.be/wgpgNLEEpeY?si=8YfssF0-jhYjGSkA
+
+### Documentação
+
+- [ ] Anotar técnicas utilizadas.
+- [ ] Documentar princípios, vantagens e limitações.
+- [ ] Adaptar cada técnica para arquitetura do Lagarto.
+
+### Técnicas para estudar
+
+- [ ] IK (CCD/FABRIK)
+- [ ] Follow chains
+- [ ] Restrições articulares
+- [ ] Secondary motion
+- [ ] Phase offsets
+- [ ] Damping
+- [ ] Procedural posing
+- [ ] Spline dinâmica
+- [ ] Squash & Stretch
+- [ ] Anticipation
+- [ ] Weight e overlap
+- [ ] Ground adaptation
+
+### Resultado esperado
+
+- [ ] Criar guia interno reutilizável para futuras criaturas, chefes e animações procedurais do projeto.

@@ -218,6 +218,7 @@ class Game:
         self.pollen = 0
         self.hitstop = 0.0        # freeze frames on heavy impacts
         self.flash = 0.0          # brief white screen flash
+        self.dt_last = C.DT       # boss.py's per-frame barrage tick reads this
         self.camp = None
         self.rounds = RoundManager(self)
         self.cards = []

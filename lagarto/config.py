@@ -291,3 +291,29 @@ COL_POLLEN  = (250, 214, 90)     # moeda da run (bolsa no camp, particulas de co
 COL_WHITE   = (250, 250, 255)
 COL_INK     = (16, 14, 26)
 COL_HUD     = (240, 240, 252)
+
+# --- Fase 5: framework de chefes (boss.py) ---------------------------------- #
+# Telegrafo >=27 frames (0.45s a 60Hz) e regra dura do projeto (fase 2). Windups
+# dos padroes ficam bem acima disso -- e tempo E visibilidade, nunca so um.
+BOSS_INTRO_TIME = 1.0       # entrada: invulneravel, corpo ainda assentando
+BOSS_TRANSITION_TIME = 1.0  # troca de fase: invulneravel (~1s), no maximo 2 coisas mudam
+BOSS_CD_MIN = 1.1           # respiro entre ataques (varia por padrao)
+BOSS_CD_MAX = 2.0
+BOSS_APPROACH_SPEED = 0.55  # fracao da velocidade normal enquanto se aproxima
+BOSS_RADIAL_WINDUP = 0.85   # >27 frames
+BOSS_RADIAL_COUNT = 10
+BOSS_RADIAL_SPEED = 230
+BOSS_RADIAL_DMG = 12
+BOSS_FAN_WINDUP = 0.8
+BOSS_FAN_COUNT = 5
+BOSS_FAN_SPREAD = 46         # graus, ponta a ponta
+BOSS_FAN_SPEED = 260
+BOSS_FAN_DMG = 11
+BOSS_BARRAGE_WINDUP = 0.7
+BOSS_BARRAGE_SHOTS = 4
+BOSS_BARRAGE_GAP = 0.12
+BOSS_BARRAGE_SPEED = 300
+BOSS_BARRAGE_DMG = 9
+BOSS_SUMMON_WINDUP = 0.9
+BOSS_SUMMON_COUNT = 2
+BOSS_SUMMON_CD = 6.0         # separado do cd normal -- nao pode invocar toda vez

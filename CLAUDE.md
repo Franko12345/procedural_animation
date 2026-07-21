@@ -46,8 +46,7 @@ Um módulo por responsabilidade — mantenha assim; não volte para arquivo úni
 | `settings.py` | `~/.lagarto/settings.json` (tela cheia/escala/vsync/volumes). Tolerante a arquivo corrompido. |
 | `fonts.py` | Escolhe a melhor fonte instalada (Noto Sans etc.) com cache por tamanho. |
 | `ui.py` | Kit visual: `panel`, `chip`, `list_menu`, `tabs`, `paragraph`, `footer`, `fit`, `Fade` e **`drop_in`** (entrada escalonada — use em toda tela nova). |
-| `icons.py` | **Ícones**: tenta PNG (`assets.py`) primeiro, cai para desenho procedural — usados em cartas, HUD, loja, charms e compêndio. |
-| `assets.py` | **Fase 7**: carrega PNGs de `assets/` (lazy, `_MEIPASS`-aware), escala+cacheia por `(id, diâmetro)`. `None` se faltar o arquivo — nunca quebra. |
+| `icons.py` | **Ícones procedurais** (armas/mutações/charms) desenhados em código — usados em cartas, HUD, loja, charms e compêndio. |
 | `audio.py` | **Som sintetizado com numpy**: 12 SFX + 3 trilhas generativas (calma/combate/chefe). Degrada p/ mudo se não houver mixer. |
 | `mathutil.py` | Helpers de vetor/ângulo (`math` + `Vector2`, **não numpy** nos loops quentes). |
 | `palette.py` | Cor HSV (`vibrant`, `random_in_family`), lighten/darken/mix, e **glow aditivo cacheado** (`glow`, `BLEND_RGB_ADD`) p/ o rim/brilho. |

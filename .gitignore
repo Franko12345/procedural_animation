@@ -4,3 +4,6 @@ build/
 dist/
 *.spec
 claude-agendado.log
+claude-agendado.sh
+.env
+*.env

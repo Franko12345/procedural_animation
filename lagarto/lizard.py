@@ -255,6 +255,8 @@ class Lizard:
         """None if it misses; 'head' (weak point) or 'body' if it connects."""
         if getattr(self, 'burrowed', False):     # underground = untouchable
             return None
+        if getattr(self, 'boss_invuln', False):  # boss intro / phase transition
+            return None
         best = None
         for jp, r, is_head in self.body_points():
             dx = jp.x - pos[0]
@@ -1173,6 +1175,9 @@ class AILizard(Lizard):
         self.arm_target = None        # world point the arms reach toward (telegraph)
         self.grab_show = 0.0          # octopus: frames drawing the hooked arm
         self.grabbed = None
+        # --- Fase 5: boss FSM (see boss.py; None on a non-boss spawn) ---
+        self.boss_ai = None
+        self.boss_invuln = False      # intro / phase-transition windows only
         # --- champion layer (see champions.py; None on a plain spawn) ---
         self.champion = None
         self.champion_name = ''
@@ -1291,6 +1296,8 @@ class AILizard(Lizard):
                     d, speed = self._ai_burrow(dt, game, target)
                 elif beh == 'grapple':
                     d, speed = self._ai_grapple(dt, game, target)
+                elif beh == 'boss' and self.boss_ai is not None:
+                    d, speed = self.boss_ai.tick(dt, game)
                 else:
                     d, speed = self._ai_melee(dt, game, target)
             elif 'prey' in self.genome.diet:
@@ -1654,6 +1661,8 @@ class AILizard(Lizard):
             self._draw_dig_hole(surf, cam)   # behind the body: a growing pit
         if self.champion is not None:
             self._draw_champion_aura(surf, cam)
+        if self.boss_ai is not None:
+            self.boss_ai.draw(surf, cam)     # windup telegraph, behind the body
         self._draw_weakpoint(surf, cam)      # behind the body: reads as a halo
         super().draw(surf, cam)
         self._draw_health(surf, cam)

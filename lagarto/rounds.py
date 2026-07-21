@@ -14,6 +14,7 @@ from pygame import Vector2
 import pygame
 
 from . import audio
+from . import boss as bossai
 from . import champions
 from . import config as C
 from . import palette
@@ -227,6 +228,9 @@ class RoundManager:
         gen = boss.genome
         gen.size *= 2.3                      # rebuild the body at boss scale
         gen.sat = min(1.0, gen.sat + 0.15)
+        # Fase 5: the FSM drives the fight now, not the species' own chase/
+        # ranged/etc behavior -- 'boss' is a distinct dispatch (lizard.py).
+        gen.behavior = 'boss'
         boss.__init__(pos, 'enemy', genome=gen)
         boss.species = key
         tier = self.wave // BOSS_EVERY
@@ -244,6 +248,7 @@ class RoundManager:
         boss.max_speed *= 0.82               # big and heavy
         name, _ = species.info(key)
         boss.boss_name = f"{name} PRIMORDIAL" if self.is_final else f"{name} ALFA"
+        boss.boss_ai = bossai.BossAI(boss, phases=bossai.default_phases())
         g.enemies.append(boss)
         self.boss = boss
         g.fx.ring(pos, (255, 90, 90))
