@@ -81,14 +81,30 @@ detalhadas (loja do besouro etc.) em 64/80. Mais organico, curvas, AA.
       (supersample) + pintura de volume rampa-4 (highlight/base/shade/edge) + AA manual
       na borda + contorno **sel-out** (tom escuro do fill, nao preto). Emite JSON do skill
       e chama `render_pixel_art.py`. Guia: Pixel Parmesan / Lospec / Pixnote.
-- [x] Lote 2 (32x32 + 80): coin_pollen, health (coracao), cuspe (glob veneno),
-      tent_beetle (loja). Sombreamento esferico, curvas orgânicas. **Aprovado o estilo.**
-      Scripts: `scratchpad/pxgen.py` + `batch2.py`. PNGs em scratchpad.
-- [ ] Gerar restante dos **8 icones de arma** (ferrao/teia/esporos/feromonio/sopro/enxame/
-      acido) + mutacoes/charms, mesmos ids de `icons.py` (fallback disco nunca quebra).
-- [ ] **Pipeline** `assets/` no repo + `lagarto/assets.py` (`resource_path`/`_MEIPASS`, lazy,
-      `.convert_alpha()` so apos `display.init`, fallback `icons.draw`). `build.py --add-data`.
+- [x] Lote 2 (32x32 + 80, `c026b55`): coin_pollen, health, cuspe, tent_beetle.
+- [x] Lote 3 (32x32, `c026b55`): 7 armas restantes (ferrao teia esporos feromonio
+      sopro enxame acido) — as 8 armas de `icons.py` completas.
+- [x] Lote 4 (32x32, `6eb237a`): 8 icones de mutacao-stat que **colidem de forma**
+      no `icons.py` (`_bolt`: speed/energy/might; `_arrow`: dash/ferrao) — speed
+      energy might xp area haste amount dash. Refinamento em `batch4b.py`
+      (might/dash reprovados na 1a passada, redesenhados: punho com sulcos, pata
+      com 3 dedos+almofada+trilha).
+- [x] Lote 5 (24x24, `1147304`): pickups — pickup_fruit pickup_egg pickup_bug.
+- [x] Lote 6 (32x32, `1e656c6`): 9 de 10 charms — antenas presas olhos carapaca
+      espinhos asas glandula nectar clava. `glandula`/`nectar` tambem colidiam
+      (`_sac`); saem distintos (cacho verde vs gota ambar).
+      **Charm `ferrao` pulado de proposito**: usa o MESMO id `'ferrao'` que a arma
+      no dict de `icons.py` (dois conceitos, uma chave) — ja existe `ferrao.png`
+      pra arma; gerar outro pro charm exigiria separar os ids no codigo primeiro.
+      Documentado em `tools/pixelart/README.md`.
+- **Total: 31 PNGs** em `assets/icons/` (32x32 armas+stats+charms, 24x24 pickups)
+  + `assets/props/` (80x80 tent_beetle). Geradores versionados em `tools/pixelart/`
+  (`pxgen.py` = camada de autoria; `batch2..6.py` = lotes; `README.md` documenta).
+- [ ] **Pipeline** `assets/` -> jogo: `lagarto/assets.py` (`resource_path`/`_MEIPASS`,
+      lazy, `.convert_alpha()` so apos `display.init`, fallback `icons.draw`).
+      `build.py --add-data`. **AINDA NAO FEITO** — runtime continua zero-asset.
 - [ ] Nitidez: pre-escala NEAREST por fator inteiro antes do `present()` borrar.
+- [ ] Assets restantes possiveis: props do acampamento (portas, ninho), flora/mundo.
 
 Nota: os PNGs ainda **nao estao ligados** ao jogo (falta `assets.py`). Gerar primeiro,
 ligar depois. Manter os geradores no repo (reproduzivel, zero-asset ainda roda).
