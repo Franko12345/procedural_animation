@@ -11,15 +11,20 @@ esquerda). Curvas organicas. Guias: Pixel Parmesan (AA), Lospec/Pixnote (outline
 
 Saida em `assets/`:
 - `assets/icons/` — 32x32: as 8 armas (`cuspe ferrao teia esporos feromonio sopro
-  enxame acido`) + `coin_pollen`, `health`. **Ids batem com `lagarto/icons.py`** —
-  quando a Fase 7 ligar via `lagarto/assets.py`, o fallback `icons.draw` cobre
-  qualquer id sem PNG.
+  enxame acido`) + `coin_pollen`, `health` + 8 mutacoes de stat (`speed energy
+  might xp area haste amount dash`) — estas ultimas escolhidas por serem as que
+  **colidem de forma** no `icons.py` atual (`_bolt` serve speed/energy/might,
+  `dash`/`ferrao` dividem `_arrow`). **Ids batem com `lagarto/icons.py`** — quando
+  a Fase 7 ligar via `lagarto/assets.py`, o fallback `icons.draw` cobre qualquer
+  id sem PNG.
 - `assets/props/` — 80x80: `tent_beetle` (a loja do besouro).
 
 Regerar (renderiza ao lado do script):
 ```bash
 python tools/pixelart/batch2.py    # coin/health/cuspe/tent
 python tools/pixelart/batch3.py    # 7 armas restantes
+python tools/pixelart/batch4.py    # 8 stat icons (1a passada)
+python tools/pixelart/batch4b.py   # refinamento de might + dash
 ```
 
 ## v1 — `mkicons.py` (personagens 16x16, legado)
