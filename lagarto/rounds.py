@@ -306,6 +306,10 @@ class RoundManager:
         gen.angular_damping = max(gen.angular_damping, 0.5)
         gen.linear_damping = max(gen.linear_damping, 0.4)
         gen.weight = max(gen.weight, 3.0)
+        # feedback: player shots were shoving bosses around mid-approach/attack,
+        # which is a de-facto free interrupt on top of the damage -- a boss
+        # commits to its own movement, it doesn't get knocked off it
+        gen.knockback = 0.0
         # Fase 5: the FSM drives the fight now, not the species' own chase/
         # ranged/etc behavior -- 'boss' is a distinct dispatch (lizard.py).
         gen.behavior = 'boss'

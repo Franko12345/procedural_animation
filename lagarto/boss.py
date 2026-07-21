@@ -252,7 +252,7 @@ PATTERNS = {
     'pincha': dict(fn=pincha_bite, windup=C.BOSS_PINCHA_WINDUP, telegraph='line'),
     # Kraken-Mor's tentacle swipe: same pincha_bite fn, just a longer/harder
     # reach via the pattern dict -- no new logic for a longer arm
-    'swipe': dict(fn=pincha_bite, windup=0.5, telegraph='line', reach=2.4, dmg=13),
+    'swipe': dict(fn=pincha_bite, windup=0.5, telegraph='line', reach=2.4, dmg=19),
     'arms_rain': dict(fn=arms_rain, select=_select_arms_rain,
                       windup=C.BOSS_ARMS_RAIN_WINDUP, telegraph='rain'),
     'sky_slam': dict(fn=sky_slam, select=_select_arms_rain,
@@ -260,12 +260,12 @@ PATTERNS = {
                      count=1, spread=0, radius=C.BOSS_SKY_SLAM_RADIUS,
                      dmg=C.BOSS_SKY_SLAM_DMG),
     'massive_fan': dict(fn=fan_shot, windup=C.BOSS_MASSIVE_FAN_WINDUP, telegraph='fan',
-                        count=12, spread=70, shot_speed=220, dmg=14),
+                        count=12, spread=70, shot_speed=220, dmg=20),
     'web_trap': dict(fn=web_trap, select=_select_arms_rain, windup=C.BOSS_WEB_TRAP_WINDUP,
                      telegraph='rain', count=1, spread=60),
     'deathroll': dict(fn=spiral_pattern, windup=0.5, telegraph='spiral',
                       shots=C.BOSS_DEATHROLL_SHOTS, turn=C.BOSS_DEATHROLL_TURN,
-                      gap=C.BOSS_DEATHROLL_GAP, shot_speed=260, shot_dmg=8),
+                      gap=C.BOSS_DEATHROLL_GAP, shot_speed=260, shot_dmg=12),
     # burrow has no `fn`/instant fire -- BossAI.tick special-cases `burrow=True`
     # and delegates every frame to the boss's OWN AILizard._ai_burrow (the
     # regular centipede's dig/erupt state machine, telegraphs included for
