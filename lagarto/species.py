@@ -83,7 +83,8 @@ SPECIES = {
     'octopus': dict(role='enemy', xp=9, score=75, grants=None,
                     genome=Genome(name='octopus', plan='tentacle', size=1.15,
                                   leg_count=6, hue=315, sat=0.72, val=0.9,
-                                  speed=0.62, behavior='grapple', hp=10,
+                                  speed=0.82, behavior='grapple', hp=10,
+                                  knockback=0.28,      # a shove barely nudges it
                                   diet=('prey',))),
 
     # ---- extra prey ------------------------------------------------------- #

@@ -1204,7 +1204,7 @@ class AILizard(Lizard):
             self._dmg_acc -= whole
             self.hit_flash = max(self.hit_flash, 0.4)
             if direction is not None:
-                self.vel += direction * 120
+                self.vel += direction * 120 * self.genome.knockback
             self.hp -= whole
             if self.hp <= 0:
                 self.die(game)
@@ -1579,9 +1579,7 @@ class AILizard(Lizard):
         elif dist < C.OCTO_GRAB_RANGE:
             self.grapple_t = C.OCTO_WINDUP
             self.grapple_cd = C.OCTO_CD
-        if dist > C.OCTO_GRAB_RANGE * 0.85:
-            return to, 0.55                         # slow, deliberate approach
-        return -to * 0.4, 0.4                        # hold at arm's length
+        return to, 1.0                              # commit to closing (it is slow anyway)
 
     def explode(self, game):
         """Bomber blast: one hit per victim, radius damage, then the bomber dies.
@@ -1823,7 +1821,7 @@ class AILizard(Lizard):
                 dmg = dmg * (1.0 - self.front_armor)
                 game.fx.spark_burst(self.spine.joints[0], (215, 225, 255), 5, 180)
         self.hit_flash = 1.0
-        self.vel = direction * 200
+        self.vel = direction * 200 * self.genome.knockback   # heavy bruisers barely budge
         game.fx.burst(self.pos, self.color, 10, 180)
         game.fx.spark_burst(self.pos, (255, 240, 200), 9, 300)
         self.hp -= dmg

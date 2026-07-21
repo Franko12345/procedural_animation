@@ -230,6 +230,12 @@ próprios, e **uma mecânica que ataca um hábito** (mesma régua da fase 2):
     convergência É o telegrafo**, `OCTO_WINDUP` > 27f); no estalo, te **puxa** (`OCTO_PULL_DIST`)
     e **retarda** (`apply_slow`). Fugir antes do bote nega. *Braços são cosméticos: o hitbox é
     o manto (`hit_test` amostra a espinha curta); o perigo é o agarrão, não o toque.*
+  - **Bruiser lento tem que ignorar empurrão** (playtest): `take_hit`/`damage` **atribuem/somam
+    velocidade** de knockback, então cada tiro do cuspe zerava a aproximação e o polvo nunca
+    chegava. `genome.knockback` (mult. <1, novo dial no `__slots__`) resolve num ponto só —
+    polvo=0.28, o resto=1.0. E ele **compromete a aproximação** (sem recuar para "manter
+    distância"), já que a única defesa contra ele é você **correr** (top speed dele < andar do
+    jogador). Medido: fecha de 430px a ~16px sob fogo e agarra.
 - **Prontos para chefe (Fase 5/6):** o KRAKEN em escala ~2.2x já renderiza; a silhueta serve
   de chefe sem corpo novo.
 

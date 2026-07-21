@@ -13,7 +13,7 @@ from . import palette
 
 class Genome:
     __slots__ = ('size', 'length', 'girth', 'leg_count', 'leg_len', 'radial',
-                 'plan',
+                 'plan', 'knockback',
                  'eye_count', 'spikes', 'horns', 'plates', 'tail', 'fins',
                  'hue', 'sat', 'val', 'speed', 'hp', 'behavior', 'diet', 'name',
                  # charm-driven visible parts
@@ -40,6 +40,7 @@ class Genome:
         self.val = kw.get('val', 0.95)
         self.speed = kw.get('speed', 1.0)
         self.hp = kw.get('hp', 2)
+        self.knockback = kw.get('knockback', 1.0)     # <1 = shrugs off shove (heavy bruiser)
         self.behavior = kw.get('behavior', 'chase')   # chase | flee | wander | ranged | lunge
         self.diet = tuple(kw.get('diet', ()))         # kinds this creature hunts
         self.name = kw.get('name', 'critter')
