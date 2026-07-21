@@ -67,7 +67,15 @@ Regra: paro sempre numa fronteira jogável; `--smoke` verde antes de cada commit
       `--smoke 400` verde; screenshots da clareira e da loja.
 
 ## Fase 5/6: chefes
-- [ ] Framework FSM + padrões de projétil como dados + telegrafia ≥27 frames
+- [x] Framework FSM (`lagarto/boss.py`): intro → [approach→windup→attack→recover]×N →
+      transição (invuln) → próxima fase (troca no máx. 2 coisas: padrões + 1 cooldown).
+      Padrões (`radial`/`fan`/`barrage`/`summon`) são dados — `(boss, game, target)->None`.
+      Telegrafo desenhado (anel/linha/cone) antes de todo disparo. Testado ponta a ponta:
+      intro invulnerável → vulnerável → windup com telegrafo visível (screenshot) →
+      recover; corte de HP força transição + invulnerabilidade; morte normal via `die()`.
+      *Achado no teste: `nearest_player` devolve `None` se o jogador cai e não há quem
+      reviva — `boss_ai.tick` só roda com alvo, então o "bug" de fase não avançar era o
+      jogador do teste ter morrido de boba, não o framework.*
 - [ ] 10 chefes + PRIMORDIAL final (alguns usam os corpos da B4)
 
 ## Fase M: música adaptativa
