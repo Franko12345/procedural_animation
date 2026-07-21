@@ -1,7 +1,8 @@
 """Build a single-file executable of Lagarto with PyInstaller.
 
-The game ships no external assets (art, icons, sounds and music are all generated
-in code), so the bundle is just Python + pygame + numpy -> one binary.
+Most art/sound/music is generated in code, but Fase 7 added optional pixel-art
+PNGs under assets/ (icons.draw prefers them, falls back to procedural if absent)
+-- so assets/ ships alongside the bundled Python + pygame + numpy.
 
     python build.py            # build for the current OS
     python build.py --clean    # wipe build/ dist/ first
@@ -52,8 +53,13 @@ def main():
         # the package is imported dynamically in places -> make sure it all ships
         '--hidden-import', 'pygame',
         '--collect-submodules', 'lagarto',
-        ENTRY,
     ]
+    # optional pixel-art PNGs (Fase 7) -- assets.py falls back to procedural icons
+    # if this is missing, so skip cleanly rather than fail a build without it
+    assets_dir = os.path.join(root, 'assets')
+    if os.path.isdir(assets_dir):
+        cmd += ['--add-data', f'{assets_dir}{os.pathsep}assets']
+    cmd.append(ENTRY)
     print('[build]', ' '.join(cmd))
     rc = subprocess.call(cmd)
     if rc == 0:
