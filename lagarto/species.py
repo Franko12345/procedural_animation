@@ -26,7 +26,8 @@ SPECIES = {
                                  speed=1.5, behavior='chase', hp=4, diet=('prey',))),
     'tank': dict(role='enemy', xp=9, score=70, grants='plates',
                  genome=Genome(name='tank', size=1.5, girth=1.25, leg_count=4, hue=6,
-                               speed=0.68, plates=1, behavior='chase', hp=14, diet=('prey',))),
+                               speed=0.68, plates=1, behavior='chase', hp=14, diet=('prey',),
+                               angular_damping=0.6, linear_damping=0.5, weight=2.5)),
     'snake': dict(role='enemy', xp=6, score=50, grants=None,
                   genome=Genome(name='snake', size=0.95, length=1.9, leg_count=0, hue=282,
                                 speed=1.2, behavior='chase', hp=6, diet=('prey',))),
@@ -39,7 +40,8 @@ SPECIES = {
     'spider': dict(role='enemy', xp=7, score=60, grants='legs',
                    genome=Genome(name='spider', size=1.05, radial=True, leg_count=8,
                                  hue=265, sat=0.55, val=0.7, speed=1.15,
-                                 behavior='lunge', hp=6, diet=('prey',))),
+                                 behavior='lunge', hp=6, diet=('prey',),
+                                 angular_damping=0.15, linear_damping=0.2, weight=0.8)),
     'spitter': dict(role='enemy', xp=7, score=60, grants=None,
                     genome=Genome(name='spitter', size=0.95, leg_count=4, hue=150,
                                   speed=0.85, behavior='ranged', hp=6, diet=('prey',))),
@@ -85,6 +87,7 @@ SPECIES = {
                                   leg_count=6, hue=315, sat=0.72, val=0.9,
                                   speed=0.82, behavior='grapple', hp=10,
                                   knockback=0.28,      # a shove barely nudges it
+                                  angular_damping=0.7, linear_damping=0.6, weight=3.0,
                                   diet=('prey',))),
 
     # ---- extra prey ------------------------------------------------------- #

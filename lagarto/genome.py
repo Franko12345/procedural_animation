@@ -17,7 +17,11 @@ class Genome:
                  'eye_count', 'spikes', 'horns', 'plates', 'tail', 'fins',
                  'hue', 'sat', 'val', 'speed', 'hp', 'behavior', 'diet', 'name',
                  # charm-driven visible parts
-                 'antennae', 'wings', 'extra_eyes', 'spore_sacs', 'nectar_sac', 'fangs')
+                 'antennae', 'wings', 'extra_eyes', 'spore_sacs', 'nectar_sac', 'fangs',
+                 # weight/inertia feel (plans/01_animacao_procedural_avancada.md #7);
+                 # default 0/0/1.0 = byte-for-byte the old turn/squash behaviour, so
+                 # existing species are untouched until species.py opts a body in
+                 'angular_damping', 'linear_damping', 'weight')
 
     def __init__(self, **kw):
         self.size = kw.get('size', 1.0)         # overall scale
@@ -51,6 +55,9 @@ class Genome:
         self.spore_sacs = kw.get('spore_sacs', False)
         self.nectar_sac = kw.get('nectar_sac', False)
         self.fangs = kw.get('fangs', False)
+        self.angular_damping = kw.get('angular_damping', 0.0)  # 0..0.95, slows turning
+        self.linear_damping = kw.get('linear_damping', 0.0)    # 0..0.95, extra vel decay
+        self.weight = kw.get('weight', 1.0)                    # >1 = less squash, slower squash-approach
 
     def copy(self):
         g = Genome.__new__(Genome)

@@ -46,9 +46,14 @@ class Spine:
     def head_dir(self):
         return safe_norm(self.joints[0] - self.joints[1])
 
-    def outline(self, scale=1.0):
-        """Left/right rim points for the filled body polygon."""
-        j, rad = self.joints, self.radii
+    def outline(self, scale=1.0, joints=None):
+        """Left/right rim points for the filled body polygon.
+
+        ``joints`` lets a caller draw with cosmetic (spring-lagged) positions
+        while ``self.joints`` -- used by hit-test, legs, eyes -- stays exact.
+        """
+        j = joints if joints is not None else self.joints
+        rad = self.radii
         n = len(j)
         left, right = [], []
         for i in range(n):
@@ -71,13 +76,14 @@ class Spine:
         """Rounded snout points, ordered right-rim -> front -> left-rim."""
         return self._cap(self.joints[0], self.head_dir(), self.radii[0] * scale, False)
 
-    def tail_cap(self, scale=1.0):
+    def tail_cap(self, scale=1.0, joints=None):
         """Rounded tail points, ordered left-rim -> back -> right-rim."""
-        n = len(self.joints)
-        back = safe_norm(self.joints[n - 1] - self.joints[n - 2])
-        return self._cap(self.joints[n - 1], back, self.radii[n - 1] * scale, True)
+        j = joints if joints is not None else self.joints
+        n = len(j)
+        back = safe_norm(j[n - 1] - j[n - 2])
+        return self._cap(j[n - 1], back, self.radii[n - 1] * scale, True)
 
-    def body_polygon(self, scale=1.0):
+    def body_polygon(self, scale=1.0, joints=None):
         """Single non-self-crossing ring around the whole body."""
-        left, right = self.outline(scale)
-        return left + self.tail_cap(scale) + right[::-1] + self.head_cap(scale)
+        left, right = self.outline(scale, joints)
+        return left + self.tail_cap(scale, joints) + right[::-1] + self.head_cap(scale)

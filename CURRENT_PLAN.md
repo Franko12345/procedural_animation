@@ -78,6 +78,53 @@ Regra: paro sempre numa fronteira jogável; `--smoke` verde antes de cada commit
       jogador do teste ter morrido de boba, não o framework.*
 - [ ] 10 chefes + PRIMORDIAL final (alguns usam os corpos da B4)
 
+## Overhaul: animação procedural + chefes (`plans/01,02,03_*.md`)
+Pedido do usuário: 3 guias novos em `plans/` — 01 eleva a animação procedural
+(referência Rain World), 02 reescreve o framework de chefes (mood/personalidade,
+telegraph modularizado, arena design), 03 são os 10 chefes + PRIMORDIAL de conteúdo.
+Ordem pedida: 01 → 02 → 03. Escopo grande, várias sessões — commits por fronteira.
+
+**Nota de arquitetura (01 §4, Ground Adaptation):** o jogo é top-down flat, sem
+campo de altura (`world.py` não tem `ground_y_at`/elevação) — a técnica de
+raycast-de-pé-no-chão do doc pressupõe câmera lateral (é como Rain World roda).
+Não se aplica aqui; pulada sem substituto, não é regressão.
+
+### Fase A (01 §3,7,8 parcial) — springs, damping/weight por genoma
+- [x] `lagarto/anim.py` novo: `SpringDamper`, `Vector2Spring`, `PhaseOscillator`,
+      `Anticipation` — genéricos, sem depender de `Lizard`/`Genome`.
+- [x] `Genome.angular_damping/linear_damping/weight` (default 0/0/1.0 = comportamento
+      antigo bit-a-bit; só quem opta muda). Aplicado em `Lizard.steer` (giro) e
+      `integrate` (drag extra + squash escalado por peso).
+- [x] Dials aplicados: tank (0.6/0.5/2.5), spider (0.15/0.2/0.8), octopus
+      (0.7/0.6/3.0) — tabela do doc. Boss (`rounds._spawn_boss`) força mínimo
+      0.5/0.4/3.0 (linha "Chefe") sem nunca deixar mais leve que a espécie base.
+- [x] Cauda com overshoot: 1 `Vector2Spring` por lagarto (`plan='normal'`) persegue
+      a ponta física da espinha; só os últimos `TAIL_SPRING_JOINTS` juntas de
+      DESENHO (não a física real) são deslocadas rumo à mola — hit-test/pernas/
+      olhos continuam lendo `spine.joints` exato, sem risco de desalinhar hitbox.
+      `parts.draw_tail` (clava/ferrão) usa a mesma junta cosmética p/ não destacar.
+- [x] Verificado: `--smoke 400` verde, teste dirigido tank/spider/octopus 180
+      frames sem NaN, `test_boss.py` ainda passa com os dials de chefe.
+
+### Fase B (01 §5,9 — a fazer)
+- [ ] Phase offsets generalizados (`PhaseOscillator` já existe, falta aplicar em
+      espinhos/barbatanas além da centopeia que já tem onda metacronal)
+- [ ] Procedural posing por contexto (mood -> postura) — depende do mood system
+      da Fase 02/06 abaixo, faz mais sentido junto
+
+### Fase 02: BossAI 2.0 (a fazer)
+- [ ] Mood system (calm/agitated/enraged/frustrated/cornered) + `BossPersonality`
+- [ ] Telegraph modularizado (`boss_telegraph.py`?) + padrões novos do catálogo
+      (charge/spiral/laser_sweep/bounce/minefield/shockwave/gravity_well/etc)
+- [ ] Arena design (pilares/corredor/poças) por chefe
+
+### Fase 03: 10 chefes + PRIMORDIAL (a fazer, depende de 02)
+- [ ] Corpos novos: `winged`, `orbital`, `wall`, `crystal`
+- [ ] Rei Lagarto (onda 5) → Centopeiadeira (7) → Terror Alado (8) → Mãe-Escaravelho
+      (9) → Kraken-Mor (10) → Aranha-Rei (11) → Olho-Sísmico (12) → Serpente Cristal
+      (13) → Muralha (15) → ANKH (18) → PRIMORDIAL (20)
+- [ ] Gerar pixel art só se necessário no caminho (ícones novos, não sprites do bicho)
+
 ## Fase M: música adaptativa
 - [ ] Stems por intensidade via `/music-generator`; mixar ao vivo por vida/inimigos/combo/chefe
 - [ ] Carregar se existir, senão fallback synth numpy (headless/CI verdes)

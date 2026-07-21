@@ -23,6 +23,9 @@ from .mathutil import clamp, lerp, approach, vfrom_angle, safe_norm, angle_of
 from .spine import Spine, build_radii
 from .leg import Leg
 from .projectile import spit as game_spit
+from .anim import Vector2Spring
+
+TAIL_SPRING_JOINTS = 4          # how many tail joints get cosmetic overshoot
 
 TAU = C.TAU
 
@@ -102,6 +105,14 @@ class Lizard:
             else Vector2(self.pos)
         self.spine = Spine(head, n, link, build_radii(n, maxr), bend=26)
         self.spine.resolve(head)
+        if plan == 'normal':
+            tip = Vector2(self.spine.joints[-1])
+            if keep_pose and getattr(self, 'tail_spring', None) is not None:
+                self.tail_spring.target = tip     # keep momentum across a rebuild
+            else:
+                self.tail_spring = Vector2Spring(tip, stiffness=10, damping=0.75)
+        else:
+            self.tail_spring = None
         self.legs = self._build_legs(g, n, maxr)
         for leg in self.legs:
             leg.init_foot(self.spine)
@@ -284,7 +295,8 @@ class Lizard:
             target_v = self.target_dir * self.max_speed * speed_mul
         else:
             target_v = Vector2()
-        self.vel += (target_v - self.vel) * clamp(self.accel * dt / self.max_speed, 0, 1)
+        turn_resp = 1.0 - self.genome.angular_damping   # 1.0 = old behaviour unchanged
+        self.vel += (target_v - self.vel) * clamp(self.accel * dt * turn_resp / self.max_speed, 0, 1)
 
     def integrate(self, dt, on_plant=None):
         self.pos += self.vel * dt
@@ -304,14 +316,39 @@ class Lizard:
             leg.update(self.spine, self.vel, dt, on_plant)
         if self.arms:
             self._resolve_arms(dt)
+        if self.tail_spring is not None:
+            self.tail_spring.target = self.spine.joints[-1]
+            self.tail_spring.update(dt)
+
+        if self.genome.linear_damping > 0:
+            self.vel *= math.exp(-self.genome.linear_damping * 3.0 * dt)
 
         spd = self.vel.length()
+        w = self.genome.weight
         self.squash = approach(self.squash,
-                               1.0 + clamp(spd / self.max_speed, 0, 1.6) * 0.16, 9, dt)
+                               1.0 + clamp(spd / self.max_speed, 0, 1.6) * 0.16 / w,
+                               9 / math.sqrt(w), dt)
         self.wobble += dt * 6
         self.hit_flash = max(0.0, self.hit_flash - dt * 3)
         self.attack_cd = max(0.0, self.attack_cd - dt)
         self.slow_t = max(0.0, self.slow_t - dt)
+
+    def _cosmetic_joints(self):
+        """Physical joints with the last few tail joints blended toward
+        ``tail_spring`` (overshoot/lag) -- draw-only, so hit-test/legs/eyes
+        (which read ``spine.joints`` directly) are never thrown off."""
+        if self.tail_spring is None:
+            return None
+        js = list(self.spine.joints)
+        n = len(js)
+        k = min(TAIL_SPRING_JOINTS, n - 1)
+        if k <= 0:
+            return None
+        lag = self.tail_spring.value - js[-1]
+        for i in range(n - k, n):
+            t = (i - (n - k - 1)) / k          # ramps 0 -> 1 toward the tip
+            js[i] = js[i] + lag * t
+        return js
 
     # ---- drawing -------------------------------------------------------- #
     def draw(self, surf, cam):
@@ -346,7 +383,7 @@ class Lizard:
             self._draw_segmented(surf, cam)
             return
 
-        poly = [cam.w2s(p) for p in self.spine.body_polygon(squish)]
+        poly = [cam.w2s(p) for p in self.spine.body_polygon(squish, self._cosmetic_joints())]
         if len(poly) >= 3:
             base = self.color
             if self.hit_flash > 0:

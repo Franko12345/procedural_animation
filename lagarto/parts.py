@@ -105,7 +105,7 @@ def draw_tail(surf, cam, creature):
     g = creature.genome
     if g.tail not in ('club', 'sting'):
         return
-    js = creature.spine.joints
+    js = creature._cosmetic_joints() or creature.spine.joints
     tail = js[-1]
     d = safe_norm(js[-1] - js[-2])
     r = creature.max_r

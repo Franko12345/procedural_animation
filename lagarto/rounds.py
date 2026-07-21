@@ -228,6 +228,11 @@ class RoundManager:
         gen = boss.genome
         gen.size *= 2.3                      # rebuild the body at boss scale
         gen.sat = min(1.0, gen.sat + 0.15)
+        # boss-scale weight/inertia (plans/01, table row "Chefe"): never lighter
+        # than the underlying species already was (octopus is already 3.0)
+        gen.angular_damping = max(gen.angular_damping, 0.5)
+        gen.linear_damping = max(gen.linear_damping, 0.4)
+        gen.weight = max(gen.weight, 3.0)
         # Fase 5: the FSM drives the fight now, not the species' own chase/
         # ranged/etc behavior -- 'boss' is a distinct dispatch (lizard.py).
         gen.behavior = 'boss'
