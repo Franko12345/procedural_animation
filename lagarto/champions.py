@@ -202,6 +202,19 @@ def _explosivo(c, game):
     _rebuild(c)
 
 
+def _divisor(c, game):
+    """Blobulon/Fistula: bursts into two smaller copies on death.
+
+    Bloated and rounder (the tell that it is 'full'), it turns one kill into a
+    small crowd -- so the counter is a weapon that clears the two children fast,
+    not a single big hit. One generation only, to stay off the horde budget."""
+    g = c.genome
+    g.girth *= 1.25
+    _rebuild(c)
+    c.death_split = True
+    c.split_gen = 1
+
+
 CHAMPIONS = [
     Champion('filhote',  'FILHOTE',   205, _filhote,   hp_mult=1.0),
     Champion('alfa',     'ALFA',      48,  _alfa,      _alfa_tick,      hp_mult=1.5),
@@ -211,6 +224,7 @@ CHAMPIONS = [
     Champion('blindado', 'BLINDADO',  32,  _blindado,  hp_mult=1.3, kind='modifier'),
     Champion('gigante',  'GIGANTE',   290, _gigante,   hp_mult=1.8, kind='modifier'),
     Champion('explosivo', 'EXPLOSIVO', 18, _explosivo, hp_mult=1.1, kind='modifier'),
+    Champion('divisor',  'DIVISOR',   135, _divisor,   hp_mult=1.2, kind='modifier'),
 ]
 BY_ID = {ch.id: ch for ch in CHAMPIONS}
 VARIANTS = [ch for ch in CHAMPIONS if ch.kind == 'variant']

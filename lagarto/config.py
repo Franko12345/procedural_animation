@@ -67,6 +67,25 @@ VENOM_PUDDLE_TICK = 0.55
 # e exatamente o bug do Acido, ja documentado e ja corrigido uma vez.
 VENOM_PUDDLE_LIFE = 2.8
 
+# --- inimigos da fase B4 (corpos procedurais novos) ------------------------- #
+# CENTOPEIA (corpo 'segmented'): cavadora. Ataca o habito de ACAMPAR/andar reto --
+# mergulha (intangivel), viaja por baixo ate um ponto que voce ve marcado no chao
+# e ERUPCIONA la. Parada = ela sai embaixo de voce; movimento = voce sai do anel.
+CENT_SURFACE_TIME = 2.6     # segundos cacando na superficie antes de mergulhar
+CENT_DIG_TIME = 0.5         # telegrafo de MERGULHO: enraiza, cava um buraco, afunda
+CENT_UNDER_TIME = 1.4       # teto de tempo submersa (erupcao forcada) -- e o telegrafo
+CENT_ERUPT_DMG = 15         # dano do estouro ao aflorar (anel curto)
+# POLVO (corpo 'tentacle'): agarrador. Ataca o habito de FICAR NO MEIO-ALCANCE /
+# kitar de perto -- estica os bracos (telegrafo visivel), e no estalo te puxa para
+# dentro e retarda. So funciona se voce estiver por perto: fugir cedo o nega.
+OCTO_GRAB_RANGE = 190      # dentro disso ele arma o agarrao
+OCTO_WINDUP = 0.75         # telegrafo: bracos convergem/esticam (>27 frames)
+OCTO_CD = 2.4              # respiro entre agarroes
+OCTO_PULL_DIST = 120       # o quanto voce e puxado
+OCTO_SLOW_MUL = 0.5
+OCTO_SLOW_TIME = 0.8
+OCTO_GRAB_SHOW = 0.25      # quadros mostrando o braco fisgado
+
 # --- itens (items.py) ------------------------------------------------------- #
 # Qualidade 0-4 no molde do Isaac: enviesa a chance de ser oferecido, nao trava.
 # Um item forte pode existir sem ser comum; um fraco pode existir sem ser cilada.
@@ -153,6 +172,8 @@ CHAMP_SALTADOR_RANGE = 420
 CHAMP_SALTADOR_CD = 2.4
 CHAMP_SALTADOR_POWER = 3.1
 CHAMP_ARMOR = 0.6        # fracao bloqueada de frente (por tras leva normal)
+CHAMP_SPLIT_SIZE = 0.62  # DIVISOR: tamanho de cada cria (do pai) -- Blobulon/Fistula
+CHAMP_SPLIT_HP = 0.5     # vida de cada cria (fracao da max_hp do pai)
 
 # Ferrao (escorpiao/envenenador): TEM que durar menos que o attack_cd de 0.8s de
 # quem o aplica, senao a lentidao e permanente por construcao -- foi o terceiro

@@ -80,10 +80,19 @@ class Lizard:
         """
         g = self.genome
         self.scale = g.size
+        plan = getattr(g, 'plan', 'normal')
         if g.radial:                      # spider: compact body, few joints
             n = 3
             maxr = 15 * g.size * g.girth
             link = maxr * 0.7
+        elif plan == 'tentacle':          # octopus: small soft mantle + arms
+            n = 4
+            maxr = 20 * g.size * g.girth
+            link = maxr * 0.55
+        elif plan == 'segmented':         # centipede: long thin chain of segments
+            n = max(10, int(16 * g.size * g.length))
+            maxr = 14 * g.size * g.girth
+            link = maxr * 1.15
         else:
             n = max(6, int(11 * g.size * g.length))
             maxr = 17 * g.size * g.girth
@@ -96,6 +105,7 @@ class Lizard:
         self.legs = self._build_legs(g, n, maxr)
         for leg in self.legs:
             leg.init_foot(self.spine)
+        self.arms = self._build_arms(g, maxr) if plan == 'tentacle' else []
 
         base = 165 * (0.85 + 0.4 / g.size) * g.speed
         mult = (self.max_speed / self._speed_base) if self._speed_base else 1.0
@@ -103,8 +113,13 @@ class Lizard:
         self._speed_base = base
 
     def _build_legs(self, g, n, maxr):
+        plan = getattr(g, 'plan', 'normal')
+        if plan == 'tentacle':            # arms are not IK legs
+            return []
         if g.leg_count <= 0:
             return []
+        if plan == 'segmented':
+            return self._build_centipede_legs(g, n, maxr)
         if g.radial:
             return self._build_radial_legs(g, n, maxr)
         seg = maxr * 1.35 * g.leg_len
@@ -151,6 +166,79 @@ class Lizard:
             leg.partner = legs[(i + h) % len(legs)]
         return legs
 
+    def _build_centipede_legs(self, g, n, maxr):
+        """A short pair on (almost) every segment, phased down the body.
+
+        The point is the *metachronal wave*: partnering each pair with the pair
+        two segments back keeps neighbours from planting together, so the many
+        tiny legs ripple front-to-back instead of marching in sync.
+        """
+        seg = maxr * 1.0 * g.leg_len
+        so = maxr * 1.25
+        step_len = maxr * 1.05
+        legs = []
+        for idx in range(1, n - 1):
+            legs.append(Leg(idx, -1, so, 0.0, seg, step_len, 0.11, maxr * 0.5))
+            legs.append(Leg(idx, +1, so, 0.0, seg, step_len, 0.11, maxr * 0.5))
+        m = len(legs)
+        for i, leg in enumerate(legs):
+            leg.partner = legs[(i + 4) % m] if m > 4 else None
+        return legs
+
+    def _build_arms(self, g, maxr):
+        """Octopus arms: each is a follow-the-leader sub-chain hung off the mantle.
+
+        Not IK legs -- they don't plant. They sway/curl on their own and (in
+        ``_resolve_arms``) trail the body, so a moving kraken whips its arms.
+        """
+        count = max(4, g.leg_count or 6)
+        ajoints = 10
+        link = maxr * 0.68 * g.leg_len
+        base = Vector2(self.spine.joints[0])
+        arms = []
+        for k in range(count):
+            arms.append({'a': (360.0 / count) * k,
+                         'phase': k * 1.9,
+                         'link': link,
+                         'j': [Vector2(base) for _ in range(ajoints)]})
+        return arms
+
+    def _resolve_arms(self, dt):
+        """Curl + trail the octopus arms. Each joint eases toward an outward,
+        sine-curled target and then re-clamps to the link length, so the chain
+        stays taut but whips when the body moves (soft follow-the-leader)."""
+        mantle = self.spine.joints[0]
+        base_ang = angle_of(self.spine.head_dir())
+        trailing = -safe_norm(self.vel) if self.vel.length_squared() > 400 else Vector2()
+        k = min(1.0, 18 * dt)
+        # during a grab wind-up the arms all reach toward the target and straighten
+        # -- that convergence IS the telegraph (see _ai_grapple)
+        reach = getattr(self, 'arm_target', None)
+        reach_ang = angle_of(reach - mantle) if reach is not None else 0.0
+        for arm in self.arms:
+            js = arm['j']
+            link = arm['link']
+            if reach is not None:
+                anchor_ang = reach_ang + arm['a'] * 0.14      # cluster toward target
+                swirl, amp = 7.0, 9.0                          # nearly straight spears
+            else:
+                anchor_ang = base_ang + arm['a']
+                swirl, amp = 24.0, 34.0
+            js[0].update(mantle + vfrom_angle(anchor_ang, self.max_r * 1.35))
+            m = len(js)
+            for i in range(1, m):
+                t = i / (m - 1)
+                # a wave that travels down the arm (i term) + a constant swirl so
+                # even a still arm hooks like a tentacle, not a straight spoke
+                wave = math.sin(self.wobble * 2.4 - i * 0.9 + arm['phase'])
+                ang = anchor_ang + (swirl + wave * amp) * t
+                desired = js[i - 1] + vfrom_angle(ang, link) + trailing * (link * 0.9 * t)
+                js[i] += (desired - js[i]) * k
+                off = js[i] - js[i - 1]
+                L = off.length()
+                if L > 1e-4:
+                    js[i] = js[i - 1] + off * (link / L)
+
     # ---- hit testing ----------------------------------------------------- #
     def body_points(self):
         """Sample points along the spine: [(pos, radius, is_head), ...].
@@ -165,6 +253,8 @@ class Lizard:
 
     def hit_test(self, pos, radius=0.0):
         """None if it misses; 'head' (weak point) or 'body' if it connects."""
+        if getattr(self, 'burrowed', False):     # underground = untouchable
+            return None
         best = None
         for jp, r, is_head in self.body_points():
             dx = jp.x - pos[0]
@@ -210,6 +300,8 @@ class Lizard:
             self.facing = safe_norm(self.vel)
         for leg in self.legs:
             leg.update(self.spine, self.vel, dt, on_plant)
+        if self.arms:
+            self._resolve_arms(dt)
 
         spd = self.vel.length()
         self.squash = approach(self.squash,
@@ -229,18 +321,27 @@ class Lizard:
             mid = self.spine.joints[len(self.spine.joints) // 3]
             palette.glow(surf, cam.w2s(mid), self.max_r * 2.6 * cam.zoom, self.color, 0.34)
 
+        plan = getattr(self.genome, 'plan', 'normal')
         leg_col = tuple(int(x * 0.7) for x in self.color)
+        thin = (plan == 'segmented')      # many little legs read better skinny
+        legw = max(1, int(self.max_r * (0.18 if thin else 0.42) * cam.zoom))
+        footr = max(1, int(self.max_r * (0.14 if thin else 0.28) * cam.zoom))
         for leg in self.legs:
             root = self.spine.joints[leg.idx]
             knee, foot = leg.solve(root)
             r = cam.w2s(root); k = cam.w2s(knee); f = cam.w2s(foot)
-            w = max(2, int(self.max_r * 0.42 * cam.zoom))
-            pygame.draw.line(surf, leg_col, r, k, w)
-            pygame.draw.line(surf, leg_col, k, f, w)
-            pygame.draw.circle(surf, leg_col, f, max(2, int(self.max_r * 0.28 * cam.zoom)))
+            pygame.draw.line(surf, leg_col, r, k, legw)
+            pygame.draw.line(surf, leg_col, k, f, legw)
+            pygame.draw.circle(surf, leg_col, f, footr)
 
         if self.genome.radial:
             self._draw_spider(surf, cam)
+            return
+        if plan == 'tentacle':
+            self._draw_tentacle(surf, cam)
+            return
+        if plan == 'segmented':
+            self._draw_segmented(surf, cam)
             return
 
         poly = [cam.w2s(p) for p in self.spine.body_polygon(squish)]
@@ -287,6 +388,105 @@ class Lizard:
         for ex, ey in ((0.25, -0.3), (0.25, 0.3), (0.45, -0.12), (0.45, 0.12)):
             ep = head + d * (r * ex) + perp * (r * ey)
             pygame.draw.circle(surf, C.COL_WHITE, cam.w2s(ep), max(1, int(r * 0.16 * cam.zoom)))
+
+    def _draw_segmented(self, surf, cam):
+        """Centipede: overlapping ringed segments (the ink ring on each = the
+        segmentation), head last so it sits on top, with mandibles + antennae."""
+        js, rad = self.spine.joints, self.spine.radii
+        n = len(js)
+        base = self.color
+        if self.hit_flash > 0:
+            base = tuple(int(lerp(base[i], 255, self.hit_flash)) for i in range(3))
+        seg = palette.lighten(base, 0.05)
+        rim = palette.lighten(base, 0.5)
+        ink_w = max(1, int(1.6 * cam.zoom))
+        for i in range(n - 1, -1, -1):
+            c = cam.w2s(js[i])
+            rr = max(2, int(rad[i] * 1.2 * cam.zoom))
+            pygame.draw.circle(surf, base if i == 0 else seg, c, rr)
+            pygame.draw.circle(surf, rim, (c[0] - int(rr * 0.28), c[1] - int(rr * 0.3)),
+                               max(1, int(rr * 0.36)))
+            pygame.draw.circle(surf, C.COL_INK, c, rr, ink_w)
+        head = js[0]
+        d = self.spine.head_dir()
+        perp = Vector2(-d.y, d.x)
+        r = self.max_r
+        for s in (-1, 1):                                   # mandibles
+            b = head + d * (r * 0.7) + perp * (s * r * 0.42)
+            tip = b + d * (r * 0.6) - perp * (s * r * 0.18)
+            pygame.draw.line(surf, C.COL_INK, cam.w2s(b), cam.w2s(tip), max(2, int(2 * cam.zoom)))
+        acol = palette.darken(base, 0.2)
+        for s in (-1, 1):                                   # antennae
+            b = head + d * (r * 0.5) + perp * (s * r * 0.5)
+            wig = math.sin(self.wobble * 3 + s) * 0.3
+            tip = b + d * (r * 0.95) + perp * (s * r * (0.6 + wig))
+            pygame.draw.line(surf, acol, cam.w2s(b), cam.w2s(tip), max(1, int(1.5 * cam.zoom)))
+        look = self._look_dir()
+        for s in (-1, 1):                                   # eyes
+            ep = head + d * (r * 0.2) + perp * (s * r * 0.46)
+            pygame.draw.circle(surf, C.COL_WHITE, cam.w2s(ep), max(2, int(r * 0.3 * cam.zoom)))
+            pygame.draw.circle(surf, C.COL_INK, cam.w2s(ep + look * (r * 0.1)),
+                               max(1, int(r * 0.15 * cam.zoom)))
+
+    def _arm_polygon(self, cam, js, base_r):
+        """Smooth tapering outline around an arm chain -- same left/right-rim +
+        rounded-tip technique as the spine body, so arms read as continuous flesh
+        (not a string of beads)."""
+        m = len(js)
+        radii = [base_r * (1.0 - 0.93 * (i / (m - 1))) for i in range(m)]
+        left, right = [], []
+        for i in range(m):
+            fwd = safe_norm(js[i + 1] - js[i]) if i < m - 1 else safe_norm(js[i] - js[i - 1])
+            perp = Vector2(-fwd.y, fwd.x) * radii[i]
+            left.append(js[i] + perp)
+            right.append(js[i] - perp)
+        tip, tdir = js[-1], safe_norm(js[-1] - js[-2])
+        base_a = angle_of(tdir)
+        cap = [tip + vfrom_angle(base_a + a, radii[-1] * 1.1) for a in (-60, -25, 0, 25, 60)]
+        return [cam.w2s(p) for p in (left + cap + right[::-1])]
+
+    def _draw_tentacle(self, surf, cam):
+        """Octopus/kraken: reaching arms drawn as smooth continuous tentacles
+        behind a pulsing mantle bulb."""
+        base = self.color
+        if self.hit_flash > 0:
+            base = tuple(int(lerp(base[i], 255, self.hit_flash)) for i in range(3))
+        arm_col = palette.darken(base, 0.1)
+        rim = palette.lighten(base, 0.5)
+        spot = tuple(int(x * 0.8) for x in base)
+        rim_w = max(1, int(2 * cam.zoom))
+        ink_w = max(1, int(2 * cam.zoom))
+        arm_r = self.max_r * 0.62
+        for arm in self.arms:
+            js = arm['j']
+            poly = self._arm_polygon(cam, js, arm_r)
+            if len(poly) >= 3:
+                pygame.draw.polygon(surf, arm_col, poly)
+                pygame.draw.polygon(surf, rim, poly, rim_w)
+                pygame.draw.polygon(surf, C.COL_INK, poly, ink_w)
+            for i in range(2, len(js) - 2, 3):    # faint spots, like the lizard body
+                t = i / (len(js) - 1)
+                rr = max(1, int(arm_r * (1.0 - 0.93 * t) * 0.34 * cam.zoom))
+                pygame.draw.circle(surf, spot, cam.w2s(js[i]), rr)
+        head = self.spine.joints[0]
+        mc = cam.w2s(head)
+        pulse = 1.0 + 0.05 * math.sin(self.wobble * 2.4)
+        mr = max(4, int(self.max_r * 1.7 * pulse * cam.zoom))
+        pygame.draw.circle(surf, base, mc, mr)
+        pygame.draw.circle(surf, rim, (mc[0] - int(mr * 0.3), mc[1] - int(mr * 0.34)),
+                           max(1, int(mr * 0.42)))
+        pygame.draw.circle(surf, palette.lighten(base, 0.55), mc, mr, max(1, int(3 * cam.zoom)))
+        pygame.draw.circle(surf, C.COL_INK, mc, mr, max(1, int(2 * cam.zoom)))
+        d = self.spine.head_dir()
+        perp = Vector2(-d.y, d.x)
+        r = self.max_r
+        look = self._look_dir()
+        for s in (-1, 1):
+            ep = head + d * (r * 0.4) + perp * (s * r * 0.62)
+            sp = cam.w2s(ep)
+            pygame.draw.circle(surf, C.COL_WHITE, sp, max(2, int(r * 0.46 * cam.zoom)))
+            pygame.draw.circle(surf, C.COL_INK, cam.w2s(ep + look * (r * 0.2)),
+                               max(1, int(r * 0.22 * cam.zoom)))
 
     def _look_dir(self):
         if self.kind == 'player':
@@ -963,6 +1163,16 @@ class AILizard(Lizard):
         self.fuse = 0.0               # bomber: >0 = lit, counts down to the blast
         self._blown = False           # bomber: already detonated (recursion guard)
         self.burst_left = 0           # gunner: shots left in the current burst
+        # --- phase B4 behaviours (new procedural bodies) ---
+        self.burrowed = False         # centipede: intangible while underground
+        self.burrow_state = 'surface'
+        self.burrow_t = random.uniform(1.4, C.CENT_SURFACE_TIME)
+        self.dive_to = Vector2(self.pos)   # where a burrower will surface
+        self.grapple_t = 0.0          # octopus: >0 winding up a grab (arms reach)
+        self.grapple_cd = random.uniform(0.4, 1.6)
+        self.arm_target = None        # world point the arms reach toward (telegraph)
+        self.grab_show = 0.0          # octopus: frames drawing the hooked arm
+        self.grabbed = None
         # --- champion layer (see champions.py; None on a plain spawn) ---
         self.champion = None
         self.champion_name = ''
@@ -975,6 +1185,8 @@ class AILizard(Lizard):
         self.marked = False       # Presa Marcada: next hit lands as a crit
         self.front_armor = 0.0        # BLINDADO: fraction blocked from the front
         self.death_blast = False      # EXPLOSIVO: parting AoE
+        self.death_split = False       # DIVISOR: splits into 2 smaller copies on death
+        self.split_gen = 0             # remaining split generations
 
     def apply_poison(self, dps, dur):
         self.poison_dps = max(self.poison_dps, dps)
@@ -1042,6 +1254,7 @@ class AILizard(Lizard):
         self.shoot_cd = max(0.0, self.shoot_cd - dt)
         self.aggro_t = max(0.0, self.aggro_t - dt)
         self.rally_t = max(0.0, self.rally_t - dt)
+        self.grab_show = max(0.0, self.grab_show - dt)
         for hook in self.champion_ticks:
             hook(self, dt, game)
         if self.aggro is not None and (self.aggro.dead or self.aggro_t <= 0):
@@ -1074,6 +1287,10 @@ class AILizard(Lizard):
                     d, speed = self._ai_gunner(dt, game, target)
                 elif beh == 'venom':
                     d, speed = self._ai_venom(dt, game, target)
+                elif beh == 'burrow':
+                    d, speed = self._ai_burrow(dt, game, target)
+                elif beh == 'grapple':
+                    d, speed = self._ai_grapple(dt, game, target)
                 else:
                     d, speed = self._ai_melee(dt, game, target)
             elif 'prey' in self.genome.diet:
@@ -1270,6 +1487,102 @@ class AILizard(Lizard):
             d = Vector2(-to.y, to.x) * (1 if int(self.wobble) % 2 else -1)
         return d, 0.72
 
+    def _ai_burrow(self, dt, game, target):
+        """CENTOPEIA: hunt on the surface, then dive and ambush (Isaac Para-Bite).
+
+        The dive is intangible, so you cannot chip it underground; it surfaces at
+        a point locked in when it dove, drawn as a growing ring on the ground.
+        Standing still = it erupts under you; the fair counter is to leave the
+        ring. Punishes camping and running in a straight line."""
+        to = safe_norm(target.pos - self.pos)
+        dist = target.pos.distance_to(self.pos)
+        self.burrow_t -= dt
+        dirt = (150, 112, 74)
+        if self.burrow_state == 'surface':
+            if dist < (self.max_r + target.max_r) * 1.1 and self.attack_cd <= 0:
+                self._contact(game, target)
+            if self.burrow_t <= 0:                    # start the dig telegraph
+                self.burrow_state = 'digging'
+                self.burrow_t = C.CENT_DIG_TIME
+                audio.play('nest', 0.35)
+            return to, 1.2
+        if self.burrow_state == 'digging':
+            # rooted, kicking up dirt: the body sinks into a hole (_draw_burrow),
+            # so it reads as burrowing rather than blinking out
+            if random.random() < dt * 55:
+                game.fx.burst(self.pos + vfrom_angle(random.uniform(0, 360),
+                              random.uniform(0, self.max_r)), dirt, 1, 150)
+            if self.burrow_t <= 0:
+                self.burrow_state = 'under'
+                self.burrowed = True
+                self.burrow_t = C.CENT_UNDER_TIME
+                self.dive_to = Vector2(target.pos) + vfrom_angle(
+                    random.uniform(0, 360), random.uniform(0, 70))
+                game.fx.burst(self.pos, dirt, 24, 280)
+                game.fx.ring(self.pos, (170, 128, 86))
+            return Vector2(), 0.0
+        # underground: race to the marked spot, leaving a dust trail, then erupt
+        du = self.dive_to - self.pos
+        if random.random() < dt * 34:
+            game.fx.burst(self.pos, dirt, 1, 90)
+        if du.length() < 42 or self.burrow_t <= 0:
+            self.burrow_state = 'surface'
+            self.burrowed = False
+            self.burrow_t = C.CENT_SURFACE_TIME
+            self._erupt(game)
+            return to, 0.0
+        return safe_norm(du), 2.4
+
+    def _erupt(self, game):
+        pos = Vector2(self.pos)
+        game.fx.burst(pos, (150, 112, 74), 28, 340)
+        game.fx.spark_burst(pos, (215, 185, 125), 15, 380)
+        game.fx.ring(pos, (200, 150, 90))
+        game.shake(8)
+        audio.play('hit', 0.5)
+        r = self.max_r * 2.2
+        for p in game.players:
+            if p.dead or getattr(p, 'down', False):
+                continue
+            if p.pos.distance_to(pos) < r + p.max_r:
+                p.hurt(game, safe_norm(p.pos - pos), C.CENT_ERUPT_DMG)
+
+    def _ai_grapple(self, dt, game, target):
+        """POLVO: an anti-kite grappler (Gungeon Gripmaster). It closes to mid
+        range, roots, and reaches ALL arms toward you (a >0.7s telegraph); if you
+        are still in reach at the snap it reels you in and slows you. Fleeing the
+        wind-up is the counter -- so it punishes lingering at its doorstep."""
+        to = safe_norm(target.pos - self.pos)
+        dist = target.pos.distance_to(self.pos)
+        if dist < (self.max_r + target.max_r) and self.attack_cd <= 0:
+            self._contact(game, target)
+        if self.grapple_t > 0:                     # winding up: arms reach in
+            self.grapple_t -= dt
+            self.arm_target = Vector2(target.pos)
+            if random.random() < dt * 20:
+                game.fx.burst(self.spine.joints[0], palette.lighten(self.color, 0.3), 1, 60)
+            if self.grapple_t <= 0:
+                self.arm_target = None
+                if dist < C.OCTO_GRAB_RANGE:        # snap!
+                    pull = min(C.OCTO_PULL_DIST, dist - self.max_r)
+                    target.pos += safe_norm(self.pos - target.pos) * max(0, pull)
+                    target.apply_slow(C.OCTO_SLOW_MUL, C.OCTO_SLOW_TIME)
+                    self.grabbed = target
+                    self.grab_show = C.OCTO_GRAB_SHOW
+                    game.fx.spark_burst(target.pos, self.color, 12, 280)
+                    game.shake(5)
+                    audio.play('hit', 0.45)
+            return to * 0.08, 0.0                   # rooted, mantle exposed
+        self.arm_target = None
+        if self.grapple_cd > 0:
+            self.grapple_cd -= dt
+        elif dist < C.OCTO_GRAB_RANGE:
+            self.grapple_t = C.OCTO_WINDUP
+            self.grapple_cd = C.OCTO_CD
+        if dist > C.OCTO_GRAB_RANGE * 0.85:
+            return to, 0.55                         # slow, deliberate approach
+        return -to * 0.4, 0.4                        # hold at arm's length
+
     def explode(self, game):
         """Bomber blast: one hit per victim, radius damage, then the bomber dies.
 
@@ -1334,8 +1647,13 @@ class AILizard(Lizard):
             # blink faster as the ally is about to leave
             if int(self.life * (12 if self.life < 2 else 6)) % 2 == 0:
                 return
+        if self.burrowed:                    # underground: only the mound + warning
+            self._draw_burrow(surf, cam)
+            return
         if self.fuse > 0:
             self._draw_fuse(surf, cam)
+        if self.burrow_state == 'digging':
+            self._draw_dig_hole(surf, cam)   # behind the body: a growing pit
         if self.champion is not None:
             self._draw_champion_aura(surf, cam)
         self._draw_weakpoint(surf, cam)      # behind the body: reads as a halo
@@ -1343,6 +1661,36 @@ class AILizard(Lizard):
         self._draw_health(surf, cam)
         if self.champion is not None:
             self._draw_champion_name(surf, cam)
+
+    def _draw_dig_hole(self, surf, cam):
+        """The pit opening under a diving centipede -- so the dive reads as
+        burrowing, not a blink-out. Grows over the dig telegraph."""
+        f = 1.0 - clamp(self.burrow_t / max(1e-4, C.CENT_DIG_TIME), 0, 1)   # 0->1
+        sp = cam.w2s(self.pos)
+        r = int(self.max_r * (1.4 + 0.9 * f) * cam.zoom)
+        pygame.draw.circle(surf, (44, 32, 22), sp, r)                      # dark pit
+        pygame.draw.circle(surf, (150, 112, 74), sp, r, max(1, int(2 * cam.zoom)))  # rim
+        palette.glow(surf, sp, int(r * 1.2), (150, 112, 74), 0.18 + 0.2 * f)
+
+    def _draw_burrow(self, surf, cam):
+        """Underground: a traveling dirt mound + the ring where it will erupt.
+
+        The ring is the fair telegraph -- it fills as the surfacing nears, so the
+        player can read where to NOT be standing (the whole point of the ambush)."""
+        sp = cam.w2s(self.pos)
+        r = max(3, int(self.max_r * 0.9 * cam.zoom))
+        bob = int(math.sin(self.wobble * 3.0) * self.max_r * 0.15 * cam.zoom)
+        pygame.draw.circle(surf, (120, 90, 60), (sp[0], sp[1] + bob), r)   # mound
+        pygame.draw.circle(surf, (150, 112, 74), (sp[0], sp[1] + bob), r,
+                           max(1, int(2 * cam.zoom)))
+        tp = cam.w2s(self.dive_to)
+        f = 1.0 - clamp(self.burrow_t / max(1e-4, C.CENT_UNDER_TIME), 0, 1)   # 0->1
+        rr = max(4, int(self.max_r * 2.2 * cam.zoom))
+        warn = (220, 95, 70)
+        blink = 0.55 + 0.45 * math.sin(f * f * 40)
+        pygame.draw.circle(surf, warn, tp, rr, max(1, int((1 + 2 * f) * cam.zoom)))
+        pygame.draw.circle(surf, warn, tp, max(1, int(rr * f)))            # fills in
+        palette.glow(surf, tp, int(rr * 1.2), warn, (0.14 + 0.3 * f) * blink)
 
     def _draw_fuse(self, surf, cam):
         """Draw the blast footprint while the fuse burns.
@@ -1521,3 +1869,23 @@ class AILizard(Lizard):
             self._death_item_fx(game)
             if random.random() < 0.15:
                 game.spawn_fruit(self.pos)
+        # DIVISOR (Blobulon/Fistula): burst into two smaller copies. Queued, not
+        # appended, so it can't extend the loop that is killing this one.
+        if self.death_split and self.species and self.split_gen > 0:
+            self._do_split(game)
+
+    def _do_split(self, game):
+        from . import species as splib
+        game.fx.ring(self.pos, self.color)
+        for k in range(2):
+            child = splib.make(self.species, self.pos)
+            child.genome.size = max(0.4, self.genome.size * C.CHAMP_SPLIT_SIZE)
+            child.rebuild_body()
+            child.hp = max(1, int(self.max_hp * C.CHAMP_SPLIT_HP))
+            child.max_hp = child.hp
+            child.split_gen = self.split_gen - 1
+            child.death_split = child.split_gen > 0
+            child.base_color = child.color
+            child.pos = self.pos + vfrom_angle(k * 180 + random.uniform(-40, 40), self.max_r)
+            child.vel = vfrom_angle(random.uniform(0, 360), child.max_speed * 0.8)
+            game.spawn_enemy(child)

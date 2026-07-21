@@ -36,10 +36,22 @@ Regra: paro sempre numa fronteira jogável; `--smoke` verde antes de cada commit
 ## Fase B3: barras bio — FEITO (commit pendente)
 - [x] `_bio_bar`: membrana arredondada, menisco pulsante na ponta, brilho interno, flagelos que balançam (só na vida). Sem Surface por frame; 0,23 ms p/ o HUD de 2 jogadores.
 
-## AGORA — Fase B4: novas criaturas procedurais
-- [ ] Corpos novos (tentáculo / segmentado / radial variado) — refs RujiK, Codeer, Sebastian Lague
-- [ ] Entram como inimigos comuns (`species.py` + behavior); alguns viram chefes
-- [ ] `genome.__slots__` — declarar atributo novo (armadilha recorrente)
+## Fase B4: novas criaturas procedurais — FEITO (commit pendente)
+- [x] `genome.plan` (declarado no `__slots__`) — fork de corpo, ao lado do `radial`
+- [x] **CENTOPEIA** (`plan='segmented'`): cadeia de aneis + marcha metacronal de patinhas.
+      Mecânica **cavadora** (`behavior='burrow'`, Para-Bite do Isaac): superfície →
+      **telegrafo de mergulho** (cava um buraco, afunda) → intangível por baixo (mound +
+      **anel de erupção** no chão + trilha de terra) → aflora e estoura. Pune acampar/andar reto.
+- [x] **POLVO / KRAKEN** (`plan='tentacle'`): manto pulsante + braços **contínuos** (mesma
+      técnica de contorno da espinha, tapered), que ondulam e chicoteiam. Mecânica
+      **agarradora** (`behavior='grapple'`, Gripmaster do Gungeon): fecha, enraíza, **estica
+      os braços** (telegrafo >27f), e no estalo te **puxa + retarda**. Pune kitar de perto.
+- [x] Entram nas ondas (`species.py` + THEMES `tanques`/`aranhas`/nova `toca`)
+- [x] **Modificador DIVISOR** (Blobulon/Fistula): racha em 2 cópias menores ao morrer.
+      Fila diferida (`game.spawn_enemy`) p/ não mutar a lista durante o laço que o mata.
+- [x] Bodies prontos p/ virar **chefes** na Fase 5/6 (KRAKEN em escala ~2.2x já renderiza)
+- [x] Testado: `--smoke 500` verde; teste dirigido (todos os estados disparam, sem crash);
+      screenshots dos 3 telegrafos (dig / underground / grab)
 
 ## Fase 4c: acampamento físico (retomar)
 - [ ] Clareira com barraca (encostar abre compra) + 3 portas (atravessar avança)

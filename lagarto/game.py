@@ -199,6 +199,7 @@ class Game:
             self.players.append(pl)
 
         self.enemies = []
+        self.pending_enemies = []     # spawned mid-step (e.g. DIVISOR split), drained safely
         self.friends = []
         self.prey = []
         self.pickups = []
@@ -673,6 +674,11 @@ class Game:
     def spawn_fruit(self, pos):
         self.pickups.append(Fruit(pos + vfrom_angle(random.uniform(0, 360), 20)))
 
+    def spawn_enemy(self, e):
+        """Queue an enemy to join next drain -- safe to call while iterating
+        ``self.enemies`` (a dying DIVISOR splitting inside _collisions)."""
+        self.pending_enemies.append(e)
+
     def spawn_projectile(self, proj, mirror=True):
         self.projectiles.append(proj)
         # Retaguarda mirrors every friendly shot backwards. It lives HERE because
@@ -861,6 +867,9 @@ class Game:
         self.combo_flash = max(0.0, self.combo_flash - dt * 2)
         self._revive()
 
+        if self.pending_enemies:        # children queued during this step's deaths
+            self.enemies.extend(self.pending_enemies)
+            self.pending_enemies = []
         self.enemies = [e for e in self.enemies if not e.dead]
         self.prey = [e for e in self.prey if not e.dead]
         self.friends = [f for f in self.friends if not f.dead]

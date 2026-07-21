@@ -50,7 +50,7 @@ Um módulo por responsabilidade — mantenha assim; não volte para arquivo úni
 | `leg.py` | `Leg`: foot-planting (limiar + arco) + **IK de 2 ossos**. Suporta modo **radial** (aranha) via `rest_angle`. |
 | `parts.py` | Desenho de partes pelo genoma: espinhos, chifres, placas, cauda (clava/ferrão), nadadeiras. Reusado por inimigos e evolução. |
 | `lizard.py` | `Lizard` (base construída **do genoma**: espinha + N pernas pareadas/radiais + partes + status slow), `Player` (XP/nível/`grant_part`/energia/dash/língua), `AILizard` (prey/enemy/friend + behaviors chase/ranged/lunge/hop + poison). |
-| `species.py` | **Genomas-template** + metadados (role, xp, score, `grants`, `diet`). `make()` spawna variação. Roster: grazer/critter/frog/fish (presa), runner/tank/snake/horned/spiky/spider/spitter/scorpion + **wasp/bomber/gunner/venomer** (inimigo). |
+| `species.py` | **Genomas-template** + metadados (role, xp, score, `grants`, `diet`). `make()` spawna variação. Roster: grazer/critter/frog/fish (presa), runner/tank/snake/horned/spiky/spider/spitter/scorpion + **wasp/bomber/gunner/venomer** + **centipede/octopus** (inimigo). |
 | `characters.py` | **Personagens jogáveis**: 4 genomas + modificadores de identidade + uma mecânica exclusiva cada. |
 | `items.py` | **Itens**: 4 **ativos** (botão E, carga por abate) + 16 **passivos que mudam mecânica**. Qualidade 0-4 + pools por origem (level/shop/nest/boss). |
 | `champions.py` | **Campeões**: variantes nomeadas (modelo Rain World) + modificadores empilháveis. `maybe_promote` no spawn, chance crescente por onda. |
@@ -193,6 +193,45 @@ Três armadilhas já corrigidas:
 
 `palette.glow` novo com raio/cor contínuos (pavio, aura) **foi medido**: 363 entradas,
 12,9 MB, **zero misses novos** em 9 000 frames com 14 criaturas — o quantizador absorve.
+
+**Modificador novo — DIVISOR** (Blobulon/Fistula): racha em **2 cópias menores** ao morrer.
+- **Nunca `enemies.append` dentro do laço que mata.** `die()` é chamado de dentro de
+  `_collisions`/`_update_projectiles`, que iteram `game.enemies` — estender a lista ali faz
+  a mesma investida acertar as crias no mesmo frame. As crias vão para `game.pending_enemies`
+  (`game.spawn_enemy`) e são drenadas **uma vez por step**, depois do `_collisions`.
+- **`split_gen` limita a profundidade.** DIVISOR nasce com `split_gen=1`; as crias herdam
+  `split_gen-1` e só voltam a rachar se `>0`. Sem isso, uma geração infinita afoga a horda.
+
+## Corpos procedurais novos (Fase B4) — `genome.plan`
+
+O corpo forkava só por `genome.radial` (aranha). **`genome.plan`** (declarado no `__slots__`
+— a armadilha de sempre) adiciona dois planos, cada um com `rebuild_body`/`draw`/telegrafo
+próprios, e **uma mecânica que ataca um hábito** (mesma régua da fase 2):
+
+- **CENTOPEIA** (`plan='segmented'`, `behavior='burrow'`): corpo = **cadeia de círculos
+  aneladas** (o anel de tinta em cada segmento É a segmentação) + patinhas em **onda
+  metacronal** (parceiro = par 2 segmentos atrás, para rippar em vez de marchar). Mecânica
+  **cavadora** (Para-Bite/Moles do Isaac): `surface → digging → under → erupt`.
+  - **Mergulhar não pode ser "sumir".** Há uma fase `digging` enraizada (`CENT_DIG_TIME`) que
+    abre um buraco crescente e joga terra — telegrafo de que vai submergir. Aí `burrowed=True`.
+  - **Intangível por baixo, num ponto só:** `hit_test` devolve `None` e `collision._samples`
+    pula quem tem `burrowed` (mesmo padrão do flyer). Todo dano passa por `hit_test`, então
+    isso cobre dash/projétil/aura de uma vez. *Durante o `digging` ele ainda é vulnerável* —
+    é a janela de contra-ataque.
+  - **Telegrafo justo** (`_draw_burrow`): um **anel de erupção** no `dive_to` (travado no
+    mergulho) que **enche** conforme aflora + o mound viajando com trilha de terra. Regra da
+    fase 2 de novo: desenhe o raio, não só um aviso.
+- **POLVO/KRAKEN** (`plan='tentacle'`, `behavior='grapple'`): manto pulsante + **braços que
+  são sub-cadeias** (`self.arms`, resolvidas em `integrate`), com onda viajante + swirl para
+  ondular como tentáculo e **trailing** para chicotear ao mover. Desenho **contínuo** (mesmo
+  contorno left/right-rim + cap da espinha — o usuário pediu carne lisa, não miçangas).
+  - Mecânica **agarradora** (Gripmaster do Gungeon): fecha devagar, enraíza e **estica todos
+    os braços para você** (o `arm_target` faz `_resolve_arms` convergir/esticar — **essa
+    convergência É o telegrafo**, `OCTO_WINDUP` > 27f); no estalo, te **puxa** (`OCTO_PULL_DIST`)
+    e **retarda** (`apply_slow`). Fugir antes do bote nega. *Braços são cosméticos: o hitbox é
+    o manto (`hit_test` amostra a espinha curta); o perigo é o agarrão, não o toque.*
+- **Prontos para chefe (Fase 5/6):** o KRAKEN em escala ~2.2x já renderiza; a silhueta serve
+  de chefe sem corpo novo.
 
 ## Bestiário / IA
 

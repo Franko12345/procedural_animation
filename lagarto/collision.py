@@ -35,7 +35,7 @@ def _samples(creatures):
         # getting stuck behind it. Dropping them here (rather than filtering in
         # the pair loop) also keeps them out of the player's `clog` drag, which
         # is right -- you cannot be slowed by wading through something airborne.
-        if getattr(c, 'flying', False):
+        if getattr(c, 'flying', False) or getattr(c, 'burrowed', False):
             continue
         js = c.spine.joints
         rs = c.spine.radii

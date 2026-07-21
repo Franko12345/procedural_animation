@@ -70,6 +70,22 @@ SPECIES = {
                                   sat=0.9, speed=0.8, behavior='venom', hp=6,
                                   spore_sacs=True, tail='sting', diet=('prey',))),
 
+    # ---- phase B4: new procedural BODIES + their own mechanics ------------ #
+    # CENTOPEIA: a segmented burrower (Isaac's Para-Bite/Moles). Dives, then
+    # ambushes from a telegraphed spot -- punishes camping and straight lines.
+    'centipede': dict(role='enemy', xp=7, score=60, grants='legs',
+                      genome=Genome(name='centipede', plan='segmented', size=1.0,
+                                    length=1.5, leg_count=2, hue=88, sat=0.85,
+                                    val=0.92, speed=1.15, behavior='burrow', hp=6,
+                                    diet=('prey',))),
+    # POLVO: a tentacle grappler (Gungeon's Gripmaster). Slow bruiser that reels
+    # you in and slows you -- punishes lingering at its mid-range doorstep.
+    'octopus': dict(role='enemy', xp=9, score=75, grants=None,
+                    genome=Genome(name='octopus', plan='tentacle', size=1.15,
+                                  leg_count=6, hue=315, sat=0.72, val=0.9,
+                                  speed=0.62, behavior='grapple', hp=10,
+                                  diet=('prey',))),
+
     # ---- extra prey ------------------------------------------------------- #
     'frog': dict(role='prey', xp=3, score=18, grants=None,
                  genome=Genome(name='frog', size=0.7, leg_count=4, length=0.6, girth=1.3,
@@ -118,6 +134,12 @@ LORE = {
     'venomer': ('ENVENENADOR', 'Cospe veneno onde voce esta e deixa uma poca que '
                                'corroi. Nao mira para acertar, mira para tomar o '
                                'terreno.'),
+    'centipede': ('CENTOPEIA', 'Corpo em aneis com dezenas de patas. Caça na '
+                               'superficie, entao mergulha e reaparece embaixo de '
+                               'quem fica parado. O anel no chao mostra onde vai aflorar.'),
+    'octopus': ('POLVO', 'Bicho lento de bracos longos. Estica os tentaculos e, no '
+                         'estalo, te fisga para perto e retarda. Fugir antes do bote '
+                         'e a saida — de perto, ele te segura.'),
 }
 
 

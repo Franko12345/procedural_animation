@@ -28,10 +28,14 @@ THEMES = {
     'cuspidores': dict(banner='CHUVA DE CUSPIDORES',
                        pool=['spitter', 'spitter', 'gunner', 'runner'],
                        budget=0.85, cap=5),
-    'tanques':    dict(banner='MARCHA DOS TANQUES', pool=['tank', 'horned', 'tank'],
+    'tanques':    dict(banner='MARCHA DOS TANQUES',
+                       pool=['tank', 'horned', 'octopus', 'tank'],
                        budget=0.6, cap=4),
-    'aranhas':    dict(banner='NOITE DAS ARANHAS', pool=['spider', 'spider', 'scorpion'],
+    'aranhas':    dict(banner='NOITE DAS ARANHAS',
+                       pool=['spider', 'spider', 'scorpion', 'centipede'],
                        budget=0.85, cap=5),
+    'toca':       dict(banner='A TOCA', pool=['centipede', 'centipede', 'octopus', 'runner'],
+                       budget=0.9, cap=5),      # burrowers + a grappler: keep moving
     # phase-2 themes: each one attacks a different player habit
     'revoada':    dict(banner='REVOADA', pool=['wasp', 'wasp', 'wasp', 'runner'],
                        budget=1.2, cap=8),      # flyers ignore the horde -> you must

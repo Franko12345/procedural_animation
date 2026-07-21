@@ -13,6 +13,7 @@ from . import palette
 
 class Genome:
     __slots__ = ('size', 'length', 'girth', 'leg_count', 'leg_len', 'radial',
+                 'plan',
                  'eye_count', 'spikes', 'horns', 'plates', 'tail', 'fins',
                  'hue', 'sat', 'val', 'speed', 'hp', 'behavior', 'diet', 'name',
                  # charm-driven visible parts
@@ -25,6 +26,9 @@ class Genome:
         self.leg_count = kw.get('leg_count', 4)
         self.leg_len = kw.get('leg_len', 1.0)
         self.radial = kw.get('radial', False)   # spider-style radial legs
+        # body plan: 'normal' (chain lizard) | 'segmented' (centipede blob-chain)
+        # | 'tentacle' (octopus: mantle + reaching arms). 'radial' stays its own flag.
+        self.plan = kw.get('plan', 'normal')
         self.eye_count = kw.get('eye_count', 2)
         self.spikes = kw.get('spikes', 0)       # dorsal spike level (0..)
         self.horns = kw.get('horns', 0)         # head horn count
