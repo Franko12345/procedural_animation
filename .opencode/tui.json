@@ -1,0 +1,6 @@
+{
+  "plugin": [
+    "opencode-cache-timer",
+    "opencode-cache-hit"
+  ]
+}
