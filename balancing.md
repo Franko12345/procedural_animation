@@ -1,24 +1,9 @@
-Planejamento:
-crie um CURRENT_PLAN.md e sempre atualize com o plano atual e o que falta ser feito para manter um plano mais tangivel e que eu possa altera-lo facilmente
+Assista esse video com profundidade e anote as tecnicas de animacao procedural, absorva o maximo de conhecimento possivel, pois essas tecnicas sao excelentes: https://www.youtube.com/watch?v=sVntwsrjNe4  https://medium.com/@merxon22/recreating-rainworlds-2d-procedural-animation-part-1-4d882f947e9f  https://www.youtube.com/watch?v=PcpkBzcRdSU https://youtu.be/wgpgNLEEpeY?si=8YfssF0-jhYjGSkA
 
-adicione ao plano os seguintes requisitos:
+mude os shaders para adicionar um outline mais consistente, por enquanto as pernas nao tem outline, e aumente um pouco a pixealizacao
 
-Bugfixes necessarios gerais:
-	- som ao mudar de selcao nos menus so funcionando pelo controle
-	- Falta suporte para o controle na selecao de personagem e menu de pausa
-	- farpas na cauda nao atirando ferroes, ou nao parecendo, se estivere atirando, faca balas que atravessam os inimigos
-	- ao final da run nao é possivel voltar ao menu, nem com controle nem com teclado
+Faça os inimigos ficarem mais fortes mais rapido durante a run, pois chega um ponto onde o plauyer fica muito forte e nao tem mais risco de morrer
 
-Coisas a fazer para o balanceamento do jogo:
-	- Dano da cauda subindo muito rapido
-	- Mutacao de cura esta curando muito rápido
-	- matar um inimigo da uma pequena quantidade de energia
-	- Faca que o preco das coisas da loja nao resete entre rounds
+remova a cauda clava da evolucao, deixe so como charm
 
-Explore mais com animação procedural, nao precisa se prender necessariamente a um corpo assim, experimente com tentaculos, ou algo parecido com a aranha para criar criaturas diferentes
-lembre das referencias que eu te passei como rujik the comatose, codeer, sebastian lague, entre outros
-
-use a skill /music-generator, para gerar as soundtracks menos genericas e adapte elas em tempo real, tocando mais notas, ou com velocidades diferentes, dependendo da vida, da quantidade de inimigos, do combo, do boss e esse tipo de variavel para gerar a atmosfera legal para o jogador
-
-deixe a barra de vida, experiencia e energia mais bonitas, estilizadas, torne-as algo meio biologico, talvez use uma animacao procesural para adicionar flagelos, ou caudas ou algo assim
-
+Problema de lentidao sem colidir novamente, logo apos de eu crescer um pouco, talvez tenha algo estranho acontecendo com a hitbox, nao ocorreu problema de performance essa vez ![alt text](image.png) ![alt text](image-1.png)
