@@ -52,15 +52,19 @@ def radial_burst(boss, game, target):
 
 
 def fan_shot(boss, game, target):
-    """A cone of shots toward the player -- dodge sideways, not backward."""
+    """A cone of shots toward the player -- dodge sideways, not backward.
+    Dials come from the pattern dict (Primordial's Massive Fan reuses this
+    with a wider/denser dict entry instead of new code)."""
+    pat = PATTERNS[boss.boss_ai.pattern_id]
     mouth = boss.spine.joints[0]
-    n = C.BOSS_FAN_COUNT
+    n = pat.get('count', C.BOSS_FAN_COUNT)
+    spread = pat.get('spread', C.BOSS_FAN_SPREAD)
     base = safe_norm(target.pos - mouth)
     for i in range(n):
         t = (i / max(1, n - 1)) - 0.5              # -0.5 .. 0.5
-        aim = mouth + base.rotate(t * C.BOSS_FAN_SPREAD) * 100
-        pr = game_spit(mouth, aim, boss.color, dmg=C.BOSS_FAN_DMG,
-                       effect=None, speed=C.BOSS_FAN_SPEED, radius=8)
+        aim = mouth + base.rotate(t * spread) * 100
+        pr = game_spit(mouth, aim, boss.color, dmg=pat.get('dmg', C.BOSS_FAN_DMG),
+                       effect=None, speed=pat.get('shot_speed', C.BOSS_FAN_SPEED), radius=8)
         game.spawn_projectile(pr)
     game.fx.spark_burst(mouth, boss.color, 10, 240)
     audio.play('w_spit', 0.45)
@@ -180,27 +184,49 @@ def pincha_bite(boss, game, target):
 
 
 def _select_arms_rain(boss, game, target):
-    """Picks the 2-3 slam points at WINDUP START (not fire time), so the
+    """Picks the slam points at WINDUP START (not fire time), so the
     telegraph can show them as growing circles for the whole windup -- called
-    once by the FSM via the pattern's ``select`` hook (see ``tick()``)."""
-    n = C.BOSS_ARMS_RAIN_COUNT
+    once by the FSM via the pattern's ``select`` hook (see ``tick()``).
+    Dials from the pattern dict: Primordial's Sky Slam reuses this with
+    ``count=1, spread=0`` (a single point pinned on the target = a giant
+    shadow, not a cluster) instead of new selection code."""
+    pat = PATTERNS[boss.boss_ai.pattern_id]
+    n = pat.get('count', C.BOSS_ARMS_RAIN_COUNT)
+    spread = pat.get('spread', C.BOSS_ARMS_RAIN_SPREAD)
     boss._rain_points = [Vector2(target.pos) + vfrom_angle(random.uniform(0, 360),
-                         random.uniform(0, C.BOSS_ARMS_RAIN_SPREAD)) for _ in range(n)]
+                         random.uniform(0, spread)) for _ in range(n)]
 
 
 def arms_rain(boss, game, target):
     """Fires at windup end -- damages wherever ``_select_arms_rain`` marked."""
+    pat = PATTERNS[boss.boss_ai.pattern_id]
+    radius = pat.get('radius', C.BOSS_ARMS_RAIN_RADIUS)
+    dmg = pat.get('dmg', C.BOSS_ARMS_RAIN_DMG)
     for pt in getattr(boss, '_rain_points', []):
         for p in game.players:
             if p.dead or p.down:
                 continue
-            if p.pos.distance_to(pt) < C.BOSS_ARMS_RAIN_RADIUS + p.max_r * 0.4:
-                p.hurt(game, safe_norm(p.pos - pt), C.BOSS_ARMS_RAIN_DMG)
+            if p.pos.distance_to(pt) < radius + p.max_r * 0.4:
+                p.hurt(game, safe_norm(p.pos - pt), dmg)
         game.fx.ring(pt, boss.color)
         game.fx.burst(pt, palette.lighten(boss.color, 0.3), 14, 260)
     boss._rain_points = []
     game.shake(6)
     audio.play('hit', 0.4)
+
+
+def sky_slam(boss, game, target):
+    """Primordial: the same single-point slam as ``arms_rain`` (pattern dict
+    sets count=1) plus a lingering magma puddle where it lands -- 'Sky Slam'
+    and 'Magma Spit' folded into one attack instead of two separate ones."""
+    from . import weapons
+    pts = list(getattr(boss, '_rain_points', []))
+    arms_rain(boss, game, target)
+    for pt in pts:
+        game.spawn_puddle(weapons.Puddle(pt, C.BOSS_SKY_SLAM_PUDDLE_R,
+                                         C.BOSS_SKY_SLAM_PUDDLE_DMG,
+                                         C.BOSS_SKY_SLAM_PUDDLE_LIFE, 18,
+                                         hostile=True, tick=0.5))
 
 
 PATTERNS = {
@@ -215,6 +241,12 @@ PATTERNS = {
     'swipe': dict(fn=pincha_bite, windup=0.5, telegraph='line', reach=2.4, dmg=13),
     'arms_rain': dict(fn=arms_rain, select=_select_arms_rain,
                       windup=C.BOSS_ARMS_RAIN_WINDUP, telegraph='rain'),
+    'sky_slam': dict(fn=sky_slam, select=_select_arms_rain,
+                     windup=C.BOSS_SKY_SLAM_WINDUP, telegraph='rain',
+                     count=1, spread=0, radius=C.BOSS_SKY_SLAM_RADIUS,
+                     dmg=C.BOSS_SKY_SLAM_DMG),
+    'massive_fan': dict(fn=fan_shot, windup=C.BOSS_MASSIVE_FAN_WINDUP, telegraph='fan',
+                        count=12, spread=70, shot_speed=220, dmg=14),
     'deathroll': dict(fn=spiral_pattern, windup=0.5, telegraph='spiral',
                       shots=C.BOSS_DEATHROLL_SHOTS, turn=C.BOSS_DEATHROLL_TURN,
                       gap=C.BOSS_DEATHROLL_GAP, shot_speed=260, shot_dmg=8),
@@ -357,6 +389,32 @@ def kraken_personality():
         'grapple': {'calm': 1.6, 'agitated': 1.3},
         'arms_rain': {'enraged': 1.8, 'cornered': 1.5},
         'spiral': {'enraged': 1.4},
+    })
+
+
+# --------------------------------------------------------------------------- #
+#  PRIMORDIAL (onda 20 -- chefe final do modo normal): tudo ao mesmo tempo,   #
+#  cada fase soma em vez de trocar (a fase final do jogo ganha a licenca de   #
+#  quebrar a "regra dos 2" -- ANKH tem a mesma exceção documentada no doc 03).#
+# --------------------------------------------------------------------------- #
+
+def primordial_phases():
+    return [
+        dict(hp_frac=1.0, patterns=['massive_fan', 'shockwave'], cd_mul=1.0),
+        dict(hp_frac=0.66, patterns=['massive_fan', 'shockwave', 'sky_slam', 'summon'],
+             cd_mul=0.85),
+        dict(hp_frac=0.33, patterns=['massive_fan', 'shockwave', 'sky_slam', 'summon',
+                                     'deathroll'], cd_mul=0.5),
+    ]
+
+
+def primordial_personality():
+    """Deus primitivo: indiferente no início (pesos quase neutros), só
+    "nota" você na fase 3 -- aí tudo pesa mais, inclusive o próprio glow
+    (BossPersonality.mood_colors já vira vermelho em enraged de graça)."""
+    return BossPersonality(pattern_weights={
+        'deathroll': {'enraged': 2.0},
+        'sky_slam': {'enraged': 1.5, 'cornered': 1.5},
     })
 
 
@@ -594,9 +652,10 @@ class BossAI:
             pygame.draw.circle(surf, col, sp, r, max(1, int((1 + 2 * prog) * cam.zoom)))
             palette.glow(surf, sp, r, col, (0.12 + 0.2 * prog) * (0.5 + 0.5 * blink))
         elif kind == 'fan':
+            spread = PATTERNS[self.pattern_id].get('spread', C.BOSS_FAN_SPREAD)
             base = safe_norm(self._windup_target - mouth) if hasattr(self, '_windup_target') else Vector2(1, 0)
             for s in (-0.5, 0.5):
-                edge = base.rotate(s * C.BOSS_FAN_SPREAD)
+                edge = base.rotate(s * spread)
                 far = mouth + edge * 340
                 pygame.draw.line(surf, col, sp, cam.w2s(far), max(1, int((1 + 2 * prog) * cam.zoom)))
         elif kind == 'line':

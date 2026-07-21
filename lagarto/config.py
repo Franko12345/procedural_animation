@@ -357,3 +357,12 @@ BOSS_ARMS_RAIN_COUNT = 3
 BOSS_ARMS_RAIN_SPREAD = 220  # raio em volta do alvo onde os pontos caem
 BOSS_ARMS_RAIN_RADIUS = 90
 BOSS_ARMS_RAIN_DMG = 12
+
+# Primordial (onda 20, chefe final do modo normal)
+BOSS_MASSIVE_FAN_WINDUP = 0.9        # telegrafos grandes e lentos (doc: 0.8s+)
+BOSS_SKY_SLAM_WINDUP = 1.0           # sombra enorme -- tempo de sobra pra sair
+BOSS_SKY_SLAM_RADIUS = 130
+BOSS_SKY_SLAM_DMG = 22
+BOSS_SKY_SLAM_PUDDLE_R = 100         # magma que fica depois do impacto
+BOSS_SKY_SLAM_PUDDLE_DMG = 6
+BOSS_SKY_SLAM_PUDDLE_LIFE = 5.0

@@ -70,6 +70,13 @@ NAMED_BOSSES = {
             phases=lambda: bossai.kraken_phases(),
             personality=lambda: bossai.kraken_personality(),
             scar=None, overrides=dict(hue=275, sat=0.75, val=0.5)),
+    # chave especial: is_final usa esta entrada em vez de tier (ver _spawn_boss)
+    'final': dict(species='horned', name='PRIMORDIAL',
+                  phases=lambda: bossai.primordial_phases(),
+                  personality=lambda: bossai.primordial_personality(),
+                  scar=None,
+                  overrides=dict(hue=18, sat=0.85, val=0.65, spikes=3, horns=3,
+                                plates=2, tail='club', wings=True, extra_eyes=2)),
 }
 
 
@@ -243,7 +250,7 @@ class RoundManager:
         """
         g = self.game
         tier = self.wave // BOSS_EVERY
-        named = None if self.is_final else NAMED_BOSSES.get(tier)
+        named = NAMED_BOSSES.get('final') if self.is_final else NAMED_BOSSES.get(tier)
         if named:
             key = named['species']
         else:

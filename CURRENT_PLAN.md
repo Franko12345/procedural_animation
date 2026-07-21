@@ -196,7 +196,7 @@ Playtest: cauda esticando MUITO ao mover + streaks gigantes no menu. Duas causas
 - [ ] Arena design (pilares/corredor/poças) por chefe — ainda não precisou
       (Rei Lagarto usa clareira aberta); entra quando um chefe pedir (Muralha).
 
-### Fase 03: 10 chefes + PRIMORDIAL (3/11 prontos)
+### Fase 03: 10 chefes + PRIMORDIAL (4/11 prontos — arco do modo NORMAL completo)
 
 **Remapeamento de onda (decisão, não desvio silencioso):** o doc 03 dá cada chefe
 uma onda narrativa (5,7,8,9...), mas o motor só sorteia chefe a cada `BOSS_EVERY`
@@ -242,12 +242,41 @@ cadência do jogo.
       braços convergindo (foto), pontos de arms_rain no chão (foto), fase 2,
       morte — mais os 3 testes anteriores continuam verdes (spiral_pattern e
       pincha_bite viraram compartilhados nesta rodada).
+- [x] **PRIMORDIAL** (is_final/onda20, corpo=`horned` ~3.1x — 2.3x padrão de
+      chefe × 1.35x já existente pro chefe final; "4x" do doc é só flavor
+      text, reusei a convenção já existente em vez de inventar outro número):
+      `plates+spikes+horns+tail=club+wings+extra_eyes` — todas as partes do
+      jogo ao mesmo tempo, como o doc pede, via genoma só. Fase 1
+      `massive_fan+shockwave` (fan_shot generalizado pra ler count/spread/
+      dano do dict — `massive_fan` reusa a mesma função com 12 tiros/70°/
+      dano maior). Fase 2 (66%) soma `sky_slam`+`summon` (2 padrões — chefe
+      final ganha a mesma licença de quebrar a "regra dos 2" que o doc dá pra
+      ANKH, registrado aqui, não por acidente). Fase 3 (33%) soma `deathroll`
+      + cd 0.5x ("Apocalypse"/"Rage"). **`sky_slam`** é novo: reusa
+      `_select_arms_rain`/`arms_rain` com `count=1,spread=0` (1 ponto colado
+      no alvo = sombra gigante, não cluster) e ADICIONALMENTE deixa uma
+      `weapons.Puddle` de magma onde caiu — "Sky Slam" e "Magma Spit" do doc
+      viraram 1 ataque só em vez de dois. Personalidade quase neutra até a
+      fase 3 (raiva pesa mais aí), matching "só nota você quando é tarde".
+      Registrado em `rounds.NAMED_BOSSES['final']` (chave especial, não
+      tier) — `_spawn_boss` já tinha um branch `is_final` separado do tier;
+      virou só mais uma entrada `named`, sem duplicar a lógica de
+      overrides/scar/on_phase que as outras 3 já usam.
+      Testado: `wings`/`plates`/`extra_eyes` no genoma, as 3 fases + patterns
+      de cada uma, sky_slam com foto do banner "PRIMORDIAL"+barra grande,
+      morte. **Nota de confiabilidade**: os testes dirigidos deste chefe (e
+      dos outros 3) rodam ~3000-6000 frames sem seed fixa de `random` —
+      ocasionalmente uma sequência de sorteio falha em escolher um padrão
+      específico dentro da janela do teste (estatística, não bug: verificado
+      via trace detalhado que burrow/grapple/fases funcionam certo quando
+      observados com granularidade fina). Scripts de teste ficam no
+      scratchpad, não são parte do repo.
 - [ ] Tiers sem chefe autoral em `NAMED_BOSSES` caem no chefe genérico antigo
       (aleatório do tema) — não regride, só ainda não tem conteúdo autoral.
-- [ ] Próximos: is_final/onda20 PRIMORDIAL → tier5+ (infinito): Terror Alado,
-      Mãe-Escaravelho, Aranha-Rei, Olho-Sísmico, Serpente Cristal, Muralha
-      (precisa de sistema de arena/confinamento que ainda não existe — mundo
-      é aberto contínuo, sem salas discretas), ANKH
+- [ ] Próximos (só modo infinito, onda 25+): Terror Alado, Mãe-Escaravelho,
+      Aranha-Rei, Olho-Sísmico, Serpente Cristal, Muralha (precisa de sistema
+      de arena/confinamento que ainda não existe — mundo é aberto contínuo,
+      sem salas discretas), ANKH
 - [ ] Corpos novos que faltam: `winged` (Terror Alado), `orbital` (Olho-
       Sísmico), `wall` (Muralha) — crystal reusa `segmented` com estética nova
 - [ ] Gerar pixel art só se necessário no caminho (ícones novos, não sprites do bicho)
