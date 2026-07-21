@@ -496,8 +496,26 @@ class Game:
         random.shuffle(bonuses)
         routes = [dict(theme=k, bonus=bonuses[i % 3], label=THEMES[k]['banner'])
                   for i, k in enumerate(picks)]
+        # A PHYSICAL clearing (Hades): the shop is a tent you can walk up to and the
+        # routes are three doors you walk through. Everything is placed around the
+        # spot where the players cleared the wave, so no teleport is needed.
+        alive = [p for p in self.players if not p.dead]
+        center = Vector2()
+        for p in (alive or self.players):
+            center += p.pos
+        center /= max(1, len(alive or self.players))
+        center.x = clamp(center.x, 420, C.WORLD_W - 420)
+        center.y = clamp(center.y, 420, C.WORLD_H - 420)
+        tent = center + Vector2(*C.CAMP_TENT_OFF)
+        n = len(routes)
+        doors = []
+        for i, r in enumerate(routes):
+            dx = (i - (n - 1) / 2) * C.CAMP_DOOR_SPAN
+            doors.append(dict(pos=center + Vector2(dx, -C.CAMP_DOOR_UP), route=r))
         self.camp = dict(routes=routes, shop=self._roll_shop(), sel=0,
-                         focus='route', shop_sel=0, charm_col=0, charm_row=0)
+                         focus='shop', shop_sel=0, charm_col=0, charm_row=0,
+                         mode='field', center=center, tent=tent, doors=doors,
+                         reopen_cd=C.CAMP_REOPEN_CD)
         self._route_rects = []
         self._shop_rects = []
         self._charm_rects = []
@@ -505,6 +523,11 @@ class Game:
         self.ui_t = 0.0
         self.pick = None
         self._panels.clear()
+        # a clean clearing: drop leftover prey/hazards so nothing clutters a
+        # doorway or lingers on the ground while you shop
+        self.prey = []
+        self.projectiles = []
+        self.puddles = []
         for p in self.players:
             if not p.dead:
                 p.health = min(p.max_health, p.health + p.max_health * 0.12)
@@ -552,6 +575,57 @@ class Game:
             dict(name='Charm', desc='adaptacao p/ um slot', cost=150, hue=280, icon='nectar', fn=charm),
             dict(name='Ovo de Amigo', desc='aliado temporario', cost=40, hue=270, icon='legs', fn=egg),
         ]
+
+    def _step_camp(self, dt):
+        """The clearing. Shop mode is the old frozen menu; field mode lets the
+        players actually WALK -- touch the tent to shop, cross a door to advance."""
+        self.ui_t += dt
+        self.ui_fx = max(0.0, self.ui_fx - dt)
+        if self.pick:                         # absorbing a purchase: everything frozen
+            self._step_pick(dt)
+            self.fx.update(dt)
+            return
+        if self.camp.get('mode') == 'shop':   # menu open: frozen, like the old camp
+            self.fx.update(dt)
+            return
+        # ---- field mode: live movement + POI interaction ---- #
+        self.time += dt
+        for p in self.players:
+            if not p.dead:
+                p.update(dt, self)
+        for f in self.friends:                # pets keep following you between rounds
+            if not f.dead:
+                f.update(dt, self)
+        self.world.update(dt)
+        self.fx.update(dt)
+        self.combo_flash = max(0.0, self.combo_flash - dt * 2)
+        self.camp['reopen_cd'] = max(0.0, self.camp.get('reopen_cd', 0.0) - dt)
+        # touch the tent -> open the shop
+        if self.camp['reopen_cd'] <= 0:
+            for p in self.players:
+                if not p.dead and p.pos.distance_to(self.camp['tent']) < C.CAMP_TENT_R:
+                    self.camp['mode'] = 'shop'
+                    self.camp['focus'] = 'shop'
+                    self.ui_t = 0.0           # replay the drop-in
+                    self._panels.clear()
+                    audio.play('ui', 0.6)
+                    return
+        # cross a door -> take that route (Hades: doors commit, no menu)
+        for i, dr in enumerate(self.camp['doors']):
+            for p in self.players:
+                if not p.dead and p.pos.distance_to(dr['pos']) < C.CAMP_DOOR_R:
+                    self.fx.spark_burst(dr['pos'], C.COL_ENEMY, 18, 320)
+                    self.fx.ring(dr['pos'], C.COL_ENEMY)
+                    self._apply_route(i)
+                    return
+
+    def camp_close_shop(self):
+        """Leave the tent back to the clearing (with a re-open cooldown so a step
+        standing on the tent does not instantly reopen it)."""
+        if self.camp and self.camp.get('mode') == 'shop' and self.pick is None:
+            self.camp['mode'] = 'field'
+            self.camp['reopen_cd'] = C.CAMP_REOPEN_CD
+            audio.play('ui', 0.5)
 
     def camp_equip(self, cid):
         if self.ui_busy():
@@ -810,6 +884,9 @@ class Game:
 
     # ---- main step ------------------------------------------------------ #
     def step(self, dt):
+        if self.state == 'camp':
+            self._step_camp(dt)
+            return
         if self.state != 'play':
             # the UI screens have their own clock so the entry animation runs on
             # the same fixed timestep as everything else (FPS-independent)
@@ -968,6 +1045,8 @@ class Game:
             if self.cam.visible(pud.pos, 60):
                 pud.draw(surf, self.cam)
         self.rounds.draw_world(surf, self.cam)
+        if self.state == 'camp' and self.camp:
+            self._draw_camp_pois(surf)          # tent + doors, in world space
         for group in (self.pickups, self.prey, self.friends, self.enemies, self.players):
             for e in group:
                 if getattr(e, 'dead', False):
@@ -1017,7 +1096,10 @@ class Game:
         elif self.state == 'levelup':
             self._draw_levelup(surf)
         elif self.state == 'camp':
-            self._draw_camp(surf)
+            if self.camp and self.camp.get('mode') == 'shop':
+                self._draw_camp(surf)           # the tent's shop/charm menu
+            else:
+                self._draw_camp_field_ui(surf)  # walking the clearing
         elif self.state == 'victory':
             self._draw_victory(surf)
         elif self.state == 'over':
@@ -1579,37 +1661,12 @@ class Game:
                 block.set_alpha(int(255 * calpha))
             layer.blit(block, (0, int(328 + coff)))
 
-        # ---- routes (choose the next round) ---- #
-        roff, ralpha = ui.drop_in(self.ui_t, 4, C.UI_STAGGER, C.UI_DROP, rise=40.0)
-        self._label(layer, "ESCOLHA A ROTA  (setas+ENTER ou clique) -> avanca",
-                    cx - 300, 470, roff, ralpha)
+        # Routes are now physical DOORS in the clearing -- no route panel here.
         self._route_rects = []
-        routes = self.camp['routes']
-        rw, rgap = 250, 26
-        rx0 = cx - (len(routes) * rw + (len(routes) - 1) * rgap) // 2
-        ry = 496
-        for i, r in enumerate(routes):
-            rect = pygame.Rect(rx0 + i * (rw + rgap), ry, rw, 140)
-            self._route_rects.append(rect)
-            sel = (i == self.camp['sel'])
-            focused = sel and self.camp.get('focus', 'route') == 'route'
-            off, alpha = ui.drop_in(self.ui_t, 4 + i * 0.4, C.UI_STAGGER, C.UI_DROP,
-                                    rise=40.0)
-            scale = 1.0
-            if taken is not None:
-                g = clamp(taken['t'] / max(taken['dur'], 1e-4), 0, 1)
-                if taken['index'] == i:       # the door you walk through swells + flares
-                    scale = 1.0 + 0.18 * ease_out(g)
-                    palette.glow(layer, (rect.centerx, int(rect.centery + off)),
-                                 int(150 * scale), C.COL_ENEMY, 0.28 + 0.5 * g)
-                else:
-                    alpha *= 1.0 - g
-            elif focused and alpha > 0.5:
-                palette.glow(layer, (rect.centerx, int(rect.centery + off)), 130,
-                             C.COL_ENEMY, 0.28 * alpha)
-            src = self._panel(('route', i, sel, focused),
-                              lambda r=r, s=sel, f=focused: self._route_surface(r, s, f))
-            self._blit_card(layer, src, (rect.centerx, rect.centery + off), scale, alpha)
+        eoff, ealpha = ui.drop_in(self.ui_t, 4, C.UI_STAGGER, C.UI_DROP, rise=40.0)
+        if ealpha > 0.01:
+            self._label(layer, "ESC / B: voltar a clareira  ->  atravesse uma porta p/ avancar",
+                        cx - 300, 512, eoff, ealpha)
 
         # ---- the item being absorbed, on top of everything ---- #
         if bought is not None:
@@ -1623,6 +1680,103 @@ class Game:
             self._blit_card(layer, src, pos, scale, alpha)
         self._ui_fx(layer)
         self._blit_ui(surf, layer)
+
+    _DOOR_HUES = (150, 45, 285)          # green (cura) / gold (polen) / purple (carta)
+    _BONUS_TAG = {'cura': '+ cura', 'polen': '+ polen', 'carta': '+ carta'}
+
+    def _near_player(self, pos, r):
+        return any(not p.dead and p.pos.distance_to(pos) < r for p in self.players)
+
+    def _draw_camp_pois(self, surf):
+        """The clearing's furniture, in world space: three route DOORS and the
+        beetle's TENT. Both light up and prompt when a player is in reach."""
+        cam, z, t = self.cam, self.cam.zoom, self.time
+        # ---- doors (routes) ---- #
+        for i, dr in enumerate(self.camp['doors']):
+            pos = dr['pos']
+            if not cam.visible(pos, 220):
+                continue
+            col = palette.vibrant(self._DOOR_HUES[i % 3], 0.7, 1.0)
+            sp = cam.w2s(pos)
+            hot = self._near_player(pos, C.CAMP_DOOR_R * 2.4)
+            pulse = 0.5 + 0.5 * math.sin(t * 3 + i)
+            w, h = int(66 * z), int(108 * z)
+            rad = int(w * 0.5)
+            palette.glow(surf, sp, int(w * (1.5 if hot else 1.05)), col,
+                         (0.34 if hot else 0.2) + 0.12 * pulse)
+            frame = pygame.Rect(sp[0] - w // 2, sp[1] - h, w, h)
+            inner = frame.inflate(-int(14 * z), -int(12 * z))
+            pygame.draw.rect(surf, (16, 18, 28), inner, border_top_left_radius=rad,
+                             border_top_right_radius=rad)
+            ew = max(2, int((5 if hot else 4) * z))
+            pygame.draw.rect(surf, col, frame, ew, border_top_left_radius=rad,
+                             border_top_right_radius=rad)
+            pygame.draw.rect(surf, palette.lighten(col, 0.4), frame, max(1, int(2 * z)),
+                             border_top_left_radius=rad, border_top_right_radius=rad)
+            ui.text(surf, self.font, dr['route']['label'], (sp[0], frame.top - int(30 * z)),
+                    C.COL_WHITE, align='center')
+            ui.text(surf, self.font, self._BONUS_TAG[dr['route']['bonus']],
+                    (sp[0], frame.top - int(13 * z)), palette.lighten(col, 0.35), align='center')
+            if hot:
+                ui.text(surf, self.font, 'ATRAVESSE', (sp[0], sp[1] + int(8 * z)),
+                        C.COL_WHITE, align='center')
+        # ---- tent (shop) ---- #
+        pos = self.camp['tent']
+        if cam.visible(pos, 260):
+            sp = cam.w2s(pos)
+            hot = self._near_player(pos, C.CAMP_TENT_R)
+            pulse = 0.5 + 0.5 * math.sin(t * 2.4)
+            gold = C.COL_POLLEN
+            w = int(120 * z)
+            palette.glow(surf, sp, int(w * (0.95 if hot else 0.72)), gold,
+                         (0.3 if hot else 0.17) + 0.1 * pulse)
+            counter = pygame.Rect(sp[0] - w // 2, sp[1] - int(4 * z), w, int(34 * z))
+            pygame.draw.rect(surf, (120, 82, 54), counter, border_radius=int(6 * z))
+            pygame.draw.rect(surf, (60, 40, 26), counter, max(1, int(2 * z)),
+                             border_radius=int(6 * z))
+            roof_h = int(48 * z)
+            base_y = sp[1] - int(4 * z)
+            left = (sp[0] - w // 2 - int(8 * z), base_y)
+            right = (sp[0] + w // 2 + int(8 * z), base_y)
+            peak = (sp[0], base_y - roof_h)
+            pygame.draw.polygon(surf, (214, 74, 78), [left, right, peak])
+            pygame.draw.polygon(surf, C.COL_INK, [left, right, peak], max(1, int(2 * z)))
+            # scalloped valance: little triangles hanging under the awning base
+            n = 5
+            for k in range(n):
+                x0 = left[0] + (right[0] - left[0]) * k / n
+                x1 = left[0] + (right[0] - left[0]) * (k + 1) / n
+                tip = ((x0 + x1) / 2, base_y + int(9 * z))
+                shade = (214, 74, 78) if k % 2 == 0 else (245, 232, 210)
+                pygame.draw.polygon(surf, shade, [(x0, base_y), (x1, base_y), tip])
+            pygame.draw.circle(surf, gold, (sp[0], peak[1] - int(9 * z)), max(2, int(7 * z)))
+            pygame.draw.circle(surf, (200, 160, 40), (sp[0], peak[1] - int(9 * z)),
+                               max(2, int(7 * z)), max(1, int(2 * z)))
+            # the beetle merchant behind the counter
+            bc = (sp[0] - int(w * 0.26), base_y + int(6 * z))
+            pygame.draw.circle(surf, (74, 62, 88), bc, max(2, int(11 * z)))
+            for s in (-1, 1):                       # antennae
+                pygame.draw.line(surf, (74, 62, 88), (bc[0], bc[1] - int(8 * z)),
+                                 (bc[0] + s * int(7 * z), bc[1] - int(16 * z)),
+                                 max(1, int(2 * z)))
+            ui.text(surf, self.font, 'LOJA DO BESOURO', (sp[0], counter.bottom + int(6 * z)),
+                    gold, align='center')
+            if hot:
+                ui.text(surf, self.font, 'ENCOSTE p/ abrir', (sp[0], counter.bottom + int(23 * z)),
+                        C.COL_WHITE, align='center')
+
+    def _draw_camp_field_ui(self, surf):
+        """Light HUD while walking the clearing -- at the BOTTOM, so it never
+        competes with the doors and their labels up top. Title, hint, pollen."""
+        cx, y = C.WIDTH // 2, C.HEIGHT - 92
+        ui.text(surf, self.bigfont, "ACAMPAMENTO", (cx, y), C.COL_WHITE, align='center')
+        ui.text(surf, self.font,
+                "encoste na barraca p/ a loja  -  atravesse uma porta p/ avancar",
+                (cx, y + 38), (210, 214, 228), align='center')
+        pygame.draw.circle(surf, C.COL_POLLEN, (cx - 54, y + 68), 11)
+        pygame.draw.circle(surf, (200, 160, 40), (cx - 54, y + 68), 11, 2)
+        ui.text(surf, self.font, "POLEN", (cx - 38, y + 60), (214, 214, 230))
+        ui.text(surf, self.bigfont, str(self.pollen), (cx + 16, y + 52), C.COL_POLLEN)
 
     def _draw_victory(self, surf):
         """Run beaten: celebratory summary + the DNA banked (endless now unlocked)."""

@@ -447,27 +447,31 @@ de **`Nest`** (POIs destrutíveis, com boca que brilha antes de emitir) via **`S
 (telegraph que cresce no chão) — nunca um dump só, e nunca em cima do jogador. Destruir
 os ninhos (dash/cuspe) corta o fluxo. `game.rounds.draw_world`/`draw_banner`.
 
-**Acampamento** (estado `camp`, entre rounds): ao limpar (`rounds.state=='cleared'`) o
-`game._enter_camp()` abre uma tela com **loja do besouro** (gasta **pólen** — moeda da
-run ganha por kill × combo, `game.add_pollen` — em cura/vida/vigor/charm/ovo de amigo;
-custo sobe a cada compra; **charm custa 150** por ser permanente e forte) + **escolha de
-rota** (3 portas = tema da próxima onda + bônus cura/pólen/carta). Escolher a rota chama
-`rounds.request_next(theme)`. Desenho: `game._draw_camp`.
-
-**Navegação do camp — um modelo só para teclado e gamepad** (`app._camp_nav`). Antes eles
-discordavam: o pad tinha um flip binário loja↔rota e as setas do teclado **ignoravam o
-`focus`** (mexiam sempre na rota); e **charms só davam para equipar com o mouse** —
-`camp_equip` tinha um único call site. Hoje as áreas seguem a ordem da tela:
-**loja → charms → rota** (a de charms some quando você não tem nenhum).
-- **Charms em grade, uma coluna por slot** (`C.CHARM_SLOTS`): cada charm aparece **sob o
-  cabeçalho do seu próprio slot**, o que deixa óbvio o que ele substitui. Esquerda/direita
-  troca de coluna (pulando slots vazios), cima/baixo anda na coluna e **só sai da grade
-  nas pontas** (`game.camp_move_charm` devolve `False` aí).
-- `camp_equip(cid)` recebe **id**, não índice — diferente de `camp_buy`/`camp_pick_route`.
-  `game.camp_equip_cursor()` resolve coluna+linha → `cid`.
-- **Espaço vertical é apertado**: sobram 142 px entre os charms (y=328) e o label das rotas
-  (y=470), e o slot `back` tem 4 charms. Ao mexer no layout, teste com **todos os charms**,
-  não com o caso vazio.
+**Acampamento FÍSICO** (estado `camp`, entre rounds — modelo Hades): ao limpar
+(`rounds.state=='cleared'`) o `game._enter_camp()` monta uma **clareira andável** em volta
+de onde a onda foi limpa, com a **barraca do besouro** (loja) e **3 portas** (as rotas). Não
+é mais uma tela. `game.pollen` = moeda da run (kill × combo). Loja: cura/vida/vigor/charm/ovo;
+custo sobe a cada compra; **charm custa 150**. Cada porta = tema da próxima onda + bônus
+cura/pólen/carta; atravessá-la chama `rounds.request_next(theme)` via `_apply_route`.
+- **Dois modos, `camp['mode']`.** `field` = andando; `shop` = menu da barraca aberto.
+  `game._step_camp` roda `player.update` só no `field` (movimento real); `shop` congela como
+  a tela antiga. `game.draw` sempre desenha o mundo+jogador, então em `field` só acrescento
+  `_draw_camp_pois` (barraca+portas no mundo) + `_draw_camp_field_ui` (HUD embaixo, para não
+  brigar com os rótulos das portas no topo); em `shop`, o `_draw_camp` de sempre (véu por cima).
+- **Nada de input novo no loop:** `app.py` já chama `ctrl.poll` e `cam.follow` **todo frame**
+  em qualquer estado — por isso o movimento no `field` sai de graça. O menu (teclado/mouse/pad)
+  **só age no modo `shop`** (`app._camp_shop_open`); em `field` WASD/stick andam. ESC/B fecham
+  a loja (voltam à clareira), não pausam.
+- **A loja é escolha, não pedágio:** dá para ignorar a barraca e ir direto na porta — é o que
+  dá peso à decisão. `reopen_cd` impede reabrir no mesmo passo que fechou; **fechar** só trava
+  com uma compra em absorção (`self.pick`), **não** durante o drop-in (senão não dava pra sair
+  por 0,36 s). Entrar limpa presas/projéteis/poças (`_enter_camp`) — clareira limpa, sem presa
+  congelada travada numa porta (não atualizo presas no camp).
+- **Navegação da loja — um modelo só p/ teclado e gamepad** (`app._camp_nav`), agora só
+  **loja → charms** (a rota virou porta física). Charms em grade, uma coluna por slot
+  (`C.CHARM_SLOTS`): cada charm **sob o cabeçalho do seu slot**; esq/dir troca coluna (pula
+  vazias), cima/baixo anda na coluna e **só sai nas pontas** (`camp_move_charm` devolve `False`).
+  `camp_equip(cid)` recebe **id**, não índice; `camp_equip_cursor()` resolve coluna+linha → `cid`.
 
 ## Telas de jogo: entrada animada + absorção da escolha
 

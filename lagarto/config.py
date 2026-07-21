@@ -185,6 +185,14 @@ CRIT_MULT = 2.0          # dano ao acertar a cabeca (ponto fraco)
 AGGRO_TIME = 5.0         # segundos que um aliado segura o aggro apos bater
 FRIEND_LIFE = 45.0       # aliados sao temporarios (segundos)
 
+# --- acampamento FISICO (clareira estilo Hades: barraca + 3 portas) --------- #
+CAMP_TENT_R = 66         # encostar a esta distancia da barraca abre a loja
+CAMP_DOOR_R = 52         # atravessar a esta distancia de uma porta avanca a onda
+CAMP_REOPEN_CD = 0.7     # respiro apos fechar a loja (nao reabre no mesmo passo)
+CAMP_TENT_OFF = (-260, 40)     # posicao da barraca relativa ao centro da clareira
+CAMP_DOOR_SPAN = 285     # espacamento entre as 3 portas
+CAMP_DOOR_UP = 215       # o quanto as portas ficam "a frente" (para cima) do centro
+
 # --- ritmo das telas de jogo (level-up / acampamento) ---------------------- #
 UI_VEIL = 0.20           # fade do fundo escuro antes de qualquer conteudo
 UI_STAGGER = 0.075       # atraso entre um item e o proximo no dropdown

@@ -53,8 +53,18 @@ Regra: paro sempre numa fronteira jogável; `--smoke` verde antes de cada commit
 - [x] Testado: `--smoke 500` verde; teste dirigido (todos os estados disparam, sem crash);
       screenshots dos 3 telegrafos (dig / underground / grab)
 
-## Fase 4c: acampamento físico (retomar)
-- [ ] Clareira com barraca (encostar abre compra) + 3 portas (atravessar avança)
+## Fase 4c: acampamento físico — FEITO (commit pendente)
+- [x] Clareira andável (estado `camp`, `camp['mode']` = `field`/`shop`): tenda + 3 portas
+      posicionadas em volta de onde a onda foi limpa. `_step_camp` move os jogadores em
+      `field`; `_draw_camp_pois` desenha tenda/portas no mundo.
+- [x] **Encostar na barraca** abre a loja (mesmo menu de antes, agora só loja+charms);
+      **atravessar uma porta** chama `_apply_route` e avança (portas = rotas, no mundo).
+- [x] Loja é **escolha, não pedágio** — dá pra ir direto na porta. `reopen_cd` evita reabrir
+      no mesmo passo; fechar a loja só trava com compra em absorção (`pick`), não no drop-in.
+- [x] Reusa `ctrl.poll`/`cam.follow` (já rodam todo frame) — movimento no `field` é só chamar
+      `player.update`. Teclado/gamepad/mouse do menu **só no modo shop**; ESC/B fecha a loja.
+- [x] Testado ponta a ponta (entra → anda → toca tenda → loja → fecha → cruza porta → play);
+      `--smoke 400` verde; screenshots da clareira e da loja.
 
 ## Fase 5/6: chefes
 - [ ] Framework FSM + padrões de projétil como dados + telegrafia ≥27 frames

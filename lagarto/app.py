@@ -51,18 +51,16 @@ def _reattach(controllers, joysticks):
 
 
 def _camp_nav(game, left=False, right=False, up=False, down=False, confirm=False):
-    """One camp navigation model for BOTH keyboard and gamepad.
-
-    They used to disagree: the pad had a focus flip between shop/route while the
-    keyboard arrows always drove the route, and charms were reachable by mouse
-    only. Areas run top-to-bottom the way they are drawn.
+    """Navigation for the TENT'S menu (shop + charms) only -- routes are now
+    physical doors in the clearing, walked through, not picked here. Used by both
+    keyboard and gamepad while the shop is open.
     """
     camp = game.camp
     if not camp:
         return
-    areas = ['shop', 'charms', 'route'] if game.camp_has_charms() else ['shop', 'route']
+    areas = ['shop', 'charms'] if game.camp_has_charms() else ['shop']
     if camp.get('focus') not in areas:
-        camp['focus'] = 'route'
+        camp['focus'] = 'shop'
     if up or down:
         step = 1 if down else -1
         # inside the charm grid, up/down walks the column and only leaves at its ends
@@ -84,13 +82,10 @@ def _camp_nav(game, left=False, right=False, up=False, down=False, confirm=False
             game.camp_move_charm(1, 0)
         if confirm:
             game.camp_equip_cursor()
-    else:
-        if left:
-            camp['sel'] = max(0, camp['sel'] - 1)
-        if right:
-            camp['sel'] = min(len(camp['routes']) - 1, camp['sel'] + 1)
-        if confirm:
-            game.camp_pick_route(camp['sel'])
+
+
+def _camp_shop_open(game):
+    return game.state == 'camp' and game.camp and game.camp.get('mode') == 'shop'
 
 
 def _toggle_fs():
@@ -187,7 +182,9 @@ def main():
                 if ev.type == pygame.KEYDOWN:
                     if ev.key == pygame.K_ESCAPE:
                         # ESC used to drop the whole run with no confirmation
-                        if game.state == 'pause' and game.pause_back():
+                        if _camp_shop_open(game):
+                            game.camp_close_shop()     # back to the clearing
+                        elif game.state == 'pause' and game.pause_back():
                             pass                       # backed out of a sub-screen
                         else:
                             game.toggle_pause()
@@ -223,7 +220,8 @@ def main():
                             game.card_idx = min(len(game.cards) - 1, game.card_idx + 1)
                         elif ev.key in (pygame.K_RETURN, pygame.K_SPACE):
                             game.choose_card(game.card_idx)
-                    elif game.state == 'camp' and game.camp and not game.pick:
+                    elif _camp_shop_open(game) and not game.pick:
+                        # the tent's menu; in field mode WASD/arrows move the player instead
                         if ev.key in (pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4, pygame.K_5):
                             game.camp_buy(ev.key - pygame.K_1)
                         else:
@@ -241,16 +239,13 @@ def main():
                         for i, rect in enumerate(getattr(game, '_card_rects', [])):
                             if rect.collidepoint(mp):
                                 game.choose_card(i)
-                    elif game.state == 'camp':
+                    elif _camp_shop_open(game):
                         for i, rect in enumerate(getattr(game, '_shop_rects', [])):
                             if rect.collidepoint(mp):
                                 game.camp_buy(i)
                         for rect, cid in getattr(game, '_charm_rects', []):
                             if rect.collidepoint(mp):
                                 game.camp_equip(cid)
-                        for i, rect in enumerate(getattr(game, '_route_rects', [])):
-                            if rect.collidepoint(mp):
-                                game.camp_pick_route(i)
 
             # gamepad navigation for the upgrade/camp screens (mirrors the keyboard)
             nav.poll(joysticks, frame_dt)
@@ -283,8 +278,13 @@ def main():
                     if act == 'quit':
                         running = False
             elif game.state == 'camp' and game.camp:
-                _camp_nav(game, left=nav.left, right=nav.right, up=nav.up,
-                          down=nav.down, confirm=nav.confirm)
+                if game.camp.get('mode') == 'shop':
+                    if nav.cancel or nav.start:
+                        game.camp_close_shop()         # back to the clearing
+                    else:
+                        _camp_nav(game, left=nav.left, right=nav.right, up=nav.up,
+                                  down=nav.down, confirm=nav.confirm)
+                # field mode: the stick moves the player (handled in ctrl.poll)
             elif game.state in ('over', 'victory'):
                 if nav.confirm:                          # A: nova run
                     game = Game(num, controllers, font, bigfont, mode=mode,
