@@ -339,3 +339,14 @@ KING_SCAR_SLOW = 0.55
 KING_SCAR_TIME = 2.5
 KING_SCAR_DMG = 6
 KING_SCAR_LIFE = 14.0        # some na transicao de fase de qualquer forma
+
+BOSS_PINCHA_WINDUP = 0.3     # rapido de proposito (pinca, nao investida)
+BOSS_PINCHA_REACH = 1.5      # x max_r
+BOSS_PINCHA_DMG = 14
+BOSS_DEATHROLL_SHOTS = 40    # spiral bem mais denso/rapido -- reusa spiral_pattern
+BOSS_DEATHROLL_TURN = 95     # graus/tiro (spiral normal: 46)
+BOSS_DEATHROLL_GAP = 0.03    # spiral normal: 0.05
+
+# Centopeiadeira (onda 10 / tier 2) -- "Degradacao": encolhe e acelera por fase
+CENT_BOSS_SHRINK = 0.18      # genome.length perdido por transicao
+CENT_BOSS_SPEED_BUMP = 1.25  # genome.speed x por transicao

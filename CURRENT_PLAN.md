@@ -196,23 +196,42 @@ Playtest: cauda esticando MUITO ao mover + streaks gigantes no menu. Duas causas
 - [ ] Arena design (pilares/corredor/poças) por chefe — ainda não precisou
       (Rei Lagarto usa clareira aberta); entra quando um chefe pedir (Muralha).
 
-### Fase 03: 10 chefes + PRIMORDIAL (1/10 — REI LAGARTO pronto)
-- [x] **REI LAGARTO** (onda 5, `rounds.NAMED_BOSSES[1]`, corpo=`horned` 2.3x,
-      hue verde + chifres/espinhos/clava): fase 1 `fan+shockwave+charge`, fase 2
-      (66%) soma `radial`, fase 3 (33%) troca `fan`→`spiral` + cd 0.7x — regra
-      dos 2 respeitada. Personalidade favorece `charge` quando cornered/enraged
-      (orgulhoso, não foge). **Mecânica Cicatriz**: a cada 25% de HP perdido
-      (`scar_thresholds=[0.75,0.5,0.25]`) nasce uma `weapons.Puddle` (slow+dano
-      por tick, reaproveitada — ganhou parâmetro `slow=` novo, opt-in) que some
-      inteira na próxima transição de fase (`BossAI.scars` limpo em
-      `_maybe_advance_phase`). Testado ponta a ponta: `charging` real, as 3
-      fases, scar nasce/some, sem crash.
+### Fase 03: 10 chefes + PRIMORDIAL (2/11 prontos)
+
+**Remapeamento de onda (decisão, não desvio silencioso):** o doc 03 dá cada chefe
+uma onda narrativa (5,7,8,9...), mas o motor só sorteia chefe a cada `BOSS_EVERY`
+(5) ondas — só 5/10/15/20(final)/25/30... existem de verdade. Mapeado para os
+tiers reais: **tier1=onda5 Rei Lagarto, tier2=onda10 Centopeiadeira, tier3=onda15
+próximo, is_final=onda20 Primordial**, resto (Terror Alado, Mãe-Escaravelho,
+Kraken-Mor, Aranha-Rei, Olho-Sísmico, Serpente Cristal, Muralha, ANKH) viram
+tiers 5+ (só modo infinito, onda 25+) — dá um lugar real pra todos sem mudar a
+cadência do jogo.
+
+- [x] **REI LAGARTO** (tier1/onda5, corpo=`horned` 2.3x, hue verde + chifres/
+      espinhos/clava): fase 1 `fan+shockwave+charge`, fase 2 (66%) soma `radial`,
+      fase 3 (33%) troca `fan`→`spiral` + cd 0.7x. Personalidade favorece `charge`
+      quando cornered/enraged. **Cicatriz**: a cada 25% de HP perdido nasce uma
+      `weapons.Puddle` (ganhou `slow=` opcional) que some na transição de fase.
+- [x] **CENTOPEIADEIRA** (tier2/onda10, corpo=`centipede` 2.3x): fase 1
+      `burrow+spiral+pincha`, fase 2 (60%) soma `radial`, fase 3 (30%) troca
+      `burrow`→`deathroll` (spiral bem mais denso/rápido, MESMA função
+      `spiral_pattern` com dials diferentes no dict — nada duplicado).
+      **Burrow reaproveitado por inteiro**: novo estado de FSM `'burrowing'`
+      delega todo frame pro `AILizard._ai_burrow` já existente (dig/erupt/
+      telegrafo do centipede comum) em vez de reescrever — `AILizard.draw()`
+      já desenha o buraco/monte sem `boss.py` saber disso. **Degradação**:
+      `on_phase` encolhe `genome.length` + acelera `genome.speed` e chama
+      `rebuild_body(keep_pose=True)` a cada transição — corpo visivelmente
+      menor e mais rápido, menos hitbox. Novo padrão `pincha` (mordida curta,
+      windup 0.3s). Testado: burrow real (foto), encolhe 60→53 juntas +
+      acelera 1.11→1.39 no corte de fase, morte.
 - [ ] Tiers sem chefe autoral em `NAMED_BOSSES` caem no chefe genérico antigo
       (aleatório do tema) — não regride, só ainda não tem conteúdo autoral.
-- [ ] Centopeiadeira (7) → Terror Alado (8) → Mãe-Escaravelho (9) → Kraken-Mor
-      (10) → Aranha-Rei (11) → Olho-Sísmico (12) → Serpente Cristal (13) →
-      Muralha (15) → ANKH (18) → PRIMORDIAL (20)
-- [ ] Corpos novos que faltam: `winged`, `orbital`, `wall`, `crystal`
+- [ ] Próximos: tier3/onda15 (a escolher) → is_final/onda20 PRIMORDIAL →
+      tier5+ (infinito): Terror Alado, Mãe-Escaravelho, Kraken-Mor, Aranha-Rei,
+      Olho-Sísmico, Serpente Cristal, Muralha, ANKH
+- [ ] Corpos novos que faltam: `winged` (Terror Alado), `orbital` (Olho-
+      Sísmico), `wall` (Muralha) — crystal reusa `segmented` com estética nova
 - [ ] Gerar pixel art só se necessário no caminho (ícones novos, não sprites do bicho)
 
 ## Fase M: música adaptativa

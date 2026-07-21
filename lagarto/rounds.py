@@ -58,6 +58,13 @@ NAMED_BOSSES = {
     1: dict(species='horned', name='REI LAGARTO', phases=lambda: bossai.king_phases(),
             personality=lambda: bossai.king_personality(), scar=[0.75, 0.5, 0.25],
             overrides=dict(hue=98, sat=0.72, val=0.85, spikes=2, horns=3, tail='club')),
+    # onda 10: doc 03 chama de "onda 7", mas o motor só rola chefe a cada
+    # BOSS_EVERY (5) ondas -- tier2 = onda 10 é o slot real seguinte.
+    2: dict(species='centipede', name='CENTOPEIADEIRA',
+            phases=lambda: bossai.centipede_phases(),
+            personality=lambda: bossai.centipede_personality(),
+            on_phase=bossai.centipede_on_phase, scar=None,
+            overrides=dict(hue=15, sat=0.25, val=0.55, length=1.7)),
 }
 
 
@@ -276,8 +283,10 @@ class RoundManager:
             boss.boss_name = named['name']
             boss.boss_ai = bossai.BossAI(boss, phases=named['phases'](),
                                          personality=named['personality'](),
-                                         name=named['name'])
-            boss.boss_ai.scar_thresholds = list(named['scar'])
+                                         name=named['name'],
+                                         on_phase=named.get('on_phase'))
+            if named.get('scar'):
+                boss.boss_ai.scar_thresholds = list(named['scar'])
         else:
             name, _ = species.info(key)
             boss.boss_name = f"{name} PRIMORDIAL" if self.is_final else f"{name} ALFA"

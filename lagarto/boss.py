@@ -127,10 +127,20 @@ def shockwave(boss, game, target):
 def spiral_pattern(boss, game, target):
     """Kick off a rotating spray -- ticked per-frame by ``_tick_spiral`` like
     ``aimed_barrage``/``_tick_barrage``, so the spiral keeps turning while the
-    boss is free to do anything else (it's not a blocking loop)."""
-    boss._spiral_left = C.BOSS_SPIRAL_SHOTS
+    boss is free to do anything else (it's not a blocking loop).
+
+    Dials come from the PATTERN, not hardcoded config: ``deathroll`` reuses
+    this exact function with a denser/faster dict entry instead of duplicating
+    the tick logic -- "boss is data" applies to variants of one pattern too.
+    """
+    pat = PATTERNS[boss.boss_ai.pattern_id]
+    boss._spiral_left = pat.get('shots', C.BOSS_SPIRAL_SHOTS)
     boss._spiral_ang = random.uniform(0, 360)
     boss._spiral_cd = 0.0
+    boss._spiral_turn = pat.get('turn', C.BOSS_SPIRAL_TURN)
+    boss._spiral_gap = pat.get('gap', C.BOSS_SPIRAL_GAP)
+    boss._spiral_speed = pat.get('shot_speed', C.BOSS_SPIRAL_SPEED)
+    boss._spiral_dmg = pat.get('shot_dmg', C.BOSS_SPIRAL_DMG)
 
 
 def _tick_spiral(boss, game):
@@ -140,12 +150,12 @@ def _tick_spiral(boss, game):
     if boss._spiral_cd > 0:
         return
     boss._spiral_left -= 1
-    boss._spiral_cd = C.BOSS_SPIRAL_GAP
+    boss._spiral_cd = boss._spiral_gap
     mouth = boss.spine.joints[0]
     aim = mouth + vfrom_angle(boss._spiral_ang, 100)
-    boss._spiral_ang = (boss._spiral_ang + C.BOSS_SPIRAL_TURN) % 360
-    pr = game_spit(mouth, aim, boss.color, dmg=C.BOSS_SPIRAL_DMG,
-                   effect=None, speed=C.BOSS_SPIRAL_SPEED, radius=7)
+    boss._spiral_ang = (boss._spiral_ang + boss._spiral_turn) % 360
+    pr = game_spit(mouth, aim, boss.color, dmg=boss._spiral_dmg,
+                   effect=None, speed=boss._spiral_speed, radius=7)
     game.spawn_projectile(pr)
 
 
@@ -155,12 +165,31 @@ def charge_attack(boss, game, target):
     boss._charge_dir = safe_norm(target.pos - boss.pos)
 
 
+def pincha_bite(boss, game, target):
+    """Quick short-range strike (Centopeiadeira's pincers) -- fast windup, no
+    projectile, just a contact check at the reach the telegraph line showed."""
+    reach = boss.max_r * C.BOSS_PINCHA_REACH
+    if target.pos.distance_to(boss.pos) < reach:
+        target.hurt(game, safe_norm(target.pos - boss.pos), C.BOSS_PINCHA_DMG)
+        game.fx.spark_burst(boss.spine.joints[0], boss.color, 10, 260)
+        game.shake(4)
+
+
 PATTERNS = {
     'radial': dict(fn=radial_burst, windup=C.BOSS_RADIAL_WINDUP, telegraph='radial'),
     'fan': dict(fn=fan_shot, windup=C.BOSS_FAN_WINDUP, telegraph='fan'),
     'barrage': dict(fn=aimed_barrage, windup=C.BOSS_BARRAGE_WINDUP, telegraph='line'),
     'summon': dict(fn=summon_adds, windup=C.BOSS_SUMMON_WINDUP, telegraph='horn'),
     'shockwave': dict(fn=shockwave, windup=C.BOSS_SHOCKWAVE_WINDUP, telegraph='shockwave'),
+    'pincha': dict(fn=pincha_bite, windup=C.BOSS_PINCHA_WINDUP, telegraph='line'),
+    'deathroll': dict(fn=spiral_pattern, windup=0.5, telegraph='spiral',
+                      shots=C.BOSS_DEATHROLL_SHOTS, turn=C.BOSS_DEATHROLL_TURN,
+                      gap=C.BOSS_DEATHROLL_GAP, shot_speed=260, shot_dmg=8),
+    # burrow has no `fn`/instant fire -- BossAI.tick special-cases `burrow=True`
+    # and delegates every frame to the boss's OWN AILizard._ai_burrow (the
+    # regular centipede's dig/erupt state machine, telegraphs included for
+    # free -- AILizard.draw() already checks self.burrowed/burrow_state)
+    'burrow': dict(fn=None, windup=0.05, telegraph=None, burrow=True),
     'spiral': dict(fn=spiral_pattern, windup=C.BOSS_SPIRAL_WINDUP, telegraph='spiral'),
     'charge': dict(fn=charge_attack, windup=C.BOSS_CHARGE_WINDUP, telegraph='line', charge=True),
 }
@@ -239,6 +268,37 @@ def king_personality():
         'shockwave': {'agitated': 1.5, 'calm': 1.0},
         'spiral': {'enraged': 1.6},
     })
+
+
+# --------------------------------------------------------------------------- #
+#  Centopeiadeira (onda 10 / tier 2): "Degradação" -- perde segmentos e        #
+#  acelera a cada fase, reusando o dig/erupt do centipede comum como um       #
+#  padrão a mais entre outros.                                                #
+# --------------------------------------------------------------------------- #
+
+def centipede_phases():
+    return [
+        dict(hp_frac=1.0, patterns=['burrow', 'spiral', 'pincha'], cd_mul=1.0),
+        dict(hp_frac=0.6, patterns=['burrow', 'spiral', 'pincha', 'radial'], cd_mul=0.85),
+        dict(hp_frac=0.3, patterns=['spiral', 'pincha', 'radial', 'deathroll'], cd_mul=0.7),
+    ]
+
+
+def centipede_personality():
+    """Máquina sem propósito: não fica mais covarde nem mais confiante, só
+    mais rápida e mais caótica conforme quebra -- pattern_weights ficam quase
+    neutros de proposito (o texugo emocional é o `on_phase`, não o mood)."""
+    return BossPersonality(pattern_weights={'deathroll': {'enraged': 1.4}})
+
+
+def centipede_on_phase(boss, phase_i):
+    """Perde segmentos + acelera a cada transição (armadura quebra ao vivo,
+    mesmo padrão de `champions.py`): menos corpo, mais velocidade, mais caos --
+    e MENOS hitbox de corpo, então o jogador troca "mais perigoso" por "mais
+    fácil de acertar em cheio", a decisão que o doc descreve."""
+    boss.genome.length = max(0.5, boss.genome.length - C.CENT_BOSS_SHRINK)
+    boss.genome.speed *= C.CENT_BOSS_SPEED_BUMP
+    boss.rebuild_body(keep_pose=True)
 
 
 # --------------------------------------------------------------------------- #
@@ -376,6 +436,10 @@ class BossAI:
             self.t -= dt
             if self.t <= 0:
                 pat = PATTERNS[self.pattern_id]
+                if pat.get('burrow'):
+                    self.state = 'burrowing'
+                    self._burrow_seen_under = False
+                    return Vector2(), 0.0
                 pat['fn'](b, game, target)
                 if self.pattern_id == 'summon':
                     self.summon_cd = C.BOSS_SUMMON_CD
@@ -386,6 +450,18 @@ class BossAI:
                     self.state = 'recover'
                     self.t = 0.5
             return Vector2(), 0.0
+
+        if self.state == 'burrowing':
+            # delegates every frame to the regular centipede's OWN dig/erupt
+            # state machine (AILizard._ai_burrow) -- one full surface->dig->
+            # under->erupt cycle, then back to the normal pattern rotation
+            d, speed = b._ai_burrow(dt, game, target)
+            if b.burrow_state == 'under':
+                self._burrow_seen_under = True
+            elif self._burrow_seen_under and b.burrow_state == 'surface':
+                self.state = 'recover'
+                self.t = 0.5
+            return d, speed
 
         if self.state == 'charging':
             self.t -= dt
