@@ -51,6 +51,15 @@ THEMES = {
 THEME_KEYS = list(THEMES.keys())
 BOSS_EVERY = 5          # a boss round every N waves
 
+# tier (wave // BOSS_EVERY) -> authored boss (plans/03_chefes_descricoes.md).
+# Tiers with no entry fall back to a random themed giant (the old behaviour) --
+# so adding one boss at a time never breaks the other boss waves.
+NAMED_BOSSES = {
+    1: dict(species='horned', name='REI LAGARTO', phases=lambda: bossai.king_phases(),
+            personality=lambda: bossai.king_personality(), scar=[0.75, 0.5, 0.25],
+            overrides=dict(hue=98, sat=0.72, val=0.85, spikes=2, horns=3, tail='club')),
+}
+
 
 class SpawnMark:
     """A growing ground marker; when it fills, the enemy erupts from it."""
@@ -214,10 +223,20 @@ class RoundManager:
         g.wave = self.wave
 
     def _spawn_boss(self):
-        """A giant, glowing variant of a themed species: the round's centrepiece."""
+        """A giant, glowing variant of a themed species: the round's centrepiece.
+
+        Tiers with an entry in ``NAMED_BOSSES`` get an authored fight (own
+        phase kit + personality + mechanic); everything else still falls back
+        to the original random-themed-giant path.
+        """
         g = self.game
-        pool = THEMES[self.theme]['pool']
-        key = random.choice(pool)
+        tier = self.wave // BOSS_EVERY
+        named = None if self.is_final else NAMED_BOSSES.get(tier)
+        if named:
+            key = named['species']
+        else:
+            pool = THEMES[self.theme]['pool']
+            key = random.choice(pool)
         center = g.alive_players()[0].pos if g.alive_players() \
             else Vector2(C.WORLD_W / 2, C.WORLD_H / 2)
         pos = center + vfrom_angle(random.uniform(0, 360), 620)
@@ -228,6 +247,9 @@ class RoundManager:
         gen = boss.genome
         gen.size *= 2.3                      # rebuild the body at boss scale
         gen.sat = min(1.0, gen.sat + 0.15)
+        if named:
+            for k, v in named['overrides'].items():
+                setattr(gen, k, v)
         # boss-scale weight/inertia (plans/01, table row "Chefe"): never lighter
         # than the underlying species already was (octopus is already 3.0)
         gen.angular_damping = max(gen.angular_damping, 0.5)
@@ -238,7 +260,6 @@ class RoundManager:
         gen.behavior = 'boss'
         boss.__init__(pos, 'enemy', genome=gen)
         boss.species = key
-        tier = self.wave // BOSS_EVERY
         if self.is_final:
             gen.size *= 1.35                 # the final boss towers over the rest
             boss.__init__(pos, 'enemy', genome=gen)
@@ -251,9 +272,16 @@ class RoundManager:
         boss.score_value = 500 + 200 * tier
         boss.grants = species.SPECIES[key]['grants']
         boss.max_speed *= 0.82               # big and heavy
-        name, _ = species.info(key)
-        boss.boss_name = f"{name} PRIMORDIAL" if self.is_final else f"{name} ALFA"
-        boss.boss_ai = bossai.BossAI(boss, phases=bossai.default_phases())
+        if named:
+            boss.boss_name = named['name']
+            boss.boss_ai = bossai.BossAI(boss, phases=named['phases'](),
+                                         personality=named['personality'](),
+                                         name=named['name'])
+            boss.boss_ai.scar_thresholds = list(named['scar'])
+        else:
+            name, _ = species.info(key)
+            boss.boss_name = f"{name} PRIMORDIAL" if self.is_final else f"{name} ALFA"
+            boss.boss_ai = bossai.BossAI(boss, phases=bossai.default_phases())
         g.enemies.append(boss)
         self.boss = boss
         g.fx.ring(pos, (255, 90, 90))

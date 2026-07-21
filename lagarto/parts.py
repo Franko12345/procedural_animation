@@ -83,11 +83,14 @@ def draw_horns(surf, cam, creature):
     fill = palette.lighten(creature.color, 0.25)
     for k in range(min(g.horns, 3)):
         spread = 0.3 + k * 0.24
+        # phase-offset sway (plans/01 #5): taller/farther horns lag a bit more,
+        # same "wave down the chain" idea already used for spikes/fins/antennae
+        sway = math.sin(creature.wobble * 1.6 + k * 0.9) * 0.12
         for s in (-1, 1):
             base = head + perp * (s * r * spread) - d * (r * 0.05)
-            out = safe_norm(d * 0.85 + perp * (s * 0.4))
+            out = safe_norm(d * 0.85 + perp * (s * (0.4 + sway)))
             mid = base + out * (r * 0.72)
-            tipdir = safe_norm(d * 0.95 - perp * (s * 0.12))
+            tipdir = safe_norm(d * 0.95 - perp * (s * (0.12 - sway * 1.5)))
             tip = mid + tipdir * (r * 0.7)
             wv = perp * (s * r * 0.17)
             _poly(surf, cam, [base + wv, mid + wv * 0.5, tip, mid - wv * 0.5, base - wv],

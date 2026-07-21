@@ -112,17 +112,45 @@ Não se aplica aqui; pulada sem substituto, não é regressão.
 - [ ] Procedural posing por contexto (mood -> postura) — depende do mood system
       da Fase 02/06 abaixo, faz mais sentido junto
 
-### Fase 02: BossAI 2.0 (a fazer)
-- [ ] Mood system (calm/agitated/enraged/frustrated/cornered) + `BossPersonality`
-- [ ] Telegraph modularizado (`boss_telegraph.py`?) + padrões novos do catálogo
-      (charge/spiral/laser_sweep/bounce/minefield/shockwave/gravity_well/etc)
-- [ ] Arena design (pilares/corredor/poças) por chefe
+### Fase 02: BossAI 2.0 (parcial)
+- [x] Mood system (`calm/agitated/enraged/frustrated/cornered`, `BossAI._update_mood`)
+      + `BossPersonality` (mood_speed, pattern weight por mood, glow por mood,
+      tell mais curto quando agitado/enraged). `_choose_pattern` agora pesa por
+      personalidade+mood em vez de `random.choice` puro.
+- [x] 3 padrões novos no catálogo: `shockwave` (AoE instantâneo, telegrafo=anel
+      no chão), `spiral` (tick por frame tipo `_tick_barrage`, gira
+      `BOSS_SPIRAL_TURN`°/tiro), `charge` — este exige um estado **novo** na FSM
+      (`'charging'`): windup → dispara `_charge_dir` → N segundos de movimento
+      real na direção (não instantâneo), com dano de contato via `_contact`
+      (bosses antes não causavam dano por toque nenhum, só projétil).
+- [x] `BossAI.__init__` ganhou `name`/`personality`/`on_phase` opcionais —
+      compatível com o construtor antigo (`rounds.py` genérico continua igual).
+- [ ] Telegraph modularizado em arquivo próprio (`boss_telegraph.py`) — adiado,
+      o `draw()` ainda mora em `boss.py`; puramente uma reorganização, sem
+      urgência funcional.
+- [ ] Padrões restantes do catálogo (laser_sweep/bounce/minefield/gravity_well/
+      teleport_strike) — implementar sob demanda, conforme os próximos chefes
+      da Fase 03 precisarem (evita código especulativo sem chefe que o use).
+- [ ] Arena design (pilares/corredor/poças) por chefe — ainda não precisou
+      (Rei Lagarto usa clareira aberta); entra quando um chefe pedir (Muralha).
 
-### Fase 03: 10 chefes + PRIMORDIAL (a fazer, depende de 02)
-- [ ] Corpos novos: `winged`, `orbital`, `wall`, `crystal`
-- [ ] Rei Lagarto (onda 5) → Centopeiadeira (7) → Terror Alado (8) → Mãe-Escaravelho
-      (9) → Kraken-Mor (10) → Aranha-Rei (11) → Olho-Sísmico (12) → Serpente Cristal
-      (13) → Muralha (15) → ANKH (18) → PRIMORDIAL (20)
+### Fase 03: 10 chefes + PRIMORDIAL (1/10 — REI LAGARTO pronto)
+- [x] **REI LAGARTO** (onda 5, `rounds.NAMED_BOSSES[1]`, corpo=`horned` 2.3x,
+      hue verde + chifres/espinhos/clava): fase 1 `fan+shockwave+charge`, fase 2
+      (66%) soma `radial`, fase 3 (33%) troca `fan`→`spiral` + cd 0.7x — regra
+      dos 2 respeitada. Personalidade favorece `charge` quando cornered/enraged
+      (orgulhoso, não foge). **Mecânica Cicatriz**: a cada 25% de HP perdido
+      (`scar_thresholds=[0.75,0.5,0.25]`) nasce uma `weapons.Puddle` (slow+dano
+      por tick, reaproveitada — ganhou parâmetro `slow=` novo, opt-in) que some
+      inteira na próxima transição de fase (`BossAI.scars` limpo em
+      `_maybe_advance_phase`). Testado ponta a ponta: `charging` real, as 3
+      fases, scar nasce/some, sem crash.
+- [ ] Tiers sem chefe autoral em `NAMED_BOSSES` caem no chefe genérico antigo
+      (aleatório do tema) — não regride, só ainda não tem conteúdo autoral.
+- [ ] Centopeiadeira (7) → Terror Alado (8) → Mãe-Escaravelho (9) → Kraken-Mor
+      (10) → Aranha-Rei (11) → Olho-Sísmico (12) → Serpente Cristal (13) →
+      Muralha (15) → ANKH (18) → PRIMORDIAL (20)
+- [ ] Corpos novos que faltam: `winged`, `orbital`, `wall`, `crystal`
 - [ ] Gerar pixel art só se necessário no caminho (ícones novos, não sprites do bicho)
 
 ## Fase M: música adaptativa

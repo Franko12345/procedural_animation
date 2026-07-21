@@ -317,3 +317,25 @@ BOSS_BARRAGE_DMG = 9
 BOSS_SUMMON_WINDUP = 0.9
 BOSS_SUMMON_COUNT = 2
 BOSS_SUMMON_CD = 6.0         # separado do cd normal -- nao pode invocar toda vez
+
+# --- BossAI 2.0 (plans/02_sistema_chefes.md): mood + novos padroes ---------- #
+BOSS_CORNERED_DIST = 120     # jogador mais perto que isso -> mood 'cornered'
+BOSS_FRUSTRATION_SEC = 5.0   # sem acertar por tanto tempo -> mood 'frustrated'
+BOSS_CHARGE_WINDUP = 0.5
+BOSS_CHARGE_TIME = 0.65      # duracao da investida em si
+BOSS_CHARGE_SPEED_MULT = 2.0 # fracao de max_speed durante a investida
+BOSS_SHOCKWAVE_WINDUP = 0.6
+BOSS_SHOCKWAVE_RADIUS = 210
+BOSS_SHOCKWAVE_DMG = 13
+BOSS_SPIRAL_WINDUP = 0.7
+BOSS_SPIRAL_SHOTS = 14
+BOSS_SPIRAL_GAP = 0.05
+BOSS_SPIRAL_SPEED = 240
+BOSS_SPIRAL_DMG = 9
+BOSS_SPIRAL_TURN = 46        # graus de rotacao entre um tiro e o proximo
+
+# Rei Lagarto (primeiro chefe autoral, onda 5) -- mecanica "Cicatriz"
+KING_SCAR_SLOW = 0.55
+KING_SCAR_TIME = 2.5
+KING_SCAR_DMG = 6
+KING_SCAR_LIFE = 14.0        # some na transicao de fase de qualquer forma

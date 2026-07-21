@@ -311,7 +311,7 @@ class Puddle:
     puddles overlap and stack -- the exact bug already fixed once in `Acido`.
     """
 
-    def __init__(self, pos, r, dmg, life, hue, hostile=False, tick=0.5):
+    def __init__(self, pos, r, dmg, life, hue, hostile=False, tick=0.5, slow=None):
         self.pos = Vector2(pos)
         self.r = r
         self.dmg = dmg
@@ -321,6 +321,7 @@ class Puddle:
         self.hostile = hostile
         self.tick = tick
         self.tick_t = 0.0
+        self.slow = slow            # optional (mul, dur) applied alongside a landed hostile hit
         self.dead = False
         self.bubbles = [(random.uniform(-r * 0.6, r * 0.6), random.uniform(-r * 0.6, r * 0.6),
                          random.uniform(0.2, 1.0)) for _ in range(6)]
@@ -340,7 +341,9 @@ class Puddle:
                     if p.dead or p.down:
                         continue
                     if p.pos.distance_to(self.pos) < self.r + p.max_r * 0.4:
-                        p.hurt(game, safe_norm(p.pos - self.pos), self.dmg)
+                        landed = p.hurt(game, safe_norm(p.pos - self.pos), self.dmg)
+                        if landed and self.slow:
+                            p.apply_slow(*self.slow)
         else:
             for e in _enemies_in(game, self.pos, self.r + 8):
                 e.damage(game, self.dmg * dt)     # `dmg` is dps -> must scale by dt
