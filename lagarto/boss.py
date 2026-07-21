@@ -229,6 +229,20 @@ def sky_slam(boss, game, target):
                                          hostile=True, tick=0.5))
 
 
+def web_trap(boss, game, target):
+    """Mãe-Escaravelho's Web Trap: a patch that roots (heavy slow, tiny
+    damage) instead of hurting -- reuses the single-point select from
+    ``sky_slam``/``arms_rain`` and ``weapons.Puddle``'s ``slow=`` param
+    (added for Rei Lagarto's scar) instead of new hazard code."""
+    from . import weapons
+    for pt in getattr(boss, '_rain_points', []):
+        game.spawn_puddle(weapons.Puddle(pt, C.BOSS_WEB_TRAP_R, C.BOSS_WEB_TRAP_DMG,
+                                         C.BOSS_WEB_TRAP_LIFE, 200, hostile=True,
+                                         tick=0.4, slow=(C.BOSS_WEB_TRAP_SLOW, 1.2)))
+    boss._rain_points = []
+    game.fx.burst(boss.pos, (240, 240, 250), 8, 140)
+
+
 PATTERNS = {
     'radial': dict(fn=radial_burst, windup=C.BOSS_RADIAL_WINDUP, telegraph='radial'),
     'fan': dict(fn=fan_shot, windup=C.BOSS_FAN_WINDUP, telegraph='fan'),
@@ -247,6 +261,8 @@ PATTERNS = {
                      dmg=C.BOSS_SKY_SLAM_DMG),
     'massive_fan': dict(fn=fan_shot, windup=C.BOSS_MASSIVE_FAN_WINDUP, telegraph='fan',
                         count=12, spread=70, shot_speed=220, dmg=14),
+    'web_trap': dict(fn=web_trap, select=_select_arms_rain, windup=C.BOSS_WEB_TRAP_WINDUP,
+                     telegraph='rain', count=1, spread=60),
     'deathroll': dict(fn=spiral_pattern, windup=0.5, telegraph='spiral',
                       shots=C.BOSS_DEATHROLL_SHOTS, turn=C.BOSS_DEATHROLL_TURN,
                       gap=C.BOSS_DEATHROLL_GAP, shot_speed=260, shot_dmg=8),
@@ -415,6 +431,29 @@ def primordial_personality():
     return BossPersonality(pattern_weights={
         'deathroll': {'enraged': 2.0},
         'sky_slam': {'enraged': 1.5, 'cornered': 1.5},
+    })
+
+
+# --------------------------------------------------------------------------- #
+#  Mae-Escaravelho (endless, tier5+): a support, not a tank -- SHE barely     #
+#  attacks directly, her adds do the damage. Explodes into larvae on death.  #
+# --------------------------------------------------------------------------- #
+
+def beetle_phases():
+    return [
+        dict(hp_frac=1.0, patterns=['summon', 'fan', 'shockwave'], cd_mul=1.0),
+        dict(hp_frac=0.66, patterns=['summon', 'fan', 'shockwave', 'web_trap'], cd_mul=0.9),
+        dict(hp_frac=0.33, patterns=['summon', 'shockwave', 'web_trap', 'radial'], cd_mul=0.65),
+    ]
+
+
+def beetle_personality():
+    """Mãe protetora: prioriza chamar reforços; só fica de fato agressiva
+    (radial/web_trap) quando raivosa ou encurralada -- ela evita a luta
+    direta enquanto pode."""
+    return BossPersonality(pattern_weights={
+        'summon': {'calm': 1.6, 'frustrated': 1.8},
+        'radial': {'enraged': 1.8, 'cornered': 1.6},
     })
 
 

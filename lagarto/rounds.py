@@ -80,6 +80,12 @@ BOSS_POOL = {
                        overrides=dict(hue=18, sat=0.85, val=0.65, spikes=3,
                                      horns=3, plates=2, tail='club',
                                      wings=True, extra_eyes=2)),
+    'mae_escaravelho': dict(species='spider', name='MAE-ESCARAVELHO',
+                            phases=lambda: bossai.beetle_phases(),
+                            personality=lambda: bossai.beetle_personality(),
+                            scar=None, overrides=dict(hue=35, sat=0.6, val=0.45),
+                            # ao morrer, racha em 6 filhotes (reusa o DIVISOR)
+                            boss_attrs=dict(death_split=True, split_gen=1, split_count=6)),
 }
 
 # tier (wave // BOSS_EVERY) -> which pool ids can be rolled there. Ranges,
@@ -87,6 +93,8 @@ BOSS_POOL = {
 # every tier by hand. `range` end is exclusive, same as normal Python ranges.
 BOSS_TIER_POOLS = [
     (range(1, 4), ['rei_lagarto', 'centopeiadeira', 'kraken_mor']),   # onda 5/10/15
+    (range(5, 10_000), ['mae_escaravelho']),   # onda 25+ (so infinito) -- cresce
+                                               # conforme mais chefes entrarem aqui
 ]
 BOSS_FINAL = 'primordial'   # is_final always this one -- the run's fixed climax,
                            # not part of the roll (matches Isaac's true-final-boss)
@@ -323,6 +331,8 @@ class RoundManager:
                                          on_phase=named.get('on_phase'))
             if named.get('scar'):
                 boss.boss_ai.scar_thresholds = list(named['scar'])
+            for k, v in named.get('boss_attrs', {}).items():
+                setattr(boss, k, v)
         else:
             name, _ = species.info(key)
             boss.boss_name = f"{name} PRIMORDIAL" if self.is_final else f"{name} ALFA"

@@ -271,12 +271,37 @@ cadência do jogo.
       via trace detalhado que burrow/grapple/fases funcionam certo quando
       observados com granularidade fina). Scripts de teste ficam no
       scratchpad, não são parte do repo.
-- [ ] Tiers sem chefe autoral em `NAMED_BOSSES` caem no chefe genérico antigo
-      (aleatório do tema) — não regride, só ainda não tem conteúdo autoral.
-- [ ] Próximos (só modo infinito, onda 25+): Terror Alado, Mãe-Escaravelho,
-      Aranha-Rei, Olho-Sísmico, Serpente Cristal, Muralha (precisa de sistema
-      de arena/confinamento que ainda não existe — mundo é aberto contínuo,
-      sem salas discretas), ANKH
+- [x] **MÃE-ESCARAVELHO** (endless, tier5+/onda25, corpo=`spider` 2.3x, hue
+      marrom/âmbar): fase 1 `summon+fan+shockwave` ("spawn grubs"+acid spit+
+      leg stomp — tudo reuso puro), fase 2 (66%) soma `web_trap` + cd 0.9x,
+      fase 3 (33%) soma `radial` ("Enrage") + cd 0.65x. **Web Trap** é novo
+      mas pequeno: mesmo `_select_arms_rain` (1 ponto) + `weapons.Puddle` com
+      `slow=` forte e dano quase zero — prende em vez de ferir. Personalidade
+      evita a luta direta enquanto pode (`summon` pesa mais calmo/frustrado),
+      só fica agressiva raivosa/encurralada — combina com "ela quase não
+      ataca direto, quem ataca são os filhotes". **Morte = explode em 6
+      larvas**: reusa a MESMA mecânica do modificador DIVISOR
+      (`death_split`/`split_gen`/`_do_split` em `lizard.py`, já usado por
+      campeões) — só generalizei `_do_split` pra ler `self.split_count`
+      (novo, default 2 = comportamento antigo intacto) em vez de sempre
+      2 cópias, e `_spawn_boss` ganhou um hook genérico `boss_attrs` (dict
+      de atributos do objeto, não do genoma) pra poder setar isso num chefe
+      sem tocar em nada dos outros 3. Testado: 6 filhos entram em
+      `game.pending_enemies` na morte (confirmado direto); o *dreno* de
+      `pending_enemies` é infraestrutura não-tocada (já usada por todo
+      DIVISOR em produção), não precisei re-verificar.
+- [x] **Sistema de pool de chefes agora tem 2 faixas**: tiers 1-3 (onda
+      5/10/15, normal) sorteiam entre os 3 primeiros; tiers 5+ (onda 25+, só
+      infinito) sorteiam a Mãe-Escaravelho (única no pool por enquanto —
+      cresce conforme os próximos entrarem).
+- [ ] Tiers sem chefe autoral (nenhum agora — tier4/onda20 é sempre
+      PRIMORDIAL via `is_final`) caem no chefe genérico antigo (aleatório do
+      tema) — não regride, só ainda não tem conteúdo autoral.
+- [ ] Próximos (endless, entram no pool de tier5+ conforme prontos): Aranha-
+      Rei, Serpente Cristal (reusam `radial`/`segmented`, sem corpo novo) →
+      Terror Alado (`winged`) → Olho-Sísmico (`orbital`) → ANKH (4 formas,
+      mais trabalho) → Muralha (precisa de sistema de arena/confinamento que
+      ainda não existe — mundo é aberto contínuo, sem salas discretas)
 - [ ] Corpos novos que faltam: `winged` (Terror Alado), `orbital` (Olho-
       Sísmico), `wall` (Muralha) — crystal reusa `segmented` com estética nova
 - [ ] Gerar pixel art só se necessário no caminho (ícones novos, não sprites do bicho)

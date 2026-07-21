@@ -1293,8 +1293,9 @@ class AILizard(Lizard):
         self.marked = False       # Presa Marcada: next hit lands as a crit
         self.front_armor = 0.0        # BLINDADO: fraction blocked from the front
         self.death_blast = False      # EXPLOSIVO: parting AoE
-        self.death_split = False       # DIVISOR: splits into 2 smaller copies on death
+        self.death_split = False       # DIVISOR: splits into smaller copies on death
         self.split_gen = 0             # remaining split generations
+        self.split_count = 2           # copies per split (DIVISOR=2; a boss can override)
 
     def apply_poison(self, dps, dur):
         self.poison_dps = max(self.poison_dps, dps)
@@ -2005,7 +2006,7 @@ class AILizard(Lizard):
     def _do_split(self, game):
         from . import species as splib
         game.fx.ring(self.pos, self.color)
-        for k in range(2):
+        for k in range(self.split_count):
             child = splib.make(self.species, self.pos)
             child.genome.size = max(0.4, self.genome.size * C.CHAMP_SPLIT_SIZE)
             child.rebuild_body()
