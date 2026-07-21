@@ -114,17 +114,23 @@ def present():
 
     Normally ``smoothscale`` -- the art is vector-ish (polygons, circles,
     anti-aliased text), and nearest-neighbour made scaled-up text look jagged.
-    With ``C.PIXEL_SCALE`` > 1 that's flipped on purpose: downsample to a much
-    smaller buffer (smoothscale -- averages detail into each block instead of
-    just picking one sample) then upscale with NEAREST (not smoothscale, or
-    the chunky pixels would just get blurred straight back out) for a chunky
-    retro look. Pure post-process -- world/UI coordinates are untouched.
+    With ``C.PIXEL_SCALE`` > 1 that's flipped on purpose, and BOTH steps use
+    nearest (``scale``, not ``smoothscale``): the downsample first tried
+    smoothscale so it would average detail into each block, but averaging an
+    already-anti-aliased scene just blurs it into soft blobs -- the chunky
+    upscale after that is then blowing up a blur, not chunking up crisp
+    pixels, which read as "blurred" instead of "pixel art" (feedback: not
+    sharp, outlines not well-defined). Point-sampling (nearest) on the
+    downsample instead picks ONE source pixel per block -- ink outlines and
+    flat fills survive as solid blocks; thin diagonal edges alias/step
+    instead of blurring, which IS the retro pixel-art look. Pure post-process
+    -- world/UI coordinates are untouched.
     """
     x, y, w, h = _rect
     if (x, y) != (0, 0):
         _screen.fill((0, 0, 0))              # letterbox bars
     if _pixel_small is not None:
-        pygame.transform.smoothscale(_logical, _pixel_small.get_size(), _pixel_small)
+        pygame.transform.scale(_logical, _pixel_small.get_size(), _pixel_small)
         pygame.transform.scale(_pixel_small, (w, h), _pixel_big)
         _screen.blit(_pixel_big, (x, y))
     elif _scaled is None:
