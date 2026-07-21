@@ -100,11 +100,17 @@ detalhadas (loja do besouro etc.) em 64/80. Mais organico, curvas, AA.
 - **Total: 31 PNGs** em `assets/icons/` (32x32 armas+stats+charms, 24x24 pickups)
   + `assets/props/` (80x80 tent_beetle). Geradores versionados em `tools/pixelart/`
   (`pxgen.py` = camada de autoria; `batch2..6.py` = lotes; `README.md` documenta).
-- [ ] **Pipeline** `assets/` -> jogo: `lagarto/assets.py` (`resource_path`/`_MEIPASS`,
-      lazy, `.convert_alpha()` so apos `display.init`, fallback `icons.draw`).
-      `build.py --add-data`. **AINDA NAO FEITO** — runtime continua zero-asset.
-- [ ] Nitidez: pre-escala NEAREST por fator inteiro antes do `present()` borrar.
+- [x] **Pipeline ligado** (`755b445`): `lagarto/assets.py` (`resource_path`/`_MEIPASS`,
+      lazy, `.convert_alpha()` so apos `display.init`, cache `(id,diametro)` teto 300)
+      + `icons.draw` tenta PNG primeiro, cai pro procedural se `None`. Verificado em
+      runtime real (screenshot HUD + carta EVOLUIR mostrando `xp.png` de verdade).
+      Invariante "zero assets" quebrada de proposito, documentado no CLAUDE.md.
+- [ ] `build.py --add-data` p/ empacotar `assets/` no executavel PyInstaller.
+- [ ] Nitidez: pre-escala NEAREST por fator inteiro antes do `present()` borrar
+      (hoje `smoothscale`, aceito por ora).
+- [ ] `tent_beetle.png` gerado mas **NAO ligado** — `_draw_camp_pois` continua
+      procedural (tem a animacao de queda do ceu; integrar o PNG e mais invasivo).
 - [ ] Assets restantes possiveis: props do acampamento (portas, ninho), flora/mundo.
 
-Nota: os PNGs ainda **nao estao ligados** ao jogo (falta `assets.py`). Gerar primeiro,
-ligar depois. Manter os geradores no repo (reproduzivel, zero-asset ainda roda).
+Geradores versionados em `tools/pixelart/` (reproduzivel). Build sem `assets/`
+continua rodando (fallback procedural cobre qualquer PNG faltando).
