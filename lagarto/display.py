@@ -18,6 +18,8 @@ SCALES = (1, 2, 3)
 _screen = None          # the real window surface
 _logical = None         # fixed-size surface everything draws to
 _scaled = None          # cached scale buffer (None when 1:1)
+_pixel_small = None     # downsampled buffer (pixelation, None when PIXEL_SCALE<=1)
+_pixel_big = None       # nearest-upscaled buffer, window-rect sized
 _scale = 2
 _fullscreen = False
 _vsync = True
@@ -54,12 +56,20 @@ def apply(scale=None, fullscreen=None, vsync=None):
 
 def _recompute():
     """Letterbox: largest fit that preserves the aspect ratio; cache the scale buffer."""
-    global _rect, _scaled
+    global _rect, _scaled, _pixel_small, _pixel_big
     sw, sh = _screen.get_size()
     k = min(sw / C.WIDTH, sh / C.HEIGHT)
     w, h = max(1, int(C.WIDTH * k)), max(1, int(C.HEIGHT * k))
     _rect = ((sw - w) // 2, (sh - h) // 2, w, h)
     _scaled = None if (w, h) == (C.WIDTH, C.HEIGHT) else pygame.Surface((w, h)).convert()
+    if C.PIXEL_SCALE > 1:
+        pw = max(1, C.WIDTH // C.PIXEL_SCALE)
+        ph = max(1, C.HEIGHT // C.PIXEL_SCALE)
+        _pixel_small = pygame.Surface((pw, ph)).convert()
+        _pixel_big = pygame.Surface((w, h)).convert()
+    else:
+        _pixel_small = None
+        _pixel_big = None
 
 
 def surface():
@@ -102,13 +112,22 @@ def handle_resize():
 def present():
     """Scale the logical surface onto the window and flip.
 
-    The art is vector-ish (polygons, circles, anti-aliased text), so we use
-    ``smoothscale`` -- nearest-neighbour made scaled-up text look jagged.
+    Normally ``smoothscale`` -- the art is vector-ish (polygons, circles,
+    anti-aliased text), and nearest-neighbour made scaled-up text look jagged.
+    With ``C.PIXEL_SCALE`` > 1 that's flipped on purpose: downsample to a much
+    smaller buffer (smoothscale -- averages detail into each block instead of
+    just picking one sample) then upscale with NEAREST (not smoothscale, or
+    the chunky pixels would just get blurred straight back out) for a chunky
+    retro look. Pure post-process -- world/UI coordinates are untouched.
     """
     x, y, w, h = _rect
     if (x, y) != (0, 0):
         _screen.fill((0, 0, 0))              # letterbox bars
-    if _scaled is None:
+    if _pixel_small is not None:
+        pygame.transform.smoothscale(_logical, _pixel_small.get_size(), _pixel_small)
+        pygame.transform.scale(_pixel_small, (w, h), _pixel_big)
+        _screen.blit(_pixel_big, (x, y))
+    elif _scaled is None:
         _screen.blit(_logical, (x, y))
     else:
         pygame.transform.smoothscale(_logical, (w, h), _scaled)
