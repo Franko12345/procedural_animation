@@ -468,6 +468,74 @@ def _char_larva(s, c, r, col):
                        (int(c[0] + r * 0.5), int(c[1] - r * 0.08)), max(2, r // 8))
 
 
+def _boss_crown(s, c, r, col):
+    """REI LAGARTO: a jagged 5-point crown -- procedural fallback so the boss
+    bar never breaks without the PNG (see assets/icons/boss_rei_lagarto.png)."""
+    band_y = c[1] + r * 0.35
+    pts = [(c[0] - r * 0.85, band_y)]
+    for k in range(5):
+        t = k / 4.0
+        x = c[0] + (-0.85 + 1.7 * t) * r
+        pts.append((x, band_y - r * (0.55 if k % 2 == 0 else 1.1)))
+    pts.append((c[0] + r * 0.85, band_y))
+    pygame.draw.polygon(s, col, pts)
+    pygame.draw.polygon(s, INK, pts, max(1, r // 9))
+    for k in range(3):
+        x = c[0] + (-0.55 + 0.55 * k) * r
+        pygame.draw.circle(s, palette.lighten(col, 0.5), (int(x), int(band_y - r * 0.15)),
+                           max(1, r // 7))
+
+
+def _boss_gear(s, c, r, col):
+    """CENTOPEIADEIRA: a rusted gear -- machine, not flesh."""
+    pygame.draw.circle(s, col, c, int(r * 0.68))
+    for a in range(0, 360, 45):
+        base_l = c + vfrom_angle(a - 14, r * 0.62)
+        base_r = c + vfrom_angle(a + 14, r * 0.62)
+        tip_l = c + vfrom_angle(a - 16, r * 1.0)
+        tip_r = c + vfrom_angle(a + 16, r * 1.0)
+        pygame.draw.polygon(s, col, [base_l, tip_l, tip_r, base_r])
+    pygame.draw.circle(s, INK, c, int(r * 0.68), max(1, r // 9))
+    pygame.draw.circle(s, palette.darken(col, 0.35), c, int(r * 0.3))
+    pygame.draw.circle(s, INK, c, int(r * 0.3), max(1, r // 10))
+
+
+def _boss_kraken_eye(s, c, r, col):
+    """KRAKEN-MOR: a wide eye with a curling tentacle underneath."""
+    pygame.draw.circle(s, palette.darken(col, 0.2), c, int(r * 0.9))
+    pygame.draw.circle(s, INK, c, int(r * 0.9), max(1, r // 9))
+    pygame.draw.circle(s, (250, 250, 255), c, int(r * 0.55))
+    pupil = (int(c[0]), int(c[1] - r * 0.05))
+    pygame.draw.circle(s, INK, pupil, max(2, int(r * 0.28)))
+    for sgn in (-1, 1):
+        base = c + pygame.Vector2(sgn * r * 0.6, r * 0.75)
+        mid = base + pygame.Vector2(sgn * r * 0.3, r * 0.5)
+        tip = mid + pygame.Vector2(sgn * -r * 0.1, r * 0.4)
+        pygame.draw.lines(s, col, False, [base, mid, tip], max(2, r // 6))
+
+
+def _boss_hive(s, c, r, col):
+    """MAE-ESCARAVELHO: a cluster of eggs (the swarm, not just the mother)."""
+    offs = [(-0.42, -0.28), (0.42, -0.28), (0, -0.55), (-0.22, 0.32), (0.22, 0.32)]
+    for i, (ox, oy) in enumerate(offs):
+        rr = r * (0.5 if i < 3 else 0.42)
+        p = (int(c[0] + ox * r), int(c[1] + oy * r))
+        pygame.draw.circle(s, col if i else palette.lighten(col, 0.25), p, int(rr))
+        pygame.draw.circle(s, INK, p, int(rr), max(1, r // 10))
+
+
+def _boss_primordial_flame(s, c, r, col):
+    """PRIMORDIAL: an ancient flame/rune -- the final boss's mark."""
+    pts = [(c[0], c[1] - r), (c[0] + r * 0.55, c[1] - r * 0.1),
+           (c[0] + r * 0.32, c[1] + r * 0.15), (c[0] + r * 0.6, c[1] + r * 0.9),
+           (c[0], c[1] + r * 0.5), (c[0] - r * 0.6, c[1] + r * 0.9),
+           (c[0] - r * 0.32, c[1] + r * 0.15), (c[0] - r * 0.55, c[1] - r * 0.1)]
+    pygame.draw.polygon(s, col, pts)
+    pygame.draw.polygon(s, INK, pts, max(1, r // 9))
+    pygame.draw.circle(s, palette.lighten(col, 0.5), (int(c[0]), int(c[1] + r * 0.25)),
+                       max(1, int(r * 0.22)))
+
+
 ICONS = {
     # items (items.py)
     'pulso': _ring_burst, 'muda': _shell, 'chamado': _horn_call,
@@ -493,6 +561,10 @@ ICONS = {
     'antenas': _antennae, 'olhos': _eyes, 'carapaca': _plates_icon,
     'asas': _wings_icon, 'nectar': _sac, 'glandula': _sac, 'presas': _fangs,
     'espinhos': _spikes_icon, 'clava': _club,
+    # boss emblems (rounds.draw_boss_bar) -- one recognisable mark per fight
+    'boss_rei_lagarto': _boss_crown, 'boss_centopeiadeira': _boss_gear,
+    'boss_kraken_mor': _boss_kraken_eye, 'boss_mae_escaravelho': _boss_hive,
+    'boss_primordial': _boss_primordial_flame,
 }
 
 

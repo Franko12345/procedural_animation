@@ -380,6 +380,38 @@ janela de espera (telegrafo) sem mudar QUANDO o ataque dispara — só como ele
       Catmull-Rom; só em testes sintéticos com 13+ inimigos (acima de
       qualquer cap real) o custo dobra.
 
+### Balanço de chefes + identidade visual (feedback direto) — feito
+- [x] **Knockback zero em todo chefe** (`gen.knockback = 0.0` forçado em
+      `_spawn_boss`): tiro do jogador empurrava o chefe pra fora da própria
+      aproximação/ataque — um interrupt de graça em cima do dano.
+- [x] **Cadência dobrada**: `BOSS_CD_MIN/MAX` 1.1/2.0 → 0.55/1.1. Janela de
+      recuperação (vulnerabilidade pós-ataque) preservada de propósito — é o
+      contra-jogo justo do design, mexer nisso pioraria fairness, não cadência.
+- [x] **Dano +40-45%** em todo padrão de chefe (radial/fan/barrage/shockwave/
+      spiral/pincha/swipe/arms_rain/sky_slam/massive_fan/deathroll). HP não
+      mexido de novo (já estava em `90+200*tier`, bem acima do `90+55*tier`
+      original — ajuste anterior, não brigar com ele).
+- [x] **Pixelização retro** (`C.PIXEL_SCALE=3` em `display.present()`):
+      downsample + upscale NEAREST, pixels grandes visíveis de propósito.
+      Detalhes na seção de Fase B/C acima... na verdade ver commit próprio —
+      pós-processo puro, zero mudança de coordenada.
+- [x] **Emblema por chefe** (identidade visual memorável, pedido direto —
+      "ainda estão só os inimigos padrão, só que grandes"): 5 ícones pixel
+      art novos (`assets/icons/boss_*.png`, gerados via `pxgen.py`/
+      `tools/pixelart/batch7.py`, estilo Isaac/Gungeon — contorno grosso,
+      cor saturada, silhueta legível pequena) — coroa dourada (Rei Lagarto),
+      engrenagem enferrujada (Centopeiadeira), olho violeta+tentáculos
+      (Kraken-Mor), cacho de ovos (Mãe-Escaravelho), runa/chama ancestral
+      (Primordial). Desenhador procedural próprio por trás de cada um
+      (`icons._boss_*`, novo em `icons.py`) — **nunca quebra sem o PNG**,
+      mesmo padrão de todo o resto da Fase 7. Mostrado à esquerda do nome na
+      barra de vida (`rounds.draw_boss_bar`), boss ganha `emblem=` no
+      `BOSS_POOL`. Testado: PNG real carregando e renderizando no tamanho de
+      UI de verdade (screenshot), fallback procedural também verificado.
+- [ ] Identidade visual ALÉM do emblema (partes/props únicos no CORPO de cada
+      chefe, não só um ícone no HUD) — não feito, escopo maior (tocaria
+      `parts.py`/genoma por chefe); emblema é o que coube nesta rodada.
+
 ## Fase M: música adaptativa
 - [ ] Stems por intensidade via `/music-generator`; mixar ao vivo por vida/inimigos/combo/chefe
 - [ ] Carregar se existir, senão fallback synth numpy (headless/CI verdes)

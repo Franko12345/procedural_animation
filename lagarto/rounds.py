@@ -17,6 +17,7 @@ from . import audio
 from . import boss as bossai
 from . import champions
 from . import config as C
+from . import icons
 from . import palette
 from . import species
 from . import ui
@@ -59,21 +60,25 @@ BOSS_EVERY = 5          # a boss round every N waves
 # the other boss waves.
 BOSS_POOL = {
     'rei_lagarto': dict(species='horned', name='REI LAGARTO',
+                        emblem='boss_rei_lagarto',
                         phases=lambda: bossai.king_phases(),
                         personality=lambda: bossai.king_personality(),
                         scar=[0.75, 0.5, 0.25],
                         overrides=dict(hue=98, sat=0.72, val=0.85, spikes=2,
                                       horns=3, tail='club')),
     'centopeiadeira': dict(species='centipede', name='CENTOPEIADEIRA',
+                           emblem='boss_centopeiadeira',
                            phases=lambda: bossai.centipede_phases(),
                            personality=lambda: bossai.centipede_personality(),
                            on_phase=bossai.centipede_on_phase, scar=None,
                            overrides=dict(hue=15, sat=0.25, val=0.55, length=1.7)),
     'kraken_mor': dict(species='octopus', name='KRAKEN-MOR',
+                       emblem='boss_kraken_mor',
                        phases=lambda: bossai.kraken_phases(),
                        personality=lambda: bossai.kraken_personality(),
                        scar=None, overrides=dict(hue=275, sat=0.75, val=0.5)),
     'primordial': dict(species='horned', name='PRIMORDIAL',
+                       emblem='boss_primordial',
                        phases=lambda: bossai.primordial_phases(),
                        personality=lambda: bossai.primordial_personality(),
                        scar=None,
@@ -81,6 +86,7 @@ BOSS_POOL = {
                                      horns=3, plates=2, tail='club',
                                      wings=True, extra_eyes=2)),
     'mae_escaravelho': dict(species='spider', name='MAE-ESCARAVELHO',
+                            emblem='boss_mae_escaravelho',
                             phases=lambda: bossai.beetle_phases(),
                             personality=lambda: bossai.beetle_personality(),
                             scar=None, overrides=dict(hue=35, sat=0.6, val=0.45),
@@ -329,6 +335,7 @@ class RoundManager:
         boss.max_speed *= 0.82               # big and heavy
         if named:
             boss.boss_name = named['name']
+            boss.emblem = named.get('emblem')
             boss.boss_ai = bossai.BossAI(boss, phases=named['phases'](),
                                          personality=named['personality'](),
                                          name=named['name'],
@@ -438,8 +445,14 @@ class RoundManager:
         # instead of the old fixed y=122 / y-40, which collided with the combo
         # meter and the theme banner on every boss wave.
         stack = self.game.top
-        ui.text(surf, bigfont, name, (cx, stack.take(bigfont.get_height())),
-                (255, 132, 132), align='center')
+        name_y = stack.take(bigfont.get_height())
+        name_rect = ui.text(surf, bigfont, name, (cx, name_y),
+                            (255, 132, 132), align='center')
+        emblem = getattr(b, 'emblem', None)
+        if emblem:
+            er = max(10, name_rect.height // 2)
+            icons.draw(surf, emblem, (name_rect.left - er - 8, name_rect.centery),
+                      er, b.color)
         y = stack.take(h)
         pygame.draw.rect(surf, (40, 20, 26), (x, y, w, h), border_radius=10)
         if f > 0:
