@@ -1,4 +1,4 @@
-# Pixel art (assets PNG — Fase 7, ainda NAO ligados ao jogo)
+# Pixel art (assets PNG — Fase 7, LIGADOS via `lagarto/assets.py`)
 
 Gerado com a skill `pixel-art-gen` (Pillow). Ha dois geradores:
 
@@ -47,8 +47,34 @@ Mapas ASCII 16x16 dos 4 personagens. **Nao entram no jogo**: a selecao mostra um
 render vivo da criatura procedural (`menu._char_previews`), mais honesto. Ficam como
 ponto de partida se quisermos icones de personagem pequenos.
 
-## Importante
-**Nenhum destes PNGs e carregado pelo jogo ainda** — em runtime o jogo continua
-zero-asset (CLAUDE.md). Ligar e a tarefa da Fase 7: `lagarto/assets.py`
-(`resource_path`/`_MEIPASS`, lazy, `.convert_alpha()` so apos `display.init`,
-fallback `icons.draw`) + `build.py --add-data`.
+## Ligado ao jogo (`lagarto/assets.py`)
+
+`icons.draw(surf, key, center, radius, color, glow)` tenta `assets.icon(key,
+radius*2)` primeiro: carrega o PNG **preguicosamente** (`resource_path` ciente de
+`sys._MEIPASS` p/ build do PyInstaller, senao raiz do repo), `.convert_alpha()`
+**so na 1a chamada** (ja depois de `display.init`, nunca no import) e escala com
+`smoothscale` pro diametro pedido, cacheado por `(key, diametro)` (teto 300,
+`clear()` ao estourar — mesmo padrao do `palette._GLOW_CACHE`). Se nao existir
+PNG pro id, devolve `None` e `icons.draw` cai no desenhador procedural de sempre
+— **nunca quebra pra id novo**, e uma build sem `assets/` (stripped) roda igual.
+
+**Por que bakear cor fixa no PNG e seguro:** todo call site de `icons.draw` passa
+a MESMA cor pro mesmo id sempre (o hue proprio da arma/mutacao/charm — `w.color`,
+`card.color`, `ch.color` — nunca varia por instancia/frame). Confirmado por grep
+nos 6 call sites (`game.py`x5, `menu.py`x2) antes de ligar.
+
+**Verificado em runtime real** (nao so isolado): screenshot do HUD (chips de
+arma equipada) e de uma carta de EVOLUIR mostrando `xp.png` (estrela do lote 4)
+dentro da carta de verdade, com glow/escala/centralizacao corretos; ids sem PNG
+(`venom`, `wings`) caem no procedural na mesma tela, sem diferenca visual de
+qualidade. `--smoke 600` verde.
+
+## Ainda faltando (Fase 7)
+- `assets/props/tent_beetle.png` **nao esta ligado** ao desenho da tenda
+  (`game._draw_camp_pois` continua 100% procedural, com a animacao de queda do
+  ceu) — trocar exigiria integrar o PNG com o sistema de drop-in/sombra/glow,
+  mais invasivo, nao feito ainda.
+- `build.py --add-data` p/ empacotar `assets/` no executavel do PyInstaller.
+- Nitidez: pre-escala NEAREST por fator inteiro antes do `present()` borrar
+  (hoje `assets.icon` usa `smoothscale`, correto p/ escala arbitraria mas
+  suaviza um pouco a 2x/3x — aceito por ora, mesmo trade-off do resto da UI).

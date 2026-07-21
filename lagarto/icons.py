@@ -9,6 +9,7 @@ fall back to a plain disc, so adding content never crashes the UI.
 import math
 import pygame
 
+from . import assets
 from . import config as C
 from . import palette
 from .mathutil import vfrom_angle
@@ -496,11 +497,22 @@ ICONS = {
 
 
 def draw(surf, key, center, radius, color, glow=True):
-    """Draw icon ``key`` centred at ``center`` with ``radius`` in ``color``."""
+    """Draw icon ``key`` centred at ``center`` with ``radius`` in ``color``.
+
+    Tries the pixel-art PNG (Fase 7, ``assets/icons/``) first -- its colour is
+    baked in per id, which is safe because every call site here passes the
+    SAME fixed hue for a given id (a weapon/mutation/charm's own colour), never
+    a per-instance tint. Falls back to the procedural drawer when no PNG ships
+    (a stripped build, or an id with art not made yet) -- unknown ids never crash.
+    """
     c = (int(center[0]), int(center[1]))
     r = int(radius)
     if glow:
         palette.glow(surf, c, r * 1.9, color, 0.35)
+    png = assets.icon(key, r * 2)
+    if png is not None:
+        surf.blit(png, png.get_rect(center=c))
+        return
     fn = ICONS.get(key)
     if fn is None:
         _disc(surf, c, r, color)

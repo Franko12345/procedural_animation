@@ -27,8 +27,13 @@ binários a um Release quando você empurra uma tag `v*`.
 Dependências (`requirements.txt`): **`pygame-ce`** (community edition — mesma API e já
 traz o `mixer`, necessário p/ som), `numpy` (numpy = **síntese de áudio**; os
 loops quentes usam `math` + `pygame.Vector2`). Teste headless: prefixe
-`SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy`. **O jogo não usa nenhum arquivo de
-asset** — arte, ícones, som e música são todos gerados em código.
+`SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy`. **A invariante "zero assets" foi
+quebrada de propósito na Fase 7** (`assets/` + `lagarto/assets.py`): ícones de
+armas/mutações/charms agora preferem um PNG pixel art quando existe, com
+fallback para o desenho procedural de sempre (`icons.draw`) — uma build sem a
+pasta `assets/` (ou um id sem PNG) roda idêntica, então som/música seguem 100%
+sintetizados e o resto da arte (corpo do lagarto, mundo, partículas) continua
+gerado em código.
 
 ## Arquitetura (pacote `lagarto/`)
 
@@ -41,7 +46,8 @@ Um módulo por responsabilidade — mantenha assim; não volte para arquivo úni
 | `settings.py` | `~/.lagarto/settings.json` (tela cheia/escala/vsync/volumes). Tolerante a arquivo corrompido. |
 | `fonts.py` | Escolhe a melhor fonte instalada (Noto Sans etc.) com cache por tamanho. |
 | `ui.py` | Kit visual: `panel`, `chip`, `list_menu`, `tabs`, `paragraph`, `footer`, `fit`, `Fade` e **`drop_in`** (entrada escalonada — use em toda tela nova). |
-| `icons.py` | **Ícones procedurais** (armas/mutações/charms) desenhados em código — usados em cartas, HUD, loja, charms e compêndio. |
+| `icons.py` | **Ícones**: tenta PNG (`assets.py`) primeiro, cai para desenho procedural — usados em cartas, HUD, loja, charms e compêndio. |
+| `assets.py` | **Fase 7**: carrega PNGs de `assets/` (lazy, `_MEIPASS`-aware), escala+cacheia por `(id, diâmetro)`. `None` se faltar o arquivo — nunca quebra. |
 | `audio.py` | **Som sintetizado com numpy**: 12 SFX + 3 trilhas generativas (calma/combate/chefe). Degrada p/ mudo se não houver mixer. |
 | `mathutil.py` | Helpers de vetor/ângulo (`math` + `Vector2`, **não numpy** nos loops quentes). |
 | `palette.py` | Cor HSV (`vibrant`, `random_in_family`), lighten/darken/mix, e **glow aditivo cacheado** (`glow`, `BLEND_RGB_ADD`) p/ o rim/brilho. |
