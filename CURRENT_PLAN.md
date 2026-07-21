@@ -132,11 +132,47 @@ Playtest: cauda esticando MUITO ao mover + streaks gigantes no menu. Duas causas
 - [x] Verificado: `--smoke 400` verde, teste dirigido tank/spider/octopus 180
       frames sem NaN, `test_boss.py` ainda passa com os dials de chefe.
 
-### Fase B (01 §5,9 — a fazer)
-- [ ] Phase offsets generalizados (`PhaseOscillator` já existe, falta aplicar em
-      espinhos/barbatanas além da centopeia que já tem onda metacronal)
-- [ ] Procedural posing por contexto (mood -> postura) — depende do mood system
-      da Fase 02/06 abaixo, faz mais sentido junto
+### Fase B (01 §5,6 — feito)
+- [x] **Onda viajante na cauda** (§5 — só faltava esta; espinhos/nadadeiras/chifres
+      já tinham fase-offset): ripple lateral por índice de junta, somado por
+      cima do overshoot no MESMO `_cosmetic_joints()` (draw-only, cap próprio
+      pequeno — não reabre o bug de esticar).
+- [x] **Spline Catmull-Rom** (§6/7): `Spine.outline_smooth`/`body_polygon_smooth`
+      (`SMOOTH_SUBDIV=3`) suaviza a silhueta do corpo `plan='normal'` sem mover
+      as juntas físicas (hit-test/pernas/olhos continuam exatos). Custo medido:
+      +0,17ms em 13 inimigos (~0,013ms/criatura) — ruído, não regressão.
+- [ ] Ground Adaptation (§4) — **decisão de arquitetura, não pendência**: jogo é
+      top-down flat, sem campo de altura; ver nota acima.
+
+### Fase C (01 §3,11 — feito, versão enxuta)
+- [x] **Spring-damper real em chifres** (§3, tabela cita stiffness=16/damping=0.85
+      — usado ao pé da letra): `head_dir_spring` (`Vector2Spring`) persegue a
+      direção da cabeça; a defasagem vira "lean" em `draw_horns` — chifre
+      atrasa de verdade numa curva rápida, não é mais só seno de idle.
+      **Um terceiro call site já apareceria congelado** (mesma armadilha do
+      `tail_spring`) — extraído `Lizard.update_secondary_springs`/
+      `reset_secondary_springs`, ponto único que os 3 bypasses do `menu.py` e o
+      `integrate()` chamam, em vez de reimplementar de novo.
+- [x] **Personalidade emergente (§11), versão grounded**: em vez de um sistema
+      de mood genérico sem consumidor, reusa o mood que `BossAI` já calcula —
+      `AILizard._apply_mood_pose` escala a `stiffness` de `tail_spring`/
+      `head_dir_spring` pelo mood (`BOSS_MOOD_SPRING_MULT`): calm = solto,
+      enraged/cornered = tenso/nervoso. Zero desenho novo, mesmas molas reagem
+      mais rápido. Testado: chefe encurralado mede stiffness 14.0 (base 10 ×
+      1.4), mood 'cornered' correto.
+- [ ] **"Dois esqueletos" genérico (§10), full `CosmeticSkeleton`** — decisão:
+      NÃO construído como classe própria. Tentáculo/centopeia já resolveram o
+      problema de corpo contínuo do jeito deles (`_arm_polygon`/segmentos);
+      tail_spring+head_dir_spring já são, na prática, uma camada cosmética
+      separada da simulação para os dois casos que existem hoje. Sem um 3º
+      consumidor concreto, uma classe genérica é infra sem chamador — YAGNI.
+      Revisitar se/quando um chefe pedir uma cosmética própria mais rica
+      (ANKH "dissolve em partículas" é candidato natural).
+- [ ] `anim.SpringDamper`/`PhaseOscillator`/`Anticipation` (1D genéricos) —
+      ainda SEM uso (só `Vector2Spring` está em produção). Não removidos ainda
+      porque `Anticipation` tem candidato óbvio (wind-up de `_ai_lunge`/
+      `_ai_ranged`, hoje cada um com seu próprio decremento manual de timer) —
+      mas não forçado neste commit para não crescer o escopo sem necessidade.
 
 ### Fase 02: BossAI 2.0 (parcial)
 - [x] Mood system (`calm/agitated/enraged/frustrated/cornered`, `BossAI._update_mood`)

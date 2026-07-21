@@ -32,6 +32,14 @@ TAIL_SPRING_MAX_LAG = 0.45      # cap on overshoot, as a fraction of max_r -- a
                                 # turns a dash (or any large jump, e.g. a menu
                                 # backdrop lizard being repositioned) into a
                                 # tail stretched way past the body's own length
+TAIL_SPRING_STIFFNESS = 10.0
+HEAD_SPRING_STIFFNESS = 16.0
+# Personality via animation (plans/01 #11): a boss's mood (already computed by
+# BossAI for pattern/speed choice) also tightens its own secondary-motion
+# springs -- calm reads loose/idle, enraged/cornered reads tense/twitchy.
+# Nothing new to draw, the same springs just react faster.
+BOSS_MOOD_SPRING_MULT = {'calm': 1.0, 'agitated': 1.25, 'enraged': 1.6,
+                         'frustrated': 1.15, 'cornered': 1.4}
 
 TAU = C.TAU
 
@@ -116,9 +124,16 @@ class Lizard:
             if keep_pose and getattr(self, 'tail_spring', None) is not None:
                 self.tail_spring.target = tip     # keep momentum across a rebuild
             else:
-                self.tail_spring = Vector2Spring(tip, stiffness=10, damping=0.75)
+                self.tail_spring = Vector2Spring(tip, stiffness=TAIL_SPRING_STIFFNESS, damping=0.75)
+            hd = self.spine.head_dir()
+            if not (keep_pose and getattr(self, 'head_dir_spring', None) is not None):
+                # secondary motion for horns (plans/01 #3, stiffness/damping from
+                # its own table): tracks where the head WAS pointing a moment ago,
+                # so a quick turn leaves horns lagging behind like hair blown back
+                self.head_dir_spring = Vector2Spring(hd, stiffness=HEAD_SPRING_STIFFNESS, damping=0.85)
         else:
             self.tail_spring = None
+            self.head_dir_spring = None
         self.legs = self._build_legs(g, n, maxr)
         for leg in self.legs:
             leg.init_foot(self.spine)
@@ -322,9 +337,7 @@ class Lizard:
             leg.update(self.spine, self.vel, dt, on_plant)
         if self.arms:
             self._resolve_arms(dt)
-        if self.tail_spring is not None:
-            self.tail_spring.target = self.spine.joints[-1]
-            self.tail_spring.update(dt)
+        self.update_secondary_springs(dt)
 
         if self.genome.linear_damping > 0:
             self.vel *= math.exp(-self.genome.linear_damping * 3.0 * dt)
@@ -338,6 +351,33 @@ class Lizard:
         self.hit_flash = max(0.0, self.hit_flash - dt * 3)
         self.attack_cd = max(0.0, self.attack_cd - dt)
         self.slow_t = max(0.0, self.slow_t - dt)
+
+    def update_secondary_springs(self, dt):
+        """Advance every cosmetic spring that chases the physical body.
+
+        A single choke point on purpose: this project has hit "a second call
+        site forgot to update the new state" three times already (the menu's
+        3 hand-rolled ``integrate()`` subsets all forgot ``tail_spring``, see
+        CURRENT_PLAN.md). Any bypass of ``integrate()`` (menu backdrops,
+        bestiary/char-select previews) MUST call this too, and adding a new
+        spring later only means touching this one method.
+        """
+        if self.tail_spring is not None:
+            self.tail_spring.target = self.spine.joints[-1]
+            self.tail_spring.update(dt)
+        if self.head_dir_spring is not None:
+            self.head_dir_spring.target = self.spine.head_dir()
+            self.head_dir_spring.update(dt)
+
+    def reset_secondary_springs(self):
+        """Snap every cosmetic spring to the current pose -- call after
+        teleporting/repositioning a creature outside of normal movement, or
+        the spring spends its next few frames chasing a stale anchor."""
+        if self.tail_spring is not None:
+            self.tail_spring.value = self.tail_spring.target = Vector2(self.spine.joints[-1])
+        if self.head_dir_spring is not None:
+            hd = self.spine.head_dir()
+            self.head_dir_spring.value = self.head_dir_spring.target = Vector2(hd)
 
     def _cosmetic_joints(self):
         """Physical joints with the last few tail joints blended toward
@@ -360,9 +400,13 @@ class Lizard:
         cap = self.max_r * TAIL_SPRING_MAX_LAG
         if lag.length_squared() > cap * cap:
             lag.scale_to_length(cap)
-        for i in range(n - k, n):
+        wave_amp = self.max_r * 0.12    # traveling ripple (plans/01 #5), on top
+        for i in range(n - k, n):       # of the overshoot -- both draw-only
             t = (i - (n - k - 1)) / k          # ramps 0 -> 1 toward the tip
-            js[i] = js[i] + lag * t
+            fwd = safe_norm(js[i] - js[i + 1]) if i < n - 1 else safe_norm(js[i - 1] - js[i])
+            perp = Vector2(-fwd.y, fwd.x)
+            ripple = perp * (wave_amp * t * math.sin(self.wobble * 2.2 - i * 0.9))
+            js[i] = js[i] + lag * t + ripple
         return js
 
     # ---- drawing -------------------------------------------------------- #
@@ -398,7 +442,7 @@ class Lizard:
             self._draw_segmented(surf, cam)
             return
 
-        poly = [cam.w2s(p) for p in self.spine.body_polygon(squish, self._cosmetic_joints())]
+        poly = [cam.w2s(p) for p in self.spine.body_polygon_smooth(squish, self._cosmetic_joints())]
         if len(poly) >= 3:
             base = self.color
             if self.hit_flash > 0:
@@ -1350,6 +1394,7 @@ class AILizard(Lizard):
                     d, speed = self._ai_grapple(dt, game, target)
                 elif beh == 'boss' and self.boss_ai is not None:
                     d, speed = self.boss_ai.tick(dt, game)
+                    self._apply_mood_pose()
                 else:
                     d, speed = self._ai_melee(dt, game, target)
             elif 'prey' in self.genome.diet:
@@ -1639,6 +1684,17 @@ class AILizard(Lizard):
             self.grapple_t = C.OCTO_WINDUP
             self.grapple_cd = C.OCTO_CD
         return to, 1.0                              # commit to closing (it is slow anyway)
+
+    def _apply_mood_pose(self):
+        """Personality via animation (plans/01 #11): bias the SAME secondary
+        springs that already draw the tail/horns by the boss's current mood --
+        calm stays loose, enraged/cornered snap back faster and read tense,
+        with zero new state or draw calls."""
+        mult = BOSS_MOOD_SPRING_MULT.get(self.boss_ai.mood, 1.0)
+        if self.tail_spring is not None:
+            self.tail_spring.stiffness = TAIL_SPRING_STIFFNESS * mult
+        if self.head_dir_spring is not None:
+            self.head_dir_spring.stiffness = HEAD_SPRING_STIFFNESS * mult
 
     def explode(self, game):
         """Bomber blast: one hit per victim, radius damage, then the bomber dies.

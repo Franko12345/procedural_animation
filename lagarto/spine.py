@@ -7,7 +7,9 @@ one, and its direction is clamped so the body cannot kink onto itself.
 
 from pygame import Vector2
 
-from .mathutil import angle_of, clamp_angle, vfrom_angle, safe_norm, lerp
+from .mathutil import angle_of, clamp_angle, vfrom_angle, safe_norm, lerp, catmull_rom
+
+SMOOTH_SUBDIV = 3   # extra points per segment for the smoothed outline (plans/01 #6)
 
 # thickness profile sampled along the body (head -> tail); kept above zero at the
 # tail so the two body rims never cross into a sharp "blade".
@@ -62,6 +64,40 @@ class Spine:
             left.append(j[i] + perp)
             right.append(j[i] - perp)
         return left, right
+
+    def _smooth_samples(self, joints=None):
+        """Denser (pos, radius) samples via Catmull-Rom -- softens the visible
+        polygon facets of a low-joint-count body without moving the physical
+        joints themselves (hit-test/legs/eyes still read ``self.joints``)."""
+        j = joints if joints is not None else self.joints
+        rad = self.radii
+        n = len(j)
+        pts, radii = [j[0]], [rad[0]]
+        for i in range(n - 1):
+            p0, p1, p2 = j[max(0, i - 1)], j[i], j[i + 1]
+            p3 = j[min(n - 1, i + 2)]
+            for s in range(1, SMOOTH_SUBDIV + 1):
+                t = s / SMOOTH_SUBDIV
+                pts.append(catmull_rom(p0, p1, p2, p3, t))
+                radii.append(lerp(rad[i], rad[i + 1], t))
+        return pts, radii
+
+    def outline_smooth(self, scale=1.0, joints=None):
+        """Same as ``outline()`` but along the Catmull-Rom-subdivided chain."""
+        pts, radii = self._smooth_samples(joints)
+        left, right = [], []
+        m = len(pts)
+        for i in range(m):
+            fwd = safe_norm(pts[i] - pts[i + 1]) if i < m - 1 else safe_norm(pts[i - 1] - pts[i])
+            perp = Vector2(-fwd.y, fwd.x) * (radii[i] * scale)
+            left.append(pts[i] + perp)
+            right.append(pts[i] - perp)
+        return left, right
+
+    def body_polygon_smooth(self, scale=1.0, joints=None):
+        """Single non-self-crossing ring around the whole body, smoothed."""
+        left, right = self.outline_smooth(scale, joints)
+        return left + self.tail_cap(scale, joints) + right[::-1] + self.head_cap(scale)
 
     def _cap(self, center, outward, r, reverse):
         """Semicircle of points around ``center`` opening along ``outward``."""

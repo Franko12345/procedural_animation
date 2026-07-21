@@ -45,3 +45,15 @@ def ease_out(t):
 def safe_norm(v):
     l = v.length()
     return Vector2(v) / l if l > 1e-6 else Vector2(1, 0)
+
+
+def catmull_rom(p0, p1, p2, p3, t):
+    """Point at ``t`` in [0,1] on the segment between ``p1`` and ``p2``,
+    curved by the two neighbours ``p0``/``p3`` -- passes exactly through every
+    control point, unlike Bezier (plans/01 #6, smooths a joint-chain body
+    outline without moving the joints themselves)."""
+    t2 = t * t
+    t3 = t2 * t
+    return 0.5 * ((2 * p1) + (-p0 + p2) * t
+                  + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2
+                  + (-p0 + 3 * p1 - 3 * p2 + p3) * t3)

@@ -81,6 +81,12 @@ def draw_horns(surf, cam, creature):
     perp = Vector2(-d.y, d.x)
     r = creature.max_r
     fill = palette.lighten(creature.color, 0.25)
+    # real secondary motion (plans/01 #3): head_dir_spring lags a beat behind
+    # the actual head direction, so this is ~0 moving straight and grows
+    # during a turn -- horns lean toward where the head WAS pointing, like
+    # hair blown back, instead of an idle canned wave
+    hds = getattr(creature, 'head_dir_spring', None)
+    lean = (hds.value - d) * 0.5 if hds is not None else Vector2()
     for k in range(min(g.horns, 3)):
         spread = 0.3 + k * 0.24
         # phase-offset sway (plans/01 #5): taller/farther horns lag a bit more,
@@ -88,9 +94,9 @@ def draw_horns(surf, cam, creature):
         sway = math.sin(creature.wobble * 1.6 + k * 0.9) * 0.12
         for s in (-1, 1):
             base = head + perp * (s * r * spread) - d * (r * 0.05)
-            out = safe_norm(d * 0.85 + perp * (s * (0.4 + sway)))
+            out = safe_norm(d * 0.85 + perp * (s * (0.4 + sway)) + lean)
             mid = base + out * (r * 0.72)
-            tipdir = safe_norm(d * 0.95 - perp * (s * (0.12 - sway * 1.5)))
+            tipdir = safe_norm(d * 0.95 - perp * (s * (0.12 - sway * 1.5)) + lean * 1.4)
             tip = mid + tipdir * (r * 0.7)
             wv = perp * (s * r * 0.17)
             _poly(surf, cam, [base + wv, mid + wv * 0.5, tip, mid - wv * 0.5, base - wv],
