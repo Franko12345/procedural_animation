@@ -467,6 +467,11 @@ cura/pólen/carta; atravessá-la chama `rounds.request_next(theme)` via `_apply_
   com uma compra em absorção (`self.pick`), **não** durante o drop-in (senão não dava pra sair
   por 0,36 s). Entrar limpa presas/projéteis/poças (`_enter_camp`) — clareira limpa, sem presa
   congelada travada numa porta (não atualizo presas no camp).
+- **A barraca e as portas CAEM do céu** (juice): cada peça despenca de `CAMP_DROP_H` acima,
+  ease-**in** (acelera e bate), escalonadas (`_camp_drop_off`). No toque no chão,
+  `_camp_impact` dispara **shake + poeira + faíscas + anel** (`_update_camp_drop`, uma vez por
+  peça). Enquanto cai, uma **sombra cresce** no ponto de pouso (telegrafo). **Interação é
+  travada até pousar** (`tent_landed`/`dr['landed']`) — não dá pra entrar numa porta no ar.
 - **Navegação da loja — um modelo só p/ teclado e gamepad** (`app._camp_nav`), agora só
   **loja → charms** (a rota virou porta física). Charms em grade, uma coluna por slot
   (`C.CHARM_SLOTS`): cada charm **sob o cabeçalho do seu slot**; esq/dir troca coluna (pula

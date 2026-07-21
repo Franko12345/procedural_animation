@@ -192,6 +192,12 @@ CAMP_REOPEN_CD = 0.7     # respiro apos fechar a loja (nao reabre no mesmo passo
 CAMP_TENT_OFF = (-260, 40)     # posicao da barraca relativa ao centro da clareira
 CAMP_DOOR_SPAN = 285     # espacamento entre as 3 portas
 CAMP_DOOR_UP = 215       # o quanto as portas ficam "a frente" (para cima) do centro
+# a barraca e as portas CAEM do ceu ao entrar no acampamento (juice: shake + poeira)
+CAMP_DROP_H = 900        # altura inicial (mundo) de onde tudo despenca -- fora da tela
+CAMP_DROP_DUR = 0.40     # duracao da queda de cada peca
+CAMP_TENT_DELAY = 0.12   # a barraca cai primeiro
+CAMP_DOOR_DELAY = 0.30   # 1a porta; as outras escalonam por CAMP_DOOR_STAGGER
+CAMP_DOOR_STAGGER = 0.14
 
 # --- ritmo das telas de jogo (level-up / acampamento) ---------------------- #
 UI_VEIL = 0.20           # fade do fundo escuro antes de qualquer conteudo

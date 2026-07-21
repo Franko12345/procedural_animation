@@ -511,11 +511,14 @@ class Game:
         doors = []
         for i, r in enumerate(routes):
             dx = (i - (n - 1) / 2) * C.CAMP_DOOR_SPAN
-            doors.append(dict(pos=center + Vector2(dx, -C.CAMP_DOOR_UP), route=r))
+            doors.append(dict(pos=center + Vector2(dx, -C.CAMP_DOOR_UP), route=r,
+                              delay=C.CAMP_DOOR_DELAY + i * C.CAMP_DOOR_STAGGER,
+                              landed=False))
         self.camp = dict(routes=routes, shop=self._roll_shop(), sel=0,
                          focus='shop', shop_sel=0, charm_col=0, charm_row=0,
                          mode='field', center=center, tent=tent, doors=doors,
-                         reopen_cd=C.CAMP_REOPEN_CD)
+                         reopen_cd=C.CAMP_REOPEN_CD,
+                         born=self.time, tent_delay=C.CAMP_TENT_DELAY, tent_landed=False)
         self._route_rects = []
         self._shop_rects = []
         self._charm_rects = []
@@ -600,8 +603,9 @@ class Game:
         self.fx.update(dt)
         self.combo_flash = max(0.0, self.combo_flash - dt * 2)
         self.camp['reopen_cd'] = max(0.0, self.camp.get('reopen_cd', 0.0) - dt)
-        # touch the tent -> open the shop
-        if self.camp['reopen_cd'] <= 0:
+        self._update_camp_drop()              # the pieces fall in with a slam
+        # touch the tent -> open the shop (only once it has landed)
+        if self.camp['reopen_cd'] <= 0 and self.camp['tent_landed']:
             for p in self.players:
                 if not p.dead and p.pos.distance_to(self.camp['tent']) < C.CAMP_TENT_R:
                     self.camp['mode'] = 'shop'
@@ -612,6 +616,8 @@ class Game:
                     return
         # cross a door -> take that route (Hades: doors commit, no menu)
         for i, dr in enumerate(self.camp['doors']):
+            if not dr['landed']:
+                continue
             for p in self.players:
                 if not p.dead and p.pos.distance_to(dr['pos']) < C.CAMP_DOOR_R:
                     self.fx.spark_burst(dr['pos'], C.COL_ENEMY, 18, 320)
@@ -626,6 +632,38 @@ class Game:
             self.camp['mode'] = 'field'
             self.camp['reopen_cd'] = C.CAMP_REOPEN_CD
             audio.play('ui', 0.5)
+
+    def _camp_drop_off(self, delay):
+        """World-y offset of a camp piece as it falls in (negative = still up in
+        the air). Ease-IN so it accelerates and SLAMS down."""
+        t = (self.time - self.camp['born']) - delay
+        if t <= 0:
+            return -C.CAMP_DROP_H
+        if t >= C.CAMP_DROP_DUR:
+            return 0.0
+        f = t / C.CAMP_DROP_DUR
+        return -C.CAMP_DROP_H * (1.0 - f * f)
+
+    def _camp_impact(self, pos, big):
+        """The juice when a piece hits the ground: shake + dust + sparks + ring."""
+        self.shake(15 if big else 9)
+        self.fx.burst(pos, (150, 120, 84), 30 if big else 18, 380)
+        self.fx.spark_burst(pos, (224, 202, 150), 18 if big else 11, 400)
+        self.fx.ring(pos, (214, 184, 124))
+        if big:
+            self.fx.ring(pos, (245, 232, 210))
+        audio.play('hit', 0.65 if big else 0.45)
+
+    def _update_camp_drop(self):
+        """Fire the landing juice once, as each piece touches down."""
+        elapsed = self.time - self.camp['born']
+        if not self.camp['tent_landed'] and elapsed >= self.camp['tent_delay'] + C.CAMP_DROP_DUR:
+            self.camp['tent_landed'] = True
+            self._camp_impact(self.camp['tent'], big=True)
+        for dr in self.camp['doors']:
+            if not dr['landed'] and elapsed >= dr['delay'] + C.CAMP_DROP_DUR:
+                dr['landed'] = True
+                self._camp_impact(dr['pos'], big=False)
 
     def camp_equip(self, cid):
         if self.ui_busy():
@@ -1697,8 +1735,12 @@ class Game:
             if not cam.visible(pos, 220):
                 continue
             col = palette.vibrant(self._DOOR_HUES[i % 3], 0.7, 1.0)
-            sp = cam.w2s(pos)
-            hot = self._near_player(pos, C.CAMP_DOOR_R * 2.4)
+            off = self._camp_drop_off(dr['delay'])       # falling in from the sky
+            if off < -2:                                 # growing shadow marks the landing
+                prog = 1.0 - min(1.0, -off / C.CAMP_DROP_H)
+                shadow(surf, cam.w2s(pos), int(34 * z * (0.4 + 0.6 * prog)))
+            sp = cam.w2s(pos + Vector2(0, off))
+            hot = dr['landed'] and self._near_player(pos, C.CAMP_DOOR_R * 2.4)
             pulse = 0.5 + 0.5 * math.sin(t * 3 + i)
             w, h = int(66 * z), int(108 * z)
             rad = int(w * 0.5)
@@ -1723,8 +1765,12 @@ class Game:
         # ---- tent (shop) ---- #
         pos = self.camp['tent']
         if cam.visible(pos, 260):
-            sp = cam.w2s(pos)
-            hot = self._near_player(pos, C.CAMP_TENT_R)
+            off = self._camp_drop_off(self.camp['tent_delay'])
+            if off < -2:
+                prog = 1.0 - min(1.0, -off / C.CAMP_DROP_H)
+                shadow(surf, cam.w2s(pos), int(64 * z * (0.4 + 0.6 * prog)))
+            sp = cam.w2s(pos + Vector2(0, off))
+            hot = self.camp['tent_landed'] and self._near_player(pos, C.CAMP_TENT_R)
             pulse = 0.5 + 0.5 * math.sin(t * 2.4)
             gold = C.COL_POLLEN
             w = int(120 * z)
