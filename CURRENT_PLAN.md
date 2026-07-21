@@ -74,6 +74,21 @@ Regra: paro sempre numa fronteira jogável; `--smoke` verde antes de cada commit
 - [ ] Stems por intensidade via `/music-generator`; mixar ao vivo por vida/inimigos/combo/chefe
 - [ ] Carregar se existir, senão fallback synth numpy (headless/CI verdes)
 
-## Fase 7: arte PNG
-- [ ] `assets/` + `lagarto/assets.py` (`_MEIPASS`, lazy, fallback `icons.draw`)
-- [ ] Ícones sem colisão de forma, legíveis de r=8 a r=30
+## Fase 7: arte PNG (EM ANDAMENTO — geração de assets)
+Pedido do usuario: gerar assets com o skill /pixel-art-gen. Icones 16/32, coisas
+detalhadas (loja do besouro etc.) em 64/80. Mais organico, curvas, AA.
+- [x] Ferramenta de autoria `pxgen.py` (scratchpad): shapes como mascaras de cobertura
+      (supersample) + pintura de volume rampa-4 (highlight/base/shade/edge) + AA manual
+      na borda + contorno **sel-out** (tom escuro do fill, nao preto). Emite JSON do skill
+      e chama `render_pixel_art.py`. Guia: Pixel Parmesan / Lospec / Pixnote.
+- [x] Lote 2 (32x32 + 80): coin_pollen, health (coracao), cuspe (glob veneno),
+      tent_beetle (loja). Sombreamento esferico, curvas orgânicas. **Aprovado o estilo.**
+      Scripts: `scratchpad/pxgen.py` + `batch2.py`. PNGs em scratchpad.
+- [ ] Gerar restante dos **8 icones de arma** (ferrao/teia/esporos/feromonio/sopro/enxame/
+      acido) + mutacoes/charms, mesmos ids de `icons.py` (fallback disco nunca quebra).
+- [ ] **Pipeline** `assets/` no repo + `lagarto/assets.py` (`resource_path`/`_MEIPASS`, lazy,
+      `.convert_alpha()` so apos `display.init`, fallback `icons.draw`). `build.py --add-data`.
+- [ ] Nitidez: pre-escala NEAREST por fator inteiro antes do `present()` borrar.
+
+Nota: os PNGs ainda **nao estao ligados** ao jogo (falta `assets.py`). Gerar primeiro,
+ligar depois. Manter os geradores no repo (reproduzivel, zero-asset ainda roda).
