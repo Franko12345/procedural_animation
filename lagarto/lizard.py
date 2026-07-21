@@ -68,6 +68,13 @@ class Lizard:
         self.facing = Vector2(1, 0)
         self.color = color or g.color()
         self.squash = 1.0
+        self.squat_bias = 1.0    # anticipation hook (plans/01 #8): a caller sets
+                                 # this < 1 every frame of its own wind-up window
+                                 # (hop/lunge/ranged/dash); integrate() multiplies
+                                 # it into the squash TARGET and decays it back to
+                                 # 1.0 on its own once the caller stops touching it
+                                 # -- composes with the speed-based squash instead
+                                 # of fighting it frame-to-frame
         self.wobble = random.uniform(0, TAU)
         self.hit_flash = 0.0
         self.attack_cd = 0.0
@@ -344,9 +351,9 @@ class Lizard:
 
         spd = self.vel.length()
         w = self.genome.weight
-        self.squash = approach(self.squash,
-                               1.0 + clamp(spd / self.max_speed, 0, 1.6) * 0.16 / w,
-                               9 / math.sqrt(w), dt)
+        target_squash = (1.0 + clamp(spd / self.max_speed, 0, 1.6) * 0.16 / w) * self.squat_bias
+        self.squash = approach(self.squash, target_squash, 9 / math.sqrt(w), dt)
+        self.squat_bias = approach(self.squat_bias, 1.0, 6, dt)  # decays if no one re-asserts it
         self.wobble += dt * 6
         self.hit_flash = max(0.0, self.hit_flash - dt * 3)
         self.attack_cd = max(0.0, self.attack_cd - dt)
@@ -1445,6 +1452,7 @@ class AILizard(Lizard):
 
         if self.shoot_charge > 0:                 # telegraph -> gives time to dodge
             self.shoot_charge -= dt
+            self.squat_bias = 0.88                # coiling to spit -- see integrate()
             if random.random() < dt * 26:
                 game.fx.burst(mouth, palette.lighten(self.color, 0.3), 1, 50)
             if self.shoot_charge <= 0:
@@ -1469,9 +1477,11 @@ class AILizard(Lizard):
         to = safe_norm(target.pos - self.pos)
         if self.lunge_t > 0:              # telegraphing (wind-up)
             self.lunge_t -= dt
+            self.squat_bias = 0.8          # crouching to pounce -- see integrate()
             if self.lunge_t <= 0:
                 self.vel = to * self.max_speed * 3.2      # pounce!
                 self.lunge_t = -0.25
+                self.squat_bias = 1.55     # explode out of the crouch
                 game.fx.spark_burst(self.pos, self.color, 8, 260)
             return Vector2(), 0.0
         if self.lunge_t < 0:             # mid-pounce, coast
@@ -1731,10 +1741,13 @@ class AILizard(Lizard):
     def _hop(self, dt):
         # frogs: periodic forward hops instead of a smooth glide
         self.wander_t -= dt
+        if 0 < self.wander_t < 0.15:           # about to launch -- crouch first
+            self.squat_bias = 0.82
         if self.wander_t <= 0:
             self.wander_t = random.uniform(0.7, 1.3)
             self.wander = vfrom_angle(random.uniform(0, 360))
             self.vel += self.wander * self.max_speed * 1.4
+            self.squat_bias = 1.5              # pop out of the crouch on launch
         return Vector2()
 
     def _draw_weakpoint(self, surf, cam):

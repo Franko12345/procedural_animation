@@ -281,6 +281,51 @@ cadência do jogo.
       Sísmico), `wall` (Muralha) — crystal reusa `segmented` com estética nova
 - [ ] Gerar pixel art só se necessário no caminho (ícones novos, não sprites do bicho)
 
+### Sistema de pool de chefes (Isaac-style) — feito
+Pedido do usuário: em vez de 1 chefe fixo por onda, cada "andar" tem um POOL de
+chefes possíveis, sorteado por run (igual Isaac: cada bioma tem 2 chefes
+candidatos). Refatorado `rounds.NAMED_BOSSES` (tier→1 chefe) para
+`rounds.BOSS_POOL` (id→dados, chefe-agnóstico de onda) + `BOSS_TIER_POOLS`
+(lista de `(range de tiers, [ids elegíveis])`) + `_boss_pool_for_tier(tier)`.
+`_spawn_boss` sorteia `random.choice(pool_ids)` em vez de indexar por tier.
+- `BOSS_TIER_POOLS = [(range(1,4), ['rei_lagarto','centopeiadeira','kraken_mor'])]`
+  — onda 5/10/15 do modo normal agora sorteiam entre os 3, variando a cada run.
+- `BOSS_FINAL = 'primordial'` fica FORA do sorteio (`is_final` sempre usa ele
+  direto) — é o clímax fixo da run, não faz sentido ser aleatório.
+- Tiers sem pool (5+, só infinito) continuam caindo no chefe genérico de
+  sempre até ganharem entradas — próximos chefes entram nesse `BOSS_TIER_POOLS`
+  conforme forem escritos, não precisa esperar todos prontos.
+- Testado: 60 rolls na onda 5 → distribuição ~1/3 pra cada um dos 3 (19/20/21),
+  final sempre PRIMORDIAL, `--smoke` verde.
+
+### Doc 04 (mapeamento) — Anticipation aplicada (parcial, versão segura)
+Doc 04 pede `Anticipation` em dash/rabada/língua/IA. **Decisão**: não adicionar
+latência de input ao JOGADOR (dash/rabada/língua já disparam na borda do botão
+de propósito — é o sistema de input buffer documentado no CLAUDE.md; atrasar
+a ação do jogador pra "mostrar anticipation" pioraria o feel, não é isso que
+o doc quer dizer pra controles responsivos). Aplicado só onde já existe uma
+janela de espera (telegrafo) sem mudar QUANDO o ataque dispara — só como ele
+é visto chegando:
+- [x] `Lizard.squat_bias` novo (default 1.0): multiplica o ALVO do squash em
+      `integrate()` (que já existia, só por velocidade) e decai sozinho de
+      volta a 1.0 se ninguém mexer — quem quiser um agachamento antes de agir
+      só seta o valor todo frame da própria janela de espera JÁ existente, sem
+      brigar com o squash por velocidade (mesma lição do `tail_spring`: um
+      hook central, não reimplementação por chamador).
+- [x] Aplicado em 3 IAs que já tinham timer de espera mas nenhum squash:
+      `_ai_ranged` (agacha durante `shoot_charge`), `_ai_lunge` (agacha durante
+      `lunge_t`, explode ao saltar), `_hop` do sapo (agacha nos 0.15s antes do
+      salto, pop ao decolar).
+- [x] Chefes: `BossAI` seta `squat_bias` durante `'windup'` (qualquer padrão) e
+      solta ao disparar — telegrafo de TODO chefe ganha o mesmo "se encolhendo
+      pra atacar" de graça, sem tocar em nenhum boss individual.
+- [ ] `_ai_melee` continua sem wind-up — doc pede, mas mudaria o timing real do
+      dano de contato de TODOS os inimigos base (runner/tank/snake/etc.), um
+      rebalanceamento de fato, não só visual; não fiz sem pedido explícito.
+- [ ] Pose por estado de IA (caçando agachado/fugindo baixo/agressivo arqueado)
+      — não feito, é um sistema novo de verdade, não uma reutilização de timer
+      existente como os itens acima.
+
 ## Fase M: música adaptativa
 - [ ] Stems por intensidade via `/music-generator`; mixar ao vivo por vida/inimigos/combo/chefe
 - [ ] Carregar se existir, senão fallback synth numpy (headless/CI verdes)

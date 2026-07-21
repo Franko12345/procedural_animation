@@ -554,6 +554,8 @@ class BossAI:
 
         if self.state == 'windup':
             self.t -= dt
+            b.squat_bias = 0.85     # coiling for whatever's coming -- same
+                                    # anticipation hook regular AI wind-ups use
             if self.t <= 0:
                 pat = PATTERNS[self.pattern_id]
                 if pat.get('burrow'):
@@ -565,6 +567,7 @@ class BossAI:
                     self._grapple_seen_windup = False
                     return Vector2(), 0.0
                 pat['fn'](b, game, target)
+                b.squat_bias = 1.4   # release the coil
                 if self.pattern_id == 'summon':
                     self.summon_cd = C.BOSS_SUMMON_CD
                 if pat.get('charge'):

@@ -51,33 +51,52 @@ THEMES = {
 THEME_KEYS = list(THEMES.keys())
 BOSS_EVERY = 5          # a boss round every N waves
 
-# tier (wave // BOSS_EVERY) -> authored boss (plans/03_chefes_descricoes.md).
-# Tiers with no entry fall back to a random themed giant (the old behaviour) --
-# so adding one boss at a time never breaks the other boss waves.
-NAMED_BOSSES = {
-    1: dict(species='horned', name='REI LAGARTO', phases=lambda: bossai.king_phases(),
-            personality=lambda: bossai.king_personality(), scar=[0.75, 0.5, 0.25],
-            overrides=dict(hue=98, sat=0.72, val=0.85, spikes=2, horns=3, tail='club')),
-    # onda 10: doc 03 chama de "onda 7", mas o motor só rola chefe a cada
-    # BOSS_EVERY (5) ondas -- tier2 = onda 10 é o slot real seguinte.
-    2: dict(species='centipede', name='CENTOPEIADEIRA',
-            phases=lambda: bossai.centipede_phases(),
-            personality=lambda: bossai.centipede_personality(),
-            on_phase=bossai.centipede_on_phase, scar=None,
-            overrides=dict(hue=15, sat=0.25, val=0.55, length=1.7)),
-    # doc 03 chama de "onda 10" -- tier3 = onda15 e o proximo slot real
-    3: dict(species='octopus', name='KRAKEN-MOR',
-            phases=lambda: bossai.kraken_phases(),
-            personality=lambda: bossai.kraken_personality(),
-            scar=None, overrides=dict(hue=275, sat=0.75, val=0.5)),
-    # chave especial: is_final usa esta entrada em vez de tier (ver _spawn_boss)
-    'final': dict(species='horned', name='PRIMORDIAL',
-                  phases=lambda: bossai.primordial_phases(),
-                  personality=lambda: bossai.primordial_personality(),
-                  scar=None,
-                  overrides=dict(hue=18, sat=0.85, val=0.65, spikes=3, horns=3,
-                                plates=2, tail='club', wings=True, extra_eyes=2)),
+# All authored bosses (plans/03_chefes_descricoes.md), keyed by id -- NOT by
+# wave/tier. Isaac-style: a floor doesn't have ONE fixed boss, it has a POOL,
+# and which one shows up is rolled per run. See BOSS_TIER_POOLS below for who
+# is eligible where; a boss with no pool yet still just isn't picked (falls
+# back to the old random-themed-giant), so adding one at a time never breaks
+# the other boss waves.
+BOSS_POOL = {
+    'rei_lagarto': dict(species='horned', name='REI LAGARTO',
+                        phases=lambda: bossai.king_phases(),
+                        personality=lambda: bossai.king_personality(),
+                        scar=[0.75, 0.5, 0.25],
+                        overrides=dict(hue=98, sat=0.72, val=0.85, spikes=2,
+                                      horns=3, tail='club')),
+    'centopeiadeira': dict(species='centipede', name='CENTOPEIADEIRA',
+                           phases=lambda: bossai.centipede_phases(),
+                           personality=lambda: bossai.centipede_personality(),
+                           on_phase=bossai.centipede_on_phase, scar=None,
+                           overrides=dict(hue=15, sat=0.25, val=0.55, length=1.7)),
+    'kraken_mor': dict(species='octopus', name='KRAKEN-MOR',
+                       phases=lambda: bossai.kraken_phases(),
+                       personality=lambda: bossai.kraken_personality(),
+                       scar=None, overrides=dict(hue=275, sat=0.75, val=0.5)),
+    'primordial': dict(species='horned', name='PRIMORDIAL',
+                       phases=lambda: bossai.primordial_phases(),
+                       personality=lambda: bossai.primordial_personality(),
+                       scar=None,
+                       overrides=dict(hue=18, sat=0.85, val=0.65, spikes=3,
+                                     horns=3, plates=2, tail='club',
+                                     wings=True, extra_eyes=2)),
 }
+
+# tier (wave // BOSS_EVERY) -> which pool ids can be rolled there. Ranges,
+# not single tiers, so late/infinite tiers can share a pool without listing
+# every tier by hand. `range` end is exclusive, same as normal Python ranges.
+BOSS_TIER_POOLS = [
+    (range(1, 4), ['rei_lagarto', 'centopeiadeira', 'kraken_mor']),   # onda 5/10/15
+]
+BOSS_FINAL = 'primordial'   # is_final always this one -- the run's fixed climax,
+                           # not part of the roll (matches Isaac's true-final-boss)
+
+
+def _boss_pool_for_tier(tier):
+    for rng, ids in BOSS_TIER_POOLS:
+        if tier in rng:
+            return ids
+    return None
 
 
 class SpawnMark:
@@ -244,13 +263,18 @@ class RoundManager:
     def _spawn_boss(self):
         """A giant, glowing variant of a themed species: the round's centrepiece.
 
-        Tiers with an entry in ``NAMED_BOSSES`` get an authored fight (own
-        phase kit + personality + mechanic); everything else still falls back
-        to the original random-themed-giant path.
+        Isaac-style pool: a tier that has an entry in ``BOSS_TIER_POOLS`` rolls
+        ONE authored fight at random from its pool (own phase kit + personality
+        + mechanic) -- so the same wave can be a different boss run to run.
+        Tiers with no pool yet fall back to the original random-themed-giant.
         """
         g = self.game
         tier = self.wave // BOSS_EVERY
-        named = NAMED_BOSSES.get('final') if self.is_final else NAMED_BOSSES.get(tier)
+        if self.is_final:
+            named = BOSS_POOL[BOSS_FINAL]
+        else:
+            pool_ids = _boss_pool_for_tier(tier)
+            named = BOSS_POOL[random.choice(pool_ids)] if pool_ids else None
         if named:
             key = named['species']
         else:
