@@ -104,6 +104,15 @@ BOSS_POOL = {
                              personality=lambda: bossai.crystal_personality(),
                              scar=None,
                              overrides=dict(hue=190, sat=0.45, val=1.0, length=2.0)),
+    'terror_alado': dict(species='wasp', name='TERROR ALADO',
+                         emblem='boss_terror_alado',
+                         phases=lambda: bossai.wasp_phases(),
+                         personality=lambda: bossai.wasp_personality(),
+                         scar=None,
+                         overrides=dict(hue=52, sat=0.95, val=1.0, length=0.9),
+                         # flying=True: collision pula voadores (paira, nao empurra),
+                         # mas hit_test continua acertando -- reuso do flag do wasp
+                         boss_attrs=dict(flying=True)),
 }
 
 # tier (wave // BOSS_EVERY) -> which pool ids can be rolled there. Ranges,
@@ -111,8 +120,9 @@ BOSS_POOL = {
 # every tier by hand. `range` end is exclusive, same as normal Python ranges.
 BOSS_TIER_POOLS = [
     (range(1, 4), ['rei_lagarto', 'centopeiadeira', 'kraken_mor']),   # onda 5/10/15
-    (range(5, 10_000), ['mae_escaravelho', 'aranha_rei', 'serpente_cristal']),  # onda 25+
-                                               # (so infinito) -- cresce conforme mais chefes entram
+    (range(5, 10_000), ['mae_escaravelho', 'aranha_rei', 'serpente_cristal',
+                        'terror_alado']),      # onda 25+ (so infinito) -- cresce
+                                               # conforme mais chefes entram
 ]
 BOSS_FINAL = 'primordial'   # is_final always this one -- the run's fixed climax,
                            # not part of the roll (matches Isaac's true-final-boss)

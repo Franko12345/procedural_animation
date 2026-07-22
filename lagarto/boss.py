@@ -525,6 +525,31 @@ def crystal_personality():
 
 
 # --------------------------------------------------------------------------- #
+#  Terror Alado (endless, tier5+): um voador. `flying=True` (via boss_attrs)  #
+#  faz collision._samples pular ele -- paira sem ser empurrado, mas continua  #
+#  atingivel por hit_test. Sadico, cacador aereo: mergulha e mira onde voce   #
+#  VAI estar.                                                                 #
+# --------------------------------------------------------------------------- #
+
+def wasp_phases():
+    return [
+        dict(hp_frac=1.0, patterns=['charge', 'fan'], cd_mul=0.9),
+        dict(hp_frac=0.6, patterns=['charge', 'fan', 'barrage'], cd_mul=0.85),
+        dict(hp_frac=0.3, patterns=['charge', 'barrage', 'spiral'], cd_mul=0.6),
+    ]
+
+
+def wasp_personality():
+    """Sádica caçadora: mergulha (charge) sempre que pode, e quando frustrada
+    passa a mirar por lead (barrage) em vez de insistir no mergulho -- ela
+    'aprende' onde você vai estar."""
+    return BossPersonality(pattern_weights={
+        'charge': {'calm': 1.5, 'agitated': 1.4, 'cornered': 1.6},
+        'barrage': {'frustrated': 2.0},
+    })
+
+
+# --------------------------------------------------------------------------- #
 #  Phase kits: which patterns are live at each HP threshold                    #
 # --------------------------------------------------------------------------- #
 

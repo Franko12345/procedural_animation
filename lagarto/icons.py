@@ -540,6 +540,24 @@ def _boss_web(s, c, r, col):
             pygame.draw.line(s, col, base, tip, max(1, r // 10))
 
 
+def _boss_wing(s, c, r, col):
+    """TERROR ALADO: a pair of insect wings framing a dripping stinger."""
+    for sgn in (-1, 1):
+        pts = [c, (c[0] + sgn * r * 1.05, c[1] - r * 0.7),
+               (c[0] + sgn * r * 0.9, c[1] + r * 0.1),
+               (c[0] + sgn * r * 0.35, c[1] + r * 0.15)]
+        pygame.draw.polygon(s, palette.lighten(col, 0.35), pts)
+        pygame.draw.polygon(s, INK, pts, max(1, r // 10))
+        pygame.draw.line(s, palette.darken(col, 0.2), c,
+                         (c[0] + sgn * r * 0.9, c[1] - r * 0.5), 1)
+    # central stinger pointing down
+    st = [(c[0], c[1] + r), (c[0] - r * 0.28, c[1] - r * 0.1),
+          (c[0] + r * 0.28, c[1] - r * 0.1)]
+    pygame.draw.polygon(s, col, st)
+    pygame.draw.polygon(s, INK, st, max(1, r // 10))
+    pygame.draw.circle(s, (120, 255, 140), (int(c[0]), int(c[1] + r * 0.85)), max(1, r // 8))
+
+
 def _boss_crystal(s, c, r, col):
     """SERPENTE DE CRISTAL: a faceted diamond prism refracting light."""
     top = (c[0], c[1] - r)
@@ -598,7 +616,7 @@ ICONS = {
     'boss_rei_lagarto': _boss_crown, 'boss_centopeiadeira': _boss_gear,
     'boss_kraken_mor': _boss_kraken_eye, 'boss_mae_escaravelho': _boss_hive,
     'boss_primordial': _boss_primordial_flame, 'boss_aranha_rei': _boss_web,
-    'boss_serpente_cristal': _boss_crystal,
+    'boss_serpente_cristal': _boss_crystal, 'boss_terror_alado': _boss_wing,
 }
 
 
