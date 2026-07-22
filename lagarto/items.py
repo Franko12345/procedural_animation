@@ -108,10 +108,10 @@ def _act_chamado(p, game):
 def _act_ferrao(p, game):
     """A volley of homing stings -- the aimed answer to the pulse's panic."""
     from .projectile import Projectile
-    from .mathutil import vfrom_angle
+    from .mathutil import random_dir
     mouth = p.spine.joints[0] + p.spine.head_dir() * p.max_r
     for _ in range(C.ITEM_FERRAO_COUNT):
-        pr = Projectile(mouth, vfrom_angle(random.uniform(0, 360), 300),
+        pr = Projectile(mouth, random_dir(300),
                         (255, 210, 120),
                         dmg=int(round(C.ITEM_FERRAO_DMG * p.might)),
                         radius=6, hostile=False, life=3.2)

@@ -19,7 +19,7 @@ from . import parts
 from . import ui
 from . import weapons
 from .genome import basic_lizard
-from .mathutil import clamp, lerp, approach, vfrom_angle, safe_norm, angle_of, decay, pulse
+from .mathutil import clamp, lerp, approach, vfrom_angle, safe_norm, angle_of, decay, pulse, random_dir
 from .spine import Spine, build_radii
 from .leg import Leg
 from .projectile import spit as game_spit
@@ -1242,7 +1242,7 @@ class Player(Lizard):
 class AILizard(Lizard):
     def __init__(self, pos, kind, scale=1.0, color=None, genome=None):
         super().__init__(pos, kind, scale, color, genome)
-        self.wander = vfrom_angle(random.uniform(0, 360))
+        self.wander = random_dir()
         self.wander_t = 0.0
         self.hp = int(self.genome.hp)
         self.max_hp = self.hp
@@ -1338,7 +1338,7 @@ class AILizard(Lizard):
         self.wander_t -= dt
         if self.wander_t <= 0:
             self.wander_t = random.uniform(0.6, 1.6)
-            self.wander = vfrom_angle(random.uniform(0, 360))
+            self.wander = random_dir()
         return self.wander
 
     def _fade_by_vitality(self):
@@ -1624,8 +1624,8 @@ class AILizard(Lizard):
             # rooted, kicking up dirt: the body sinks into a hole (_draw_burrow),
             # so it reads as burrowing rather than blinking out
             if random.random() < dt * 55:
-                game.fx.burst(self.pos + vfrom_angle(random.uniform(0, 360),
-                              random.uniform(0, self.max_r)), dirt, 1, 150)
+                game.fx.burst(self.pos + random_dir(random.uniform(0, self.max_r)),
+                              dirt, 1, 150)
             if self.burrow_t <= 0:
                 self.burrow_state = 'under'
                 self.burrowed = True
@@ -1748,7 +1748,7 @@ class AILizard(Lizard):
             self.squat_bias = 0.85
         if self.wander_t <= 0:
             self.wander_t = random.uniform(0.7, 1.3)
-            self.wander = vfrom_angle(random.uniform(0, 360))
+            self.wander = random_dir()
             self.vel += self.wander * self.max_speed * 1.4
             self.leg_pull = 1.6                # legs kick out on launch
             self.squat_bias = 1.4              # pop out of the crouch on launch
@@ -2018,5 +2018,5 @@ class AILizard(Lizard):
             child.death_split = child.split_gen > 0
             child.base_color = child.color
             child.pos = self.pos + vfrom_angle(k * 180 + random.uniform(-40, 40), self.max_r)
-            child.vel = vfrom_angle(random.uniform(0, 360), child.max_speed * 0.8)
+            child.vel = random_dir(child.max_speed * 0.8)
             game.spawn_enemy(child)

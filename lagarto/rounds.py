@@ -21,7 +21,7 @@ from . import icons
 from . import palette
 from . import species
 from . import ui
-from .mathutil import vfrom_angle, clamp, decay
+from .mathutil import vfrom_angle, clamp, decay, random_dir
 
 # theme -> (banner, enemy pool, budget multiplier, max alive at once)
 THEMES = {
@@ -290,7 +290,7 @@ class RoundManager:
         n_nests = 1 + (self.wave // 3)
         self.nests = []
         for _ in range(min(n_nests, 3)):
-            pos = center + vfrom_angle(random.uniform(0, 360), random.uniform(360, 620))
+            pos = center + random_dir(random.uniform(360, 620))
             pos.x = clamp(pos.x, 80, C.WORLD_W - 80)
             pos.y = clamp(pos.y, 80, C.WORLD_H - 80)
             self.nests.append(Nest(pos, 6 + self.wave * 2, spec['pool']))
@@ -318,7 +318,7 @@ class RoundManager:
             key = random.choice(pool)
         center = g.alive_players()[0].pos if g.alive_players() \
             else Vector2(C.WORLD_W / 2, C.WORLD_H / 2)
-        pos = center + vfrom_angle(random.uniform(0, 360), 620)
+        pos = center + random_dir(620)
         pos.x = clamp(pos.x, 100, C.WORLD_W - 100)
         pos.y = clamp(pos.y, 100, C.WORLD_H - 100)
 
@@ -422,7 +422,7 @@ class RoundManager:
                     if n.update(dt) and self.budget > 0 and \
                             self._alive_enemies() + len(self.marks) < spec['cap']:
                         key = random.choice(spec['pool'])
-                        pos = n.pos + vfrom_angle(random.uniform(0, 360), random.uniform(20, 70))
+                        pos = n.pos + random_dir(random.uniform(20, 70))
                         self.marks.append(SpawnMark(pos, key, int(self.wave * 0.7),
                                                     1.0 + min(self.wave * 0.02, 0.4)))
                         self.budget -= 1

@@ -6,6 +6,7 @@ their dispatch overhead. These run in the hottest per-joint loops.
 """
 
 import math
+import random as _random
 from pygame import Vector2
 
 
@@ -36,6 +37,12 @@ def pulse(t, freq=1.0):
 def vfrom_angle(deg, length=1.0):
     r = math.radians(deg)
     return Vector2(math.cos(r) * length, math.sin(r) * length)
+
+
+def random_dir(length=1.0, rng=_random):
+    """Uniform random direction, scaled to ``length`` -- what 20+ sites
+    were open-coding as ``vfrom_angle(random.uniform(0, 360), length)``."""
+    return vfrom_angle(rng.uniform(0, 360), length)
 
 
 def angle_of(v):
