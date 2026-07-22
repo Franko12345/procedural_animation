@@ -1,5 +1,17 @@
 # CURRENT_PLAN — Lagarto
 
+> **Legacy status log.** Active pending work now lives as GitHub Issues
+> (see [docs/agents/issue-tracker.md](./docs/agents/issue-tracker.md)).
+> This file is preserved as a chronological account of what shipped —
+> "Fase 1 / 2 / 3 / 4 / …" — because the ADRs and concept docs describe
+> the current state, not the sequence that got there. When in doubt
+> about a design choice, prefer:
+>
+> - [CONTEXT.md](./CONTEXT.md) for canonical vocabulary,
+> - [docs/adr/](./docs/adr/README.md) for the hard-to-reverse decisions,
+> - [docs/concepts/](./docs/concepts/README.md) for how a concept works
+>   today.
+
 Plano tangível e editável. Marque `[x]` quando pronto. O raciocínio longo mora em
 `~/.claude/plans/analise-o-repositorio-do-swift-gem.md`; **este** é a fonte da verdade do
 que falta. Atualizado a cada commit.
