@@ -142,12 +142,8 @@ acompanha. É a mesma premissa dos inimigos aplicada do outro lado.
 - **Forma vem do personagem, MATIZ vem do slot do jogador.** `Player.__init__` passa
   `colorset[0]` explicitamente; se o personagem definisse a cor, dois jogadores com o mesmo
   personagem ficariam indistinguíveis no coop.
-- **`char.apply` roda no PRIMEIRO `Player.update`**, não em `__init__` — guardado em
-  `self.pending_char_apply` para o `game` existir de verdade quando disparar. O contrato
-  `apply(player, game)` é uniforme com charm/item; passar `None` em `__init__` bypassava
-  isso em silêncio, e um personagem futuro que leia `game` estouraria. Os quatro atuais
-  não leem, mas o formato é honesto. Ele lê `armor`, `thorns`, `max_health` e
-  `whip_cooldown`, todos declarados em `__init__` antes do store.
+- **`char.apply(self)` é a ÚLTIMA coisa do `__init__`** — ele lê `armor`, `thorns`,
+  `max_health` e `whip_cooldown`, que são declarados acima.
 - **Destrave**: `UNLOCKS` com `kind='character'`. `cost=None` = **não está à venda**, só se
   ganha (`check_achievements` no `finish_run`). `save()` persiste tudo que estiver em
   `DEFAULT`, então basta adicionar a chave — mas a validação em `load()` tem que acompanhar.
