@@ -28,7 +28,7 @@ from pygame import Vector2
 from . import audio
 from . import config as C
 from . import palette
-from .mathutil import safe_norm, vfrom_angle, clamp
+from .mathutil import safe_norm, vfrom_angle, clamp, decay
 from .projectile import spit as game_spit
 
 
@@ -634,7 +634,7 @@ class BossAI:
         game.dt_last = dt          # aimed_barrage's/spiral's per-frame tick reads this
         _tick_barrage(b, game)
         _tick_spiral(b, game)
-        self.summon_cd = max(0.0, self.summon_cd - dt)
+        self.summon_cd = decay(self.summon_cd, dt)
         self._maybe_advance_phase()
         if self.scar_thresholds:
             frac = b.hp / max(1, b.max_hp)

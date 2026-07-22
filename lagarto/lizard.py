@@ -19,7 +19,7 @@ from . import parts
 from . import ui
 from . import weapons
 from .genome import basic_lizard
-from .mathutil import clamp, lerp, approach, vfrom_angle, safe_norm, angle_of
+from .mathutil import clamp, lerp, approach, vfrom_angle, safe_norm, angle_of, decay
 from .spine import Spine, build_radii
 from .leg import Leg
 from .projectile import spit as game_spit
@@ -352,9 +352,9 @@ class Lizard:
         self.squash = approach(self.squash, target_squash, 9 / math.sqrt(w), dt)
         self.squat_bias = approach(self.squat_bias, 1.0, 6, dt)  # decays if no one re-asserts it
         self.wobble += dt * 6
-        self.hit_flash = max(0.0, self.hit_flash - dt * 3)
-        self.attack_cd = max(0.0, self.attack_cd - dt)
-        self.slow_t = max(0.0, self.slow_t - dt)
+        self.hit_flash = decay(self.hit_flash, dt, 3)
+        self.attack_cd = decay(self.attack_cd, dt)
+        self.slow_t = decay(self.slow_t, dt)
 
     def update_secondary_springs(self, dt):
         """Advance every cosmetic spring that chases the physical body.
@@ -922,7 +922,7 @@ class Player(Lizard):
                                                C.ITEM_TRAIL_DMG, C.ITEM_TRAIL_LIFE,
                                                hue=95))
         speed_mul *= drag
-        self.dash_cd = max(0.0, self.dash_cd - dt)
+        self.dash_cd = decay(self.dash_cd, dt)
 
         if c.dash_edge and self.can_dash and self.dash_cd <= 0 \
                 and self.energy >= C.DASH_COST:
@@ -992,7 +992,7 @@ class Player(Lizard):
         # --- active item ------------------------------------------------- #
         # Same buffer/consume contract as dash and whip: the press survives a
         # frame that ran zero sim steps, and is eaten only when it actually fires.
-        self.shed_t = max(0.0, self.shed_t - dt)
+        self.shed_t = decay(self.shed_t, dt)
         if c.item_edge and self.ability and self.ability_charge >= 1.0:
             from . import items as itemlib
             if itemlib.use_active(self, game):
@@ -1000,7 +1000,7 @@ class Player(Lizard):
                 audio.play('levelup', 0.5)
 
         # --- tail whip ("rabada") ---------------------------------------- #
-        self.whip_cd = max(0.0, self.whip_cd - dt)
+        self.whip_cd = decay(self.whip_cd, dt)
         if c.whip_edge and self.whip_cd <= 0 and self.energy >= C.WHIP_COST:
             c.consume('whip')
             self.whip_t = 0.001
@@ -1033,7 +1033,7 @@ class Player(Lizard):
                 self._whip_hit(game)
 
         # --- auto-weapons (Vampire-Survivors style: they act on their own) ---
-        self.ability_cd = max(0.0, self.ability_cd - dt)
+        self.ability_cd = decay(self.ability_cd, dt)
         for wid, lvl in self.weapons.items():
             weapons.WEAPONS[wid].tick(self, game, dt, self.weapon_state[wid], lvl)
 
@@ -1359,10 +1359,10 @@ class AILizard(Lizard):
                 return
         if self._tick_status(dt, game):
             return
-        self.shoot_cd = max(0.0, self.shoot_cd - dt)
-        self.aggro_t = max(0.0, self.aggro_t - dt)
-        self.rally_t = max(0.0, self.rally_t - dt)
-        self.grab_show = max(0.0, self.grab_show - dt)
+        self.shoot_cd = decay(self.shoot_cd, dt)
+        self.aggro_t = decay(self.aggro_t, dt)
+        self.rally_t = decay(self.rally_t, dt)
+        self.grab_show = decay(self.grab_show, dt)
         for hook in self.champion_ticks:
             hook(self, dt, game)
         if self.aggro is not None and (self.aggro.dead or self.aggro_t <= 0):

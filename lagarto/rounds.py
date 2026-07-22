@@ -21,7 +21,7 @@ from . import icons
 from . import palette
 from . import species
 from . import ui
-from .mathutil import vfrom_angle, clamp
+from .mathutil import vfrom_angle, clamp, decay
 
 # theme -> (banner, enemy pool, budget multiplier, max alive at once)
 THEMES = {
@@ -189,7 +189,7 @@ class Nest:
 
     def update(self, dt):
         self.pulse += dt * 3
-        self.hit_flash = max(0.0, self.hit_flash - dt * 3)
+        self.hit_flash = decay(self.hit_flash, dt, 3)
         self.emit_cd -= dt
         return self.emit_cd <= 0        # ready to emit?
 
@@ -397,7 +397,7 @@ class RoundManager:
     # ---- per-frame ------------------------------------------------------ #
     def update(self, dt):
         g = self.game
-        self.banner_t = max(0.0, self.banner_t - dt)
+        self.banner_t = decay(self.banner_t, dt)
         self.nests = [n for n in self.nests if not n.dead]
 
         if self.state == 'intermission':
