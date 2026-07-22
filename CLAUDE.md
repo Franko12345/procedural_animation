@@ -739,3 +739,76 @@ Coop atual é **local** apenas.
 - Ao mudar algo com efeito visível, rode `--smoke` e, de preferência, gere um
   screenshot headless (blit para `Surface(...,0,24)` e salve BMP→PNG; o driver
   dummy não salva PNG do surface de display direto).
+
+## Documentação — como manter consistente
+
+Estrutura no repo (Matt Pocock ecosystem — leia isto antes de mexer em qualquer `.md`):
+
+```
+CONTEXT.md               ← glossário de domínio (um lugar só, palavra canônica)
+docs/
+├── README.md            ← índice da árvore de docs
+├── adr/                 ← Architecture Decision Records (UM arquivo por decisão, NNNN-slug.md)
+│   └── README.md        ← formato + índice
+├── concepts/            ← docs de conceito (UM arquivo por conceito, cross-linkado)
+│   └── README.md        ← índice
+└── agents/              ← convenções operacionais para agentes (issue tracker, labels)
+```
+
+**Regra número um: um conceito por arquivo.** Se um `.md` cobre 5 coisas, ele
+não é um doc — é uma pilha. Quebre. `CONTEXT.md` é a exceção (é um índice de
+termos), e mesmo assim é _plano_, não hierárquico.
+
+**Regra número dois: uma palavra por conceito.** `CONTEXT.md` lista o termo
+canônico e os `_Avoid_` (sinônimos a evitar). Prosa em docs, mensagens de
+commit, PRs e comentários usam o termo canônico. Se você inventou uma palavra
+nova, ou ela vira canônica em `CONTEXT.md` (adicione no mesmo commit) ou você
+está desviando (repense).
+
+**Regra número três: cross-links, não repetição.** Um doc introduz UM conceito
+e aponta para os relacionados: `[Genome](../concepts/genome.md)`,
+`[ADR-0007](../adr/0007-cosmetic-skeleton-for-tail.md)`. Nunca duplique a
+definição de outro conceito — linke.
+
+### Quando editar cada arquivo
+
+Faça na MESMA sessão do código, senão a doc pega ferrugem:
+
+| Você mexeu em… | Atualize… |
+|---|---|
+| Nome / significado de um termo do jogo (Genome, Charm, Might, Mood…) | `CONTEXT.md` (renomeia canônico; mantém antigo em `_Avoid_` se ainda aparece na base) |
+| Arquitetura ou trade-off difícil de reverter | Novo ADR em `docs/adr/NNNN-slug.md`; adiciona linha no índice de `docs/adr/README.md` |
+| Comportamento observável de um conceito existente (spine, boss FSM, camp modes…) | O `docs/concepts/<conceito>.md` correspondente |
+| Um novo conceito nasceu no código | 1) entrada em `CONTEXT.md`, 2) `docs/concepts/<slug>.md`, 3) link nos conceitos que o mencionam |
+| Fluxo operacional (issue tracker, labels, skills) | `docs/agents/*.md` |
+| Este `CLAUDE.md` | Só o pedaço que ficou desatualizado, cirurgicamente. NÃO transforme isto num changelog. |
+
+### Quando NÃO criar um ADR
+
+Um ADR só existe se as TRÊS forem verdade: (1) difícil de reverter,
+(2) surpreendente sem contexto — alguém no futuro vai perguntar "por quê?",
+(3) foi um trade-off real. Se faltar uma, é comentário no código ou mensagem
+de commit, não ADR. Ver `docs/adr/README.md`.
+
+### Convenção de commit — um arquivo, um commit
+
+Docs são commitados **granularmente**: um arquivo por commit, mensagem que
+diz o QUE virou canônico e POR QUÊ. Assim `git log -- docs/` conta a
+história de decisões, não a história de "atualizei umas coisas". Push
+direto na `main` (é como este repo trabalha; ver git log recente).
+
+Exceção: se um único termo/decisão exigir editar N docs de uma vez (renomear
+`Might` afeta CONTEXT.md + 3 concept docs + 2 ADRs), aí é UM commit para o
+conjunto — o commit é a unidade de _decisão_, não de arquivo.
+
+### Antes de escrever novo doc — cheque se já existe
+
+`grep -r "TERMO" docs/ CONTEXT.md` primeiro. Se o conceito já tem lar,
+edite o existente. Duplicata é o pecado mortal do sistema (dois docs
+divergem em silêncio e ninguém sabe qual vale).
+
+### Agent skills
+
+- **Issue tracker**: GitHub Issues via `gh`. Ver `docs/agents/issue-tracker.md`.
+- **Triage labels**: cinco rótulos canônicos. Ver `docs/agents/triage-labels.md`.
+- **Domain docs**: single-context — `CONTEXT.md` + `docs/adr/` na raiz. Ver `docs/agents/domain.md`.
