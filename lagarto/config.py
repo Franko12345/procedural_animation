@@ -297,6 +297,10 @@ COL_POLLEN  = (250, 214, 90)     # moeda da run (bolsa no camp, particulas de co
 COL_WHITE   = (250, 250, 255)
 COL_INK     = (16, 14, 26)
 COL_HUD     = (240, 240, 252)
+# Cores compartilhadas de efeito -- estavam soltas como tuplas hardcoded, subindo aqui
+# para nao divergirem em silencio (o creme do spark tem que casar com o glow do popup).
+COL_FX_SPARK    = (255, 240, 200)   # hit spark: bege quente (dash/rabada/impacto)
+COL_FX_REVIVE   = (255, 240, 160)   # segundo folego: ouro claro (ring+spark+popup)
 
 # --- Fase 5: framework de chefes (boss.py) ---------------------------------- #
 # Telegrafo >=27 frames (0.45s a 60Hz) e regra dura do projeto (fase 2). Windups
