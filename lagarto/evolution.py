@@ -8,9 +8,9 @@ named ``Synergy`` for an extra kick, the "just one more run" hook (Lake of Creat
 
 import random as _random
 
-from . import config as C
-from . import palette
-from .registry import Registry
+from .core import config as C
+from .core import palette
+from .core.registry import Registry
 
 
 class Mutation:

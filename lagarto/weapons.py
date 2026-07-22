@@ -12,10 +12,10 @@ import random
 from pygame import Vector2
 import pygame
 
-from . import config as C
+from .core import config as C
 from . import audio
-from . import palette
-from .mathutil import safe_norm, vfrom_angle, clamp, random_dir
+from .core import palette
+from .core.mathutil import safe_norm, vfrom_angle, clamp, random_dir
 from .projectile import spit as mk_spit, web as mk_web, Projectile
 
 

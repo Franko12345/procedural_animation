@@ -12,7 +12,7 @@ Two kinds of spending (Vampire-Survivors style):
 import json
 import os
 
-from . import settings
+from .core import settings
 
 
 # ---- permanent stat upgrades (id -> definition) --------------------------- #

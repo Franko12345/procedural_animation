@@ -10,9 +10,9 @@ import math
 from pygame import Vector2
 import pygame
 
-from . import config as C
-from . import palette
-from .mathutil import safe_norm
+from .core import config as C
+from .core import palette
+from .core.mathutil import safe_norm
 
 
 class Projectile:

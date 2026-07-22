@@ -16,12 +16,12 @@ import pygame
 from . import audio
 from . import boss as bossai
 from . import champions
-from . import config as C
+from .core import config as C
 from . import icons
-from . import palette
+from .core import palette
 from . import species
 from . import ui
-from .mathutil import vfrom_angle, clamp, decay, random_dir
+from .core.mathutil import vfrom_angle, clamp, decay, random_dir
 
 # theme -> (banner, enemy pool, budget multiplier, max alive at once)
 THEMES = {

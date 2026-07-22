@@ -9,9 +9,9 @@ logical coordinates -- see ``display.to_logical``).
 import math
 import pygame
 
-from . import config as C
-from . import palette
-from .mathutil import decay, pulse
+from .core import config as C
+from .core import palette
+from .core.mathutil import decay, pulse
 
 INK = (12, 14, 22)
 LINE = (68, 72, 104)

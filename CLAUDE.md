@@ -39,17 +39,24 @@ gerado em código.
 
 Um módulo por responsabilidade — mantenha assim; não volte para arquivo único.
 
+**Subpackage `lagarto/core/`** agrupa as utilidades sem dependências
+(folhas do grafo de imports). Todo módulo do jogo importa daqui: `from
+.core import config as C`, `from .core.mathutil import ...`, etc.
+`lagarto/core/__init__.py` é vazio de propósito — chamadas explícitas
+são mais greppáveis do que re-exports.
+
 | Módulo | Responsabilidade |
 |---|---|
-| `config.py` | Constantes (janela/mundo, timing, **paleta vívida**, custos de energia). Ajuste de cores/balanço começa aqui. |
+| `core/config.py` | Constantes (janela/mundo, timing, **paleta vívida**, custos de energia). Ajuste de cores/balanço começa aqui. |
+| `core/palette.py` | Cor HSV (`vibrant`, `random_in_family`), lighten/darken/mix, e **glow aditivo cacheado** (`glow`, `BLEND_RGB_ADD`) p/ o rim/brilho. |
+| `core/mathutil.py` | Helpers de vetor/ângulo (`math` + `Vector2`, **não numpy** nos loops quentes). |
+| `core/fonts.py` | Escolhe a melhor fonte instalada (Noto Sans etc.) com cache por tamanho. |
+| `core/settings.py` | `~/.lagarto/settings.json` (tela cheia/escala/vsync/volumes). Tolerante a arquivo corrompido. |
+| `core/registry.py` | Lookup/filtragem/roll ponderado compartilhado por charms, characters, items, mutations, synergies. |
 | `display.py` | **Surface lógica fixa** + escala 1x/2x/3x + tela cheia com letterbox; `present()` faz smoothscale; `to_logical(pos)` mapeia o mouse (essencial p/ cliques). |
-| `settings.py` | `~/.lagarto/settings.json` (tela cheia/escala/vsync/volumes). Tolerante a arquivo corrompido. |
-| `fonts.py` | Escolhe a melhor fonte instalada (Noto Sans etc.) com cache por tamanho. |
 | `ui.py` | Kit visual: `panel`, `chip`, `list_menu`, `tabs`, `paragraph`, `footer`, `fit`, `Fade` e **`drop_in`** (entrada escalonada — use em toda tela nova). |
 | `icons.py` | **Ícones procedurais** (armas/mutações/charms) desenhados em código — usados em cartas, HUD, loja, charms e compêndio. |
 | `audio.py` | **Som sintetizado com numpy**: 12 SFX + 3 trilhas generativas (calma/combate/chefe). Degrada p/ mudo se não houver mixer. |
-| `mathutil.py` | Helpers de vetor/ângulo (`math` + `Vector2`, **não numpy** nos loops quentes). |
-| `palette.py` | Cor HSV (`vibrant`, `random_in_family`), lighten/darken/mix, e **glow aditivo cacheado** (`glow`, `BLEND_RGB_ADD`) p/ o rim/brilho. |
 | `genome.py` | **`Genome`**: criatura = números (tamanho, nº de pernas, olhos, chifres, cauda, cor HSV, hp, behavior, diet). Núcleo (RujiK). `random_variation` p/ variedade. |
 | `spine.py` | `Spine`: cadeia follow-the-leader + limite de curvatura; polígono do corpo (`body_polygon`, cabeça/cauda arredondadas). |
 | `leg.py` | `Leg`: foot-planting (limiar + arco) + **IK de 2 ossos**. Suporta modo **radial** (aranha) via `rest_angle`. |
@@ -487,7 +494,7 @@ cura/pólen/carta; atravessá-la chama `rounds.request_next(theme)` via `_apply_
 
 Level-up e acampamento **não aparecem de uma vez**. Relógio: `self.ui_t`, zerado em
 `_enter_levelup`/`_enter_camp` e avançado no ramo `state != 'play'` de `game.step` (passo
-fixo → independe de FPS). Dials em `config.py` (`UI_VEIL`/`UI_STAGGER`/`UI_DROP`/`PICK_*`).
+fixo → independe de FPS). Dials em `core/config.py` (`UI_VEIL`/`UI_STAGGER`/`UI_DROP`/`PICK_*`).
 - **Fase 1** (`_veil`, 0–0,20 s): o fundo escurece.
 - **Fase 2** (`ui.drop_in(t, i, ...) -> (offset_y, alpha)`): cada painel **desce
   escalonado** com fade. `menu._menu_list` usa o mesmo helper — um único "feel".

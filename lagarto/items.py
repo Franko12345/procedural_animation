@@ -23,10 +23,10 @@ import random
 
 from pygame import Vector2
 
-from . import config as C
-from . import palette
-from .mathutil import safe_norm
-from .registry import Registry
+from .core import config as C
+from .core import palette
+from .core.mathutil import safe_norm
+from .core.registry import Registry
 
 # Where an item can come from. A pool is just a tag; the shop, the nests and the
 # level-up roll each ask for the ones they are allowed to offer.
@@ -109,7 +109,7 @@ def _act_chamado(p, game):
 def _act_ferrao(p, game):
     """A volley of homing stings -- the aimed answer to the pulse's panic."""
     from .projectile import Projectile
-    from .mathutil import random_dir
+    from .core.mathutil import random_dir
     mouth = p.spine.joints[0] + p.spine.head_dir() * p.max_r
     for _ in range(C.ITEM_FERRAO_COUNT):
         pr = Projectile(mouth, random_dir(300),

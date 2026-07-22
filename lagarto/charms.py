@@ -7,8 +7,8 @@ from level-up mutations, bought at the camp shop or dropped by nests, and swappe
 only at the camp.
 """
 
-from . import palette
-from .registry import Registry
+from .core import palette
+from .core.registry import Registry
 
 
 class Charm:
