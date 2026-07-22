@@ -418,7 +418,7 @@ class Lizard:
             palette.glow(surf, cam.w2s(mid), self.max_r * 2.6 * cam.zoom, self.color, 0.34)
 
         plan = getattr(self.genome, 'plan', 'normal')
-        leg_col = tuple(int(x * 0.7) for x in self.color)
+        leg_col = palette.darken(self.color, 0.3)
         thin = (plan == 'segmented')      # many little legs read better skinny
         legw = max(1, int(self.max_r * (0.18 if thin else 0.42) * cam.zoom))
         footr = max(1, int(self.max_r * (0.14 if thin else 0.28) * cam.zoom))
@@ -443,7 +443,7 @@ class Lizard:
         cj = self._cosmetic_joints()
         base = self.color
         if self.hit_flash > 0:
-            base = tuple(int(lerp(base[i], 255, self.hit_flash)) for i in range(3))
+            base = palette.lighten(base, self.hit_flash)
         quads, head_fan, tail_fan, ring = self.spine.body_render_smooth(squish, cj)
         for q in quads:
             pygame.draw.polygon(surf, base, [cam.w2s(p) for p in q])
@@ -457,7 +457,7 @@ class Lizard:
             pygame.draw.polygon(surf, palette.lighten(base, 0.55), poly, max(1, int(3 * cam.zoom)))
             pygame.draw.polygon(surf, C.COL_INK, poly, max(1, int(2 * cam.zoom)))
 
-        spot = tuple(int(x * 0.8) for x in self.color)
+        spot = palette.darken(self.color, 0.2)
         js = cj or self.spine.joints
         rad = self.spine.radii
         for i in range(2, len(js) - 2, 2):
@@ -470,7 +470,7 @@ class Lizard:
         js = self.spine.joints
         base = self.color
         if self.hit_flash > 0:
-            base = tuple(int(lerp(base[i], 255, self.hit_flash)) for i in range(3))
+            base = palette.lighten(base, self.hit_flash)
         ink_w = max(1, int(2 * cam.zoom))
         head = js[0]
         abdomen = js[-1]
@@ -500,7 +500,7 @@ class Lizard:
         n = len(js)
         base = self.color
         if self.hit_flash > 0:
-            base = tuple(int(lerp(base[i], 255, self.hit_flash)) for i in range(3))
+            base = palette.lighten(base, self.hit_flash)
         seg = palette.lighten(base, 0.05)
         rim = palette.lighten(base, 0.5)
         ink_w = max(1, int(1.6 * cam.zoom))
@@ -554,10 +554,10 @@ class Lizard:
         behind a pulsing mantle bulb."""
         base = self.color
         if self.hit_flash > 0:
-            base = tuple(int(lerp(base[i], 255, self.hit_flash)) for i in range(3))
+            base = palette.lighten(base, self.hit_flash)
         arm_col = palette.darken(base, 0.1)
         rim = palette.lighten(base, 0.5)
-        spot = tuple(int(x * 0.8) for x in base)
+        spot = palette.darken(base, 0.2)
         rim_w = max(1, int(2 * cam.zoom))
         ink_w = max(1, int(2 * cam.zoom))
         arm_r = self.max_r * 0.62
