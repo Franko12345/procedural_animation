@@ -723,8 +723,11 @@ class Player(Lizard):
         # LAST: the character reads and adjusts fields declared above (armour,
         # thorns, health, whip cooldown), so it cannot run any earlier.
         self.gain_weapon(char.weapon)
-        if char.apply:
-            char.apply(self, None)
+        # Defer char.apply until the first update(): the unified apply(player, game)
+        # contract needs a real game, but the player is built before Game exists.
+        # None of the current four characters read game, but a future one might,
+        # and passing None here silently bypassed the contract.
+        self.pending_char_apply = char.apply if char.apply else None
 
     @property
     def dashing(self):
@@ -881,6 +884,12 @@ class Player(Lizard):
         return True
 
     def update(self, dt, game):
+        if self.pending_char_apply is not None:
+            # Deferred from __init__: run character.apply now that game exists.
+            fn = self.pending_char_apply
+            self.pending_char_apply = None
+            fn(self, game)
+
         if self.down:
             self.revive -= dt
             self.steer(Vector2(), dt)

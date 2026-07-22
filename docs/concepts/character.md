@@ -21,9 +21,17 @@ LARVA unlocks on the wave-8 achievement.
 
 ## Where the shape comes from
 
-`char.apply(self)` is the **last** thing `Player.__init__` calls. It
-reads `armor`, `thorns`, `max_health`, `whip_cooldown` — all declared
-above the call, so a character can override them safely.
+`Player.__init__` stores the character's callback in
+`self.pending_char_apply` and runs it on the **first `Player.update()`
+call**, once `game` really exists. The unified `apply(player, game)`
+contract needs a real `game`, but the player is constructed before the
+first game step — passing `None` there silently bypassed the contract.
+None of the current four characters read `game`; a future one might, and
+the deferred call keeps that possibility honest.
+
+The callback reads `armor`, `thorns`, `max_health`, `whip_cooldown` —
+all declared in `__init__` above the store, so a character can override
+them safely.
 
 Body regeneration goes through `Lizard.rebuild_body(keep_pose=True)`,
 _not_ `__init__`. Previously the only path to a new body was
