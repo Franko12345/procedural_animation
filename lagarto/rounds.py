@@ -92,6 +92,18 @@ BOSS_POOL = {
                             scar=None, overrides=dict(hue=35, sat=0.6, val=0.45),
                             # ao morrer, racha em 6 filhotes (reusa o DIVISOR)
                             boss_attrs=dict(death_split=True, split_gen=1, split_count=6)),
+    'aranha_rei': dict(species='spider', name='ARANHA-REI',
+                       emblem='boss_aranha_rei',
+                       phases=lambda: bossai.spider_king_phases(),
+                       personality=lambda: bossai.spider_king_personality(),
+                       scar=None,
+                       overrides=dict(hue=260, sat=0.12, val=0.92, leg_len=1.6)),
+    'serpente_cristal': dict(species='centipede', name='SERPENTE DE CRISTAL',
+                             emblem='boss_serpente_cristal',
+                             phases=lambda: bossai.crystal_phases(),
+                             personality=lambda: bossai.crystal_personality(),
+                             scar=None,
+                             overrides=dict(hue=190, sat=0.45, val=1.0, length=2.0)),
 }
 
 # tier (wave // BOSS_EVERY) -> which pool ids can be rolled there. Ranges,
@@ -99,8 +111,8 @@ BOSS_POOL = {
 # every tier by hand. `range` end is exclusive, same as normal Python ranges.
 BOSS_TIER_POOLS = [
     (range(1, 4), ['rei_lagarto', 'centopeiadeira', 'kraken_mor']),   # onda 5/10/15
-    (range(5, 10_000), ['mae_escaravelho']),   # onda 25+ (so infinito) -- cresce
-                                               # conforme mais chefes entrarem aqui
+    (range(5, 10_000), ['mae_escaravelho', 'aranha_rei', 'serpente_cristal']),  # onda 25+
+                                               # (so infinito) -- cresce conforme mais chefes entram
 ]
 BOSS_FINAL = 'primordial'   # is_final always this one -- the run's fixed climax,
                            # not part of the roll (matches Isaac's true-final-boss)

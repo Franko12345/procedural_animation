@@ -173,12 +173,18 @@ def pincha_bite(boss, game, target):
     """Quick short-range strike -- fast windup, no projectile, just a contact
     check at the reach the telegraph line showed. Dials come from the pattern
     dict (default = Centopeiadeira's pincers); Kraken-Mor's tentacle swipe
-    reuses this exact function with a longer reach instead of new code."""
+    reuses this exact function with a longer reach, Aranha-Rei's poison bite
+    with an optional `slow` (the player has no poison status to apply, so it
+    substitutes the same "landed bite roots you" idea every sting in this
+    game already uses) -- instead of new code either time."""
     pat = PATTERNS[boss.boss_ai.pattern_id]
     reach = boss.max_r * pat.get('reach', C.BOSS_PINCHA_REACH)
     dmg = pat.get('dmg', C.BOSS_PINCHA_DMG)
     if target.pos.distance_to(boss.pos) < reach:
-        target.hurt(game, safe_norm(target.pos - boss.pos), dmg)
+        landed = target.hurt(game, safe_norm(target.pos - boss.pos), dmg)
+        slow = pat.get('slow')
+        if landed and slow:
+            target.apply_slow(*slow)
         game.fx.spark_burst(boss.spine.joints[0], boss.color, 10, 260)
         game.shake(4)
 
@@ -233,12 +239,19 @@ def web_trap(boss, game, target):
     """Mãe-Escaravelho's Web Trap: a patch that roots (heavy slow, tiny
     damage) instead of hurting -- reuses the single-point select from
     ``sky_slam``/``arms_rain`` and ``weapons.Puddle``'s ``slow=`` param
-    (added for Rei Lagarto's scar) instead of new hazard code."""
+    (added for Rei Lagarto's scar) instead of new hazard code. Dials come
+    from the pattern dict -- Aranha-Rei's Web Dome reuses this exact
+    function with more points and a bigger radius via ``arms_rain``'s
+    ``count``/``spread`` select, no new selection or hazard code either."""
     from . import weapons
+    pat = PATTERNS[boss.boss_ai.pattern_id]
+    radius = pat.get('radius', C.BOSS_WEB_TRAP_R)
+    dmg = pat.get('dmg', C.BOSS_WEB_TRAP_DMG)
+    life = pat.get('life', C.BOSS_WEB_TRAP_LIFE)
+    slow = pat.get('slow', C.BOSS_WEB_TRAP_SLOW)
     for pt in getattr(boss, '_rain_points', []):
-        game.spawn_puddle(weapons.Puddle(pt, C.BOSS_WEB_TRAP_R, C.BOSS_WEB_TRAP_DMG,
-                                         C.BOSS_WEB_TRAP_LIFE, 200, hostile=True,
-                                         tick=0.4, slow=(C.BOSS_WEB_TRAP_SLOW, 1.2)))
+        game.spawn_puddle(weapons.Puddle(pt, radius, dmg, life, 200, hostile=True,
+                                         tick=0.4, slow=(slow, 1.2)))
     boss._rain_points = []
     game.fx.burst(boss.pos, (240, 240, 250), 8, 140)
 
@@ -263,6 +276,13 @@ PATTERNS = {
                         count=12, spread=70, shot_speed=220, dmg=20),
     'web_trap': dict(fn=web_trap, select=_select_arms_rain, windup=C.BOSS_WEB_TRAP_WINDUP,
                      telegraph='rain', count=1, spread=60),
+    # Aranha-Rei's Web Dome: same web_trap fn/select, just more/bigger patches
+    'web_dome': dict(fn=web_trap, select=_select_arms_rain, windup=0.8, telegraph='rain',
+                     count=5, spread=180, radius=70, life=9.0),
+    # Aranha-Rei's poison bite: same pincha_bite, roots instead of poisoning
+    # (the player has no poison status -- see pincha_bite's docstring)
+    'poison_bite': dict(fn=pincha_bite, windup=0.3, telegraph='line',
+                        reach=1.6, dmg=15, slow=(0.5, 1.4)),
     'deathroll': dict(fn=spiral_pattern, windup=0.5, telegraph='spiral',
                       shots=C.BOSS_DEATHROLL_SHOTS, turn=C.BOSS_DEATHROLL_TURN,
                       gap=C.BOSS_DEATHROLL_GAP, shot_speed=260, shot_dmg=12),
@@ -455,6 +475,53 @@ def beetle_personality():
         'summon': {'calm': 1.6, 'frustrated': 1.8},
         'radial': {'enraged': 1.8, 'cornered': 1.6},
     })
+
+
+# --------------------------------------------------------------------------- #
+#  Aranha-Rei (endless, tier5+): nervosa, para e dispara -- teia acumula.     #
+# --------------------------------------------------------------------------- #
+
+def spider_king_phases():
+    return [
+        dict(hp_frac=1.0, patterns=['charge', 'web_trap', 'summon'], cd_mul=1.0),
+        dict(hp_frac=0.6, patterns=['charge', 'web_trap', 'summon', 'web_dome'], cd_mul=0.85),
+        dict(hp_frac=0.3, patterns=['poison_bite', 'web_trap', 'summon', 'web_dome'], cd_mul=0.6),
+    ]
+
+
+def spider_king_personality():
+    """Nervosa, quase TDAH: sem padrão dominante forte (varia sempre), mas
+    trava (teia) quando frustrada em vez de insistir em perseguir, e vira
+    bote/mordida quando encurralada -- reação de pânico, não de cálculo."""
+    return BossPersonality(pattern_weights={
+        'web_trap': {'frustrated': 1.7}, 'web_dome': {'frustrated': 1.6},
+        'poison_bite': {'cornered': 1.8}, 'charge': {'cornered': 1.5, 'agitated': 1.3},
+    })
+
+
+# --------------------------------------------------------------------------- #
+#  Serpente de Cristal (endless, tier5+): fria, nunca acelera, so fica mais   #
+#  densa. Nota: o doc pede "Reflection" (espelha tiro do jogador de volta) e  #
+#  "Fractal Burst" (projetil que se divide no meio do caminho) -- nenhum dos #
+#  dois existe no motor de projeteis hoje (precisaria de logica nova de      #
+#  colisao/split em voo); substituidos por padroes ja existentes (spiral/    #
+#  deathroll) em vez de ficar pela metade -- decisao registrada no plano.    #
+# --------------------------------------------------------------------------- #
+
+def crystal_phases():
+    return [
+        dict(hp_frac=1.0, patterns=['barrage', 'fan'], cd_mul=1.0),
+        dict(hp_frac=0.66, patterns=['barrage', 'fan', 'spiral'], cd_mul=1.0),
+        # "nao acelera, fica mais precisa" -- cd_mul quase intocado de proposito
+        # (os outros chefes cortam pra 0.5-0.75; este so ganha 1 padrao a mais)
+        dict(hp_frac=0.33, patterns=['fan', 'spiral', 'deathroll'], cd_mul=0.85),
+    ]
+
+
+def crystal_personality():
+    """Sem rosto, sem emoção: pesos quase neutros de propósito (o doc é
+    explícito -- ela não fica "com raiva", só mais dura de ler)."""
+    return BossPersonality(pattern_weights={'deathroll': {'enraged': 1.3}})
 
 
 # --------------------------------------------------------------------------- #

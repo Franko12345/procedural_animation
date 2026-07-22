@@ -524,6 +524,39 @@ def _boss_hive(s, c, r, col):
         pygame.draw.circle(s, INK, p, int(rr), max(1, r // 10))
 
 
+def _boss_web(s, c, r, col):
+    """ARANHA-REI: a pale spider crouched over its own web."""
+    for a in range(0, 360, 45):
+        pygame.draw.line(s, palette.darken(col, 0.3), c, c + vfrom_angle(a, r * 0.95), 1)
+    for rr in (r * 0.4, r * 0.7, r * 0.95):
+        pygame.draw.circle(s, palette.darken(col, 0.3), c, int(rr), 1)
+    pygame.draw.circle(s, col, c, int(r * 0.4))
+    pygame.draw.circle(s, INK, c, int(r * 0.4), max(1, r // 10))
+    for sgn in (-1, 1):
+        for k in range(3):
+            a = sgn * (25 + k * 22)
+            base = c + vfrom_angle(90 + a, r * 0.32)
+            tip = c + vfrom_angle(90 + a, r * 0.85)
+            pygame.draw.line(s, col, base, tip, max(1, r // 10))
+
+
+def _boss_crystal(s, c, r, col):
+    """SERPENTE DE CRISTAL: a faceted diamond prism refracting light."""
+    top = (c[0], c[1] - r)
+    bot = (c[0], c[1] + r)
+    lft = (c[0] - r * 0.7, c[1] - r * 0.2)
+    rgt = (c[0] + r * 0.7, c[1] - r * 0.2)
+    body = [top, rgt, (c[0] + r * 0.4, c[1] + r * 0.35), bot,
+            (c[0] - r * 0.4, c[1] + r * 0.35), lft]
+    pygame.draw.polygon(s, col, body)
+    pygame.draw.polygon(s, INK, body, max(1, r // 9))
+    # facet lines (the refraction)
+    for p in (lft, rgt):
+        pygame.draw.line(s, palette.lighten(col, 0.5), top, p, 1)
+        pygame.draw.line(s, palette.darken(col, 0.3), p, bot, 1)
+    pygame.draw.line(s, palette.lighten(col, 0.6), top, bot, 1)
+
+
 def _boss_primordial_flame(s, c, r, col):
     """PRIMORDIAL: an ancient flame/rune -- the final boss's mark."""
     pts = [(c[0], c[1] - r), (c[0] + r * 0.55, c[1] - r * 0.1),
@@ -564,7 +597,8 @@ ICONS = {
     # boss emblems (rounds.draw_boss_bar) -- one recognisable mark per fight
     'boss_rei_lagarto': _boss_crown, 'boss_centopeiadeira': _boss_gear,
     'boss_kraken_mor': _boss_kraken_eye, 'boss_mae_escaravelho': _boss_hive,
-    'boss_primordial': _boss_primordial_flame,
+    'boss_primordial': _boss_primordial_flame, 'boss_aranha_rei': _boss_web,
+    'boss_serpente_cristal': _boss_crystal,
 }
 
 
