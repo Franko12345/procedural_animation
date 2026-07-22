@@ -15,7 +15,7 @@ matches its corrected head the same frame.
 import math
 import random
 
-from . import config as C
+from .core import config as C
 
 CELL = 80          # world units; ~ two body samples touching
 SQUISH = 0.9       # <1 lets squishy bodies sink into each other a touch

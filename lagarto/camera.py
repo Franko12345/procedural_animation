@@ -7,8 +7,8 @@ import math
 import random
 from pygame import Vector2
 
-from . import config as C
-from .mathutil import clamp, lerp, random_dir
+from .core import config as C
+from .core.mathutil import clamp, lerp, random_dir
 
 
 class Camera:

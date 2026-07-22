@@ -8,7 +8,7 @@ is the body part the player gains by eating one (Phase 4 wires that up), and
 
 import random as _random
 
-from . import config as C
+from .core import config as C
 from .genome import Genome
 
 SPECIES = {

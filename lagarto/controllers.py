@@ -10,9 +10,9 @@ online" hook from the plan.
 import pygame
 from pygame import Vector2
 
-from . import config as C
+from .core import config as C
 from . import display
-from .mathutil import safe_norm, decay
+from .core.mathutil import safe_norm, decay
 
 
 # --------------------------------------------------------------------------- #

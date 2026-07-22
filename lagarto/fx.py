@@ -10,9 +10,9 @@ import random
 from pygame import Vector2
 import pygame
 
-from . import config as C
-from . import palette
-from .mathutil import vfrom_angle, random_dir
+from .core import config as C
+from .core import palette
+from .core.mathutil import vfrom_angle, random_dir
 
 
 class FX:

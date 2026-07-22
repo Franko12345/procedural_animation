@@ -12,19 +12,19 @@ import pygame
 from . import audio
 from . import characters
 from . import charms
-from . import config as C
+from .core import config as C
 from . import display
 from . import evolution
 from . import icons
 from . import items
-from . import palette
+from .core import palette
 from . import perf
 from . import progression
-from . import settings
+from .core import settings
 from . import species
 from . import ui
 from . import weapons
-from .mathutil import approach, clamp, safe_norm, vfrom_angle, pulse
+from .core.mathutil import approach, clamp, safe_norm, vfrom_angle, pulse
 from .lizard import AILizard
 from .camera import Camera
 from .world import World

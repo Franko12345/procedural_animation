@@ -11,15 +11,15 @@ import random
 from pygame import Vector2
 import pygame
 
-from . import config as C
+from .core import config as C
 from . import audio
-from . import fonts
-from . import palette
+from .core import fonts
+from .core import palette
 from . import parts
 from . import ui
 from . import weapons
 from .genome import basic_lizard
-from .mathutil import clamp, lerp, approach, vfrom_angle, safe_norm, angle_of, decay, pulse, random_dir
+from .core.mathutil import clamp, lerp, approach, vfrom_angle, safe_norm, angle_of, decay, pulse, random_dir
 from .spine import Spine, build_radii
 from .leg import Leg
 from .projectile import spit as game_spit

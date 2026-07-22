@@ -20,8 +20,8 @@ import time
 
 import pygame
 
-from . import config as C
-from . import palette
+from .core import config as C
+from .core import palette
 
 OFF, BASIC, FULL = 0, 1, 2
 LEVEL_NAMES = ('desligado', 'fps', 'detalhado')
@@ -109,7 +109,7 @@ class Perf:
         pl = next((p for p in game.players if not p.dead), None) if game else None
         speed = None
         if pl is not None:
-            import lagarto.config as _C
+            import lagarto.core.config as _C
             clog = 1.0 - _C.CONTACT_DRAG * pl.clog_f
             slow = pl.slow_mul if pl.slow_t > 0 else 1.0
             gap = min([e.pos.distance_to(pl.pos) - e.max_r - pl.max_r

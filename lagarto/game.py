@@ -11,9 +11,9 @@ import random
 from pygame import Vector2
 import pygame
 
-from . import config as C
-from . import fonts
-from .mathutil import clamp, ease_out, lerp, vfrom_angle, safe_norm, decay, pulse, random_dir
+from .core import config as C
+from .core import fonts
+from .core.mathutil import clamp, ease_out, lerp, vfrom_angle, safe_norm, decay, pulse, random_dir
 from .spine import build_radii
 from .lizard import Player, AILizard
 from . import species
@@ -22,7 +22,7 @@ from . import audio
 from . import icons
 from . import ui
 from . import progression
-from . import palette
+from .core import palette
 from . import weapons
 from . import characters
 from . import charms as charmlib

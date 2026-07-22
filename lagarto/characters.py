@@ -23,10 +23,10 @@ comes from the character, hue from the player slot -- otherwise two players who
 pick the same character are indistinguishable on screen.
 """
 
-from . import config as C
-from . import palette
+from .core import config as C
+from .core import palette
 from .genome import Genome
-from .registry import Registry
+from .core.registry import Registry
 
 
 class Character:
