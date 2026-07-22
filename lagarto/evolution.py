@@ -20,11 +20,8 @@ class Mutation:
         self.desc = desc
         self.color = palette.vibrant(hue, 0.8, 1.0)
         self.apply = apply
-        self._weight = weight
+        self.weight = weight            # plain float -- Registry._default_weight handles it
         self.icon = mid                 # procedural icon id (see icons.py)
-
-    def weight(self):
-        return self._weight
 
 
 def _m(mid, name, desc, hue, fn, weight=1.0):
@@ -175,13 +172,6 @@ def synergy_factor(player, card):
     return best
 
 
-def _card_weight(card):
-    """Uniform weight accessor: mutations expose weight() (Registry default),
-    weapon/item cards expose a plain float attribute."""
-    w = getattr(card, 'weight', 1.0)
-    return w() if callable(w) else w
-
-
 def roll_cards(player, n=3, rng=_random):
     """Mix of weapon cards (new/upgrade, VS-style) and passive mutation cards."""
     pool = list(_weapon_cards(player))
@@ -193,7 +183,7 @@ def roll_cards(player, n=3, rng=_random):
     for it in _items.in_pool(_items.POOL_LEVEL, getattr(player, 'items', ())):
         pool.append(ItemCard(it))
     rng.shuffle(pool)
-    weights = [_card_weight(c) * synergy_factor(player, c) for c in pool]
+    weights = [c.weight * synergy_factor(player, c) for c in pool]
     chosen = []
     while pool and len(chosen) < n:
         total = sum(weights)
