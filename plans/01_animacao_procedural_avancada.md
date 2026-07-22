@@ -1,5 +1,13 @@
 # Plano: Sistema Avançado de Animação Procedural
 
+> **Legacy design notes.** Actionable work moved to GitHub Issues (see
+> [docs/agents/issue-tracker.md](../docs/agents/issue-tracker.md)). This
+> file is preserved for the Rain World technique analysis and the
+> spring/damping/phase-offset reference — no other file captures that
+> catalogue in one place. Canonical vocabulary in
+> [CONTEXT.md](../CONTEXT.md); implemented behaviour in
+> [docs/concepts/](../docs/concepts/README.md).
+
 ---
 
 ## Índice
