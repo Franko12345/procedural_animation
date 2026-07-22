@@ -2,6 +2,13 @@
 
 ---
 
+> **Legacy design notes.** Actionable work moved to GitHub Issues (see
+> [docs/agents/issue-tracker.md](../docs/agents/issue-tracker.md)). Boss
+> selection rules are recorded in
+> [ADR-0004](../docs/adr/0004-boss-pool-per-tier.md); shipped-boss
+> behaviour lives in [docs/concepts/boss.md](../docs/concepts/boss.md).
+> This file is preserved as the reference sheet for authored bosses.
+
 **10 chefes + PRIMORDIAL final.** Cada um usa um corpo procedural existente ou novo, com ataques, fases, personalidade e animação procedural próprias.
 
 ---
