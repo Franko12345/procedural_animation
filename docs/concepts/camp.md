@@ -1,0 +1,53 @@
+# Camp
+
+The physical clearing between [Rounds](./round.md). Two modes on the
+same walkable state.
+
+Constrained by [ADR-0005](../adr/0005-camp-is-a-physical-clearing.md).
+
+## Two modes
+
+- **`camp['mode'] = 'field'`** — WASD/stick walks around. Camera follows.
+  Doors and the beetle tent are POIs the player can approach.
+- **`camp['mode'] = 'shop'`** — menu open. Frozen world underneath.
+  ESC / B closes the shop and drops back to field.
+
+`app._camp_shop_open` gates whether menu input or WASD owns the frame.
+
+## POIs in the clearing
+
+- **Beetle tent** — the shop. Touching it opens `'shop'` mode.
+  Contents: heal, max-HP, might, [Charm](./charm.md), egg. Costs rise
+  per purchase. Charm is fixed at 150 pollen.
+- **Three doors** — each shows a theme + bonus (heal / pollen / card).
+  Crossing one commits — `_apply_route` calls `rounds.request_next(theme)`.
+
+## Drops from the sky
+
+Each POI **falls from `CAMP_DROP_H` above the ground** with an
+ease-in that accelerates into impact. `_camp_impact` fires
+shake + dust + sparks + a ring on landing. A **growing shadow** on the
+ground telegraphs where it will land. Interaction is locked until the
+POI touches the ground (`tent_landed` / `dr['landed']`) — entering a
+mid-air door was a real bug.
+
+## Shop is choice, not toll
+
+Walking straight to a door and skipping the tent is legal. The tent has
+to earn the visit. `reopen_cd` prevents reopening the shop on the same
+step it was closed. Closing during drop-in is _not_ blocked — the pick
+absorption (`self.pick`) is the only lock, and only for its ~0.36 s
+window.
+
+## No prey / projectiles cross into camp
+
+`_enter_camp` cleans up prey, projectiles, and puddles. Clean clearing:
+no stray creature frozen against a door. Prey are not updated in camp.
+
+## Related
+
+- [ADR-0005](../adr/0005-camp-is-a-physical-clearing.md) — why camp is
+  world state, not a menu.
+- [Round](./round.md) — cleared rounds enter camp.
+- [Charm](./charm.md) — the tent's only fixed-price item.
+- [Route](../../CONTEXT.md) — what a door commits to.
