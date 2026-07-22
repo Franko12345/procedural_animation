@@ -857,7 +857,7 @@ class Player(Lizard):
         if not self.knockback_immune:   # COURACADO does not get moved, by anything
             self.vel = src_dir * (140 + dmg * 6)
         game.fx.burst(self.pos, self.color, 10 + int(dmg / 2), 200)
-        game.fx.spark_burst(self.pos, (255, 240, 200), 8 + int(dmg / 3), 320)
+        game.fx.spark_burst(self.pos, C.COL_FX_SPARK, 8 + int(dmg / 3), 320)
         game.shake(4 + dmg * 0.4)
         if self.shed_on_hurt:
             self.shed_t = max(self.shed_t, C.ITEM_CASULO_TIME)
@@ -868,9 +868,9 @@ class Player(Lizard):
             self.health = self.max_health * 0.5
             self.shed_t = C.ITEM_MUDA_TIME
             game.punch(0.12, 16, flash=0.5)
-            game.fx.ring(self.pos, (255, 240, 160))
-            game.fx.spark_burst(self.pos, (255, 240, 160), 34, 460)
-            game.fx.popup(self.pos, "SEGUNDO FOLEGO!", (255, 240, 160))
+            game.fx.ring(self.pos, C.COL_FX_REVIVE)
+            game.fx.spark_burst(self.pos, C.COL_FX_REVIVE, 34, 460)
+            game.fx.popup(self.pos, "SEGUNDO FOLEGO!", C.COL_FX_REVIVE)
             audio.play('levelup', 0.9)
         elif self.health <= 0:
             self.health = 0
@@ -972,7 +972,7 @@ class Player(Lizard):
                             self.health = min(self.max_health,
                                               self.health + C.ITEM_DRAIN)
                             game.fx.popup(self.pos, "+vida", (120, 240, 140))
-                        game.fx.spark_burst(t.pos, (255, 240, 200), 7, 240)
+                        game.fx.spark_burst(t.pos, C.COL_FX_SPARK, 7, 240)
                     else:
                         game.eat(self, t)
                 self.tongue_target = None
@@ -1957,7 +1957,7 @@ class AILizard(Lizard):
         self.hit_flash = 1.0
         self.vel = direction * 200 * self.genome.knockback   # heavy bruisers barely budge
         game.fx.burst(self.pos, self.color, 10, 180)
-        game.fx.spark_burst(self.pos, (255, 240, 200), 9, 300)
+        game.fx.spark_burst(self.pos, C.COL_FX_SPARK, 9, 300)
         self.hp -= dmg
         if self.hp <= 0:
             self.die(game)
@@ -1971,7 +1971,7 @@ class AILizard(Lizard):
             self.explode(game)          # no-op if it already went off (_blown)
         if getattr(self, 'is_boss', False):
             game.punch(0.22, 20, flash=0.9)      # boss death: big stop + flash
-            game.fx.spark_burst(self.pos, (255, 240, 200), 46, 520)
+            game.fx.spark_burst(self.pos, C.COL_FX_SPARK, 46, 520)
             game.fx.ring(self.pos, (255, 200, 140))
         audio.play('kill', 0.8)
         game.fx.burst(self.pos, self.color, 22, 240)
