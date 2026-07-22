@@ -26,6 +26,7 @@ pick the same character are indistinguishable on screen.
 from . import config as C
 from . import palette
 from .genome import Genome
+from .registry import Registry
 
 
 class Character:
@@ -40,7 +41,11 @@ class Character:
         self.genome = genome
         self.weapon = weapon          # starting weapon id
         self.mods = tuple(mods)       # identity modifiers, listed on the select screen
-        self.apply = apply            # stat/flag surgery on a fresh Player
+        self.apply = apply            # apply(player) -- stat/flag surgery on a
+                                      # fresh Player. Runs in Player.__init__
+                                      # BEFORE Game exists, so the signature
+                                      # stays 1-arg. Documented asymmetry with
+                                      # charm/item.apply, which take (player, game).
         self.unlock = unlock          # None = free; else a progression unlock id
 
     def color(self):
@@ -112,7 +117,7 @@ def _larva(p):
     p.health = p.max_health
 
 
-CHARACTERS = [
+CHARACTERS_LIST = [
     Character(
         'lagarto', 'LAGARTO',
         'Equilibrado. Rerrola a mao de cartas uma vez por round.',
@@ -153,12 +158,12 @@ CHARACTERS = [
         unlock='char_larva',
     ),
 ]
-BY_ID = {c.id: c for c in CHARACTERS}
-DEFAULT = CHARACTERS[0].id
+CHARACTERS = Registry(CHARACTERS_LIST)
+DEFAULT = CHARACTERS_LIST[0].id
 
 
 def get(cid):
-    return BY_ID.get(cid) or BY_ID[DEFAULT]
+    return CHARACTERS.get(cid) or CHARACTERS[DEFAULT]
 
 
 def is_locked(char, meta):

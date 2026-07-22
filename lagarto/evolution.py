@@ -10,6 +10,7 @@ import random as _random
 
 from . import config as C
 from . import palette
+from .registry import Registry
 
 
 class Mutation:
@@ -19,7 +20,7 @@ class Mutation:
         self.desc = desc
         self.color = palette.vibrant(hue, 0.8, 1.0)
         self.apply = apply
-        self.weight = weight
+        self.weight = weight            # plain float -- Registry._default_weight handles it
         self.icon = mid                 # procedural icon id (see icons.py)
 
 
@@ -52,7 +53,7 @@ def _plates(p, g): p.grant_part('plates', g)
 def _club(p, g): p.genome.tail = 'club'
 
 
-MUTATIONS = [
+MUTATIONS_LIST = [
     _m('health',  'Coracao Extra',   '+1 vida maxima',              5,   _health),
     _m('speed',   'Agilidade',       '+14% velocidade',             130, _speed),
     _m('dash',    'Arranco Rapido',  '-20% recarga do dash',        190, _dash),
@@ -73,7 +74,7 @@ MUTATIONS = [
     _m('haste',   'Frenesi',         '+15% cadencia das armas',     190, _haste, 1.1),
     _m('amount',  'Fecundidade',     '+1 projetil/orbital',         55,  _amount, 0.9),
 ]
-_BY_ID = {m.id: m for m in MUTATIONS}
+MUTATIONS = Registry(MUTATIONS_LIST)
 _ONCE = ('venom', 'wings', 'club', 'thorns')     # don't offer twice once owned
 
 
@@ -227,7 +228,7 @@ def _syn_chicote(p, g): p.whip_cooldown *= 0.7
 # `needs` may name a mutation, a weapon, an ITEM or a character id -- see
 # `owned_tags`. Gungeon's rule applies: every synergy is NAMED and shown in the
 # compendium, because one the player never learns about may as well not exist.
-SYNERGIES = [
+SYNERGIES_LIST = [
     Synergy('arachnid', 'ARACNIDEO', {'legs', 'venom'},
             'pernas + peconha: velocidade e veneno', _syn_arachnid),
     Synergy('fortress', 'FORTALEZA', {'plates', 'thorns'},
@@ -253,6 +254,7 @@ SYNERGIES = [
     Synergy('chicote', 'CHICOTE VIVO', {'vibora', 'espiral'},
             'vibora + cauda em espiral: a cauda nao para', _syn_chicote),
 ]
+SYNERGIES = Registry(SYNERGIES_LIST)
 
 
 def owned_tags(player):

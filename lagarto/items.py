@@ -26,6 +26,7 @@ from pygame import Vector2
 from . import config as C
 from . import palette
 from .mathutil import safe_norm
+from .registry import Registry
 
 # Where an item can come from. A pool is just a tag; the shop, the nests and the
 # level-up roll each ask for the ones they are allowed to offer.
@@ -53,8 +54,8 @@ class Item:
         self.kind = kind
         self.quality = quality
         self.pools = tuple(pools)
-        self.apply = apply              # passive: run once when acquired
-        self.activate = activate        # active: run when the button fires
+        self.apply = apply              # passive: apply(player, game) once when acquired
+        self.activate = activate        # active: activate(player, game) when the button fires
         self.charge = charge or C.ITEM_CHARGE_KILLS
         self.icon = icon or iid
         self.color = palette.vibrant(hue, 0.82, 1.0)
@@ -142,7 +143,7 @@ def _p_segundo(p, g):   p.extra_life = True
 def _p_espiral(p, g):   p.whip_full = True
 
 
-ITEMS = [
+ITEMS_LIST = [
     # ---- actives ---------------------------------------------------------- #
     Item('pulso', 'Pulso Sismico',
          'ativo: onda de choque que fere e empurra ao redor',
@@ -207,31 +208,20 @@ ITEMS = [
          'a rabada varre o circulo INTEIRO ao redor',
          172, quality=4, pools=(POOL_BOSS,), apply=_p_espiral),
 ]
-BY_ID = {i.id: i for i in ITEMS}
-ACTIVES = [i for i in ITEMS if i.kind == 'active']
-PASSIVES = [i for i in ITEMS if i.kind == 'passive']
+ITEMS = Registry(ITEMS_LIST)
+ACTIVES = [i for i in ITEMS_LIST if i.kind == 'active']
+PASSIVES = [i for i in ITEMS_LIST if i.kind == 'passive']
 
 
 def in_pool(pool, owned=()):
     """Items from ``pool`` the player does not already have."""
-    return [i for i in ITEMS if pool in i.pools and i.id not in owned]
+    return [i for i in ITEMS.by(pools=pool) if i.id not in owned]
 
 
 def roll(pool, owned=(), n=1, rng=random):
     """Weighted pick from a pool -- quality biases the odds, never gates them."""
-    cand = in_pool(pool, owned)
-    out = []
-    while cand and len(out) < n:
-        w = [i.weight() for i in cand]
-        total = sum(w)
-        r = rng.uniform(0, total)
-        acc = 0.0
-        for k, item in enumerate(cand):
-            acc += w[k]
-            if r <= acc:
-                out.append(cand.pop(k))
-                break
-    return out
+    return ITEMS.roll(pool=pool, n=n, rng=rng,
+                      filter=lambda it: it.id not in owned)
 
 
 def give(player, item, game=None):
@@ -252,7 +242,7 @@ def use_active(player, game):
     """Fire the equipped active if it is charged. Returns True if it went off."""
     if not player.ability or player.ability_charge < 1.0:
         return False
-    item = BY_ID.get(player.ability)
+    item = ITEMS.get(player.ability)
     if item is None or item.activate is None:
         return False
     player.ability_charge = 0.0
@@ -268,7 +258,7 @@ def add_charge(player, kills=1):
     lands on 0.9999999999999998 after exactly `charge` kills, so the item would
     sit there looking full and refuse to fire.
     """
-    item = BY_ID.get(player.ability) if player.ability else None
+    item = ITEMS.get(player.ability) if player.ability else None
     if item is None:
         return
     player.ability_kills = min(item.charge, player.ability_kills + kills)

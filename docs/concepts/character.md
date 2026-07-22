@@ -25,6 +25,14 @@ LARVA unlocks on the wave-8 achievement.
 reads `armor`, `thorns`, `max_health`, `whip_cooldown` — all declared
 above the call, so a character can override them safely.
 
+`Character.apply` is **1-arg** (`apply(player)`), not 2-arg like
+`Charm.apply` / `Item.apply` which take `(player, game)`. Characters
+run in `Player.__init__`, before `Game` exists, so there is no `game`
+to pass. This is a documented asymmetry — do not "unify" it by passing
+`None`: that either bypasses the contract or (worse) reorders stats
+relative to `progression.apply_to_player`, silently changing
+DNA-scaled `max_health` for multiplicative characters.
+
 Body regeneration goes through `Lizard.rebuild_body(keep_pose=True)`,
 _not_ `__init__`. Previously the only path to a new body was
 `__init__`, which erased hp/weapons/level/aggro — champions kept an

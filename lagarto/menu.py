@@ -401,7 +401,7 @@ def run_menu(screen, font, bigfont, titlefont, joysticks):
         if r == 'quit':
             return ('go', None)
         if isinstance(r, tuple) and r[0] == 'pick':
-            ch = characters.CHARACTERS[r[1]]
+            ch = characters.CHARACTERS.all()[r[1]]
             if characters.is_locked(ch, meta):
                 audio.play('ui', 0.35)          # locked: refuse, don't advance
                 return None
