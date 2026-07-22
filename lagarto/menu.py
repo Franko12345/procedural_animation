@@ -24,7 +24,7 @@ from . import settings
 from . import species
 from . import ui
 from . import weapons
-from .mathutil import approach, clamp, safe_norm, vfrom_angle
+from .mathutil import approach, clamp, safe_norm, vfrom_angle, pulse
 from .lizard import AILizard
 from .camera import Camera
 from .world import World
@@ -116,8 +116,7 @@ def _menu_list(screen, font, bigfont, items, sel, top, accent, anim=None, t=0.0)
     hy = top + sel_f * gap
     hrect = pygame.Rect(cx - w // 2, int(hy), w, gap - 10)
     if at > 0.05:
-        pulse = 0.5 + 0.5 * math.sin(t * 5)
-        palette.glow(screen, hrect.center, 150, accent, 0.22 + 0.16 * pulse)
+        palette.glow(screen, hrect.center, 150, accent, 0.22 + 0.16 * pulse(t, 5))
         pygame.draw.rect(screen, (26, 30, 46), hrect, border_radius=12)
         pygame.draw.rect(screen, accent, hrect, 3, border_radius=12)
         # little marker that rides along the left edge
@@ -138,7 +137,7 @@ def _menu_list(screen, font, bigfont, items, sel, top, accent, anim=None, t=0.0)
         f = font if small else bigfont
         im = f.render(label, True, col)
         if chosen and not small:                       # selected pops slightly
-            grow = 1.0 + 0.06 * (0.5 + 0.5 * math.sin(t * 5))
+            grow = 1.0 + 0.06 * pulse(t, 5)
             im = pygame.transform.smoothscale(
                 im, (int(im.get_width() * grow), int(im.get_height() * grow)))
         if ease < 1:
@@ -738,8 +737,7 @@ def _draw_chars(screen, font, bigfont, sel, meta, t, anim, who, preview=None, dt
         chosen = (i == sel)
 
         if chosen:
-            pulse = 0.5 + 0.5 * math.sin(t * 5)
-            palette.glow(screen, r.center, cw * 0.78, accent, 0.20 + 0.14 * pulse)
+            palette.glow(screen, r.center, cw * 0.78, accent, 0.20 + 0.14 * pulse(t, 5))
         body = pygame.Surface((r.width, r.height), pygame.SRCALPHA)
         body.fill((20, 23, 38, 236) if chosen else (15, 17, 28, 208))
         screen.blit(body, r.topleft)

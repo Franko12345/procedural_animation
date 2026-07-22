@@ -27,6 +27,12 @@ def decay(value, dt, scale=1.0):
     return max(0.0, value - dt * scale)
 
 
+def pulse(t, freq=1.0):
+    """Oscillate in [0, 1] at ``freq`` cycles per 2*pi -- same shape as
+    ``0.5 + 0.5 * math.sin(t * freq)`` but names the intent."""
+    return 0.5 + 0.5 * math.sin(t * freq)
+
+
 def vfrom_angle(deg, length=1.0):
     r = math.radians(deg)
     return Vector2(math.cos(r) * length, math.sin(r) * length)

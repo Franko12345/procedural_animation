@@ -14,7 +14,7 @@ import pygame
 
 from . import config as C
 from . import palette
-from .mathutil import vfrom_angle
+from .mathutil import vfrom_angle, pulse
 
 CELL = 128          # ground tile size (world units)
 VOID = (14, 12, 26)
@@ -152,7 +152,7 @@ class World:
             if not cam.visible((x, y), 30):
                 continue
             sp = cam.w2s((x, y))
-            g = 0.5 + 0.5 * math.sin(t * 2 + ph)          # twinkle
+            g = pulse(t * 2 + ph)                         # twinkle
             palette.glow(surf, sp, (5 + 5 * g) * z,
                          (int(150 * g) + 40, int(150 * g) + 50, 40))
             surf.fill((250, 250, 210), (sp[0], sp[1], max(1, int(1.6 * z)), max(1, int(1.6 * z))))
