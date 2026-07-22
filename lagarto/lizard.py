@@ -19,7 +19,7 @@ from . import parts
 from . import ui
 from . import weapons
 from .genome import basic_lizard
-from .mathutil import clamp, lerp, approach, vfrom_angle, safe_norm, angle_of, decay
+from .mathutil import clamp, lerp, approach, vfrom_angle, safe_norm, angle_of, decay, pulse
 from .spine import Spine, build_radii
 from .leg import Leg
 from .projectile import spit as game_spit
@@ -1836,7 +1836,7 @@ class AILizard(Lizard):
         r = int(C.BOMBER_RADIUS * cam.zoom)
         f = 1.0 - clamp(self.fuse / max(1e-4, C.BOMBER_FUSE), 0, 1)   # 0 -> 1
         # flashes faster the closer it gets: reads as urgency without a timer
-        blink = 0.5 + 0.5 * math.sin(f * f * 46)
+        blink = pulse(f * f, 46)
         col = palette.mix((255, 170, 60), (255, 250, 220), f)
         palette.glow(surf, sp, r, col, (0.16 + 0.30 * f) * (0.55 + 0.45 * blink))
         pygame.draw.circle(surf, col, sp, r, max(2, int((1 + 2 * f) * cam.zoom)))
@@ -1851,9 +1851,8 @@ class AILizard(Lizard):
             return
         sp = cam.w2s(self.pos)
         r = max(10, int(self.max_r * 2.6 * cam.zoom))
-        pulse = 0.5 + 0.5 * math.sin(self.wobble * 2.0)
         palette.glow(surf, sp, r, self.champion.color(),
-                     (0.30 + 0.16 * pulse) * self.champion_vis)
+                     (0.30 + 0.16 * pulse(self.wobble, 2.0)) * self.champion_vis)
 
     def _draw_champion_name(self, surf, cam):
         """A champion has to be *identifiable*, or the player cannot learn it.

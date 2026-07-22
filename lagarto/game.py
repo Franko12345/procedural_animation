@@ -13,7 +13,7 @@ import pygame
 
 from . import config as C
 from . import fonts
-from .mathutil import clamp, ease_out, lerp, vfrom_angle, safe_norm, decay
+from .mathutil import clamp, ease_out, lerp, vfrom_angle, safe_norm, decay, pulse
 from .spine import build_radii
 from .lizard import Player, AILizard
 from . import species
@@ -112,8 +112,7 @@ def _dial(surf, center, r, frac, color, font, label, t, enabled=True):
         if len(pts) >= 3:
             pygame.draw.polygon(surf, color, pts)
     if ready:
-        pulse = 0.35 + 0.25 * (0.5 + 0.5 * math.sin(t * 6))
-        palette.glow(surf, center, r * 2.2, color, pulse)
+        palette.glow(surf, center, r * 2.2, color, 0.35 + 0.25 * pulse(t, 6))
     pygame.draw.circle(surf, (96, 102, 136) if not ready else color, center, r, 2)
     ui.text(surf, font, label, (center[0] + r + 6, center[1] - font.get_height() // 2),
             (232, 234, 250) if ready else (146, 150, 178))
@@ -1213,8 +1212,7 @@ class Game:
                     full = p.ability_charge >= 1.0
                     col = it.color if full else (96, 100, 128)
                     if full:
-                        pulse = 0.5 + 0.5 * math.sin(self.time * 6)
-                        palette.glow(surf, (ix, iy), 30, it.color, 0.28 + 0.2 * pulse)
+                        palette.glow(surf, (ix, iy), 30, it.color, 0.28 + 0.2 * pulse(self.time, 6))
                     icons.draw(surf, it.icon, (ix, iy), 13, col, glow=False)
                     pygame.draw.circle(surf, (36, 40, 58), (ix, iy), 18, 3)
                     if p.ability_charge > 0:
@@ -1743,11 +1741,11 @@ class Game:
                 shadow(surf, cam.w2s(pos), int(34 * z * (0.4 + 0.6 * prog)))
             sp = cam.w2s(pos + Vector2(0, off))
             hot = dr['landed'] and self._near_player(pos, C.CAMP_DOOR_R * 2.4)
-            pulse = 0.5 + 0.5 * math.sin(t * 3 + i)
+            beat = pulse(t * 3 + i)
             w, h = int(66 * z), int(108 * z)
             rad = int(w * 0.5)
             palette.glow(surf, sp, int(w * (1.5 if hot else 1.05)), col,
-                         (0.34 if hot else 0.2) + 0.12 * pulse)
+                         (0.34 if hot else 0.2) + 0.12 * beat)
             frame = pygame.Rect(sp[0] - w // 2, sp[1] - h, w, h)
             inner = frame.inflate(-int(14 * z), -int(12 * z))
             pygame.draw.rect(surf, (16, 18, 28), inner, border_top_left_radius=rad,
@@ -1773,11 +1771,10 @@ class Game:
                 shadow(surf, cam.w2s(pos), int(64 * z * (0.4 + 0.6 * prog)))
             sp = cam.w2s(pos + Vector2(0, off))
             hot = self.camp['tent_landed'] and self._near_player(pos, C.CAMP_TENT_R)
-            pulse = 0.5 + 0.5 * math.sin(t * 2.4)
             gold = C.COL_POLLEN
             w = int(120 * z)
             palette.glow(surf, sp, int(w * (0.95 if hot else 0.72)), gold,
-                         (0.3 if hot else 0.17) + 0.1 * pulse)
+                         (0.3 if hot else 0.17) + 0.1 * pulse(t, 2.4))
             counter = pygame.Rect(sp[0] - w // 2, sp[1] - int(4 * z), w, int(34 * z))
             pygame.draw.rect(surf, (120, 82, 54), counter, border_radius=int(6 * z))
             pygame.draw.rect(surf, (60, 40, 26), counter, max(1, int(2 * z)),
@@ -1832,8 +1829,7 @@ class Game:
         ov.fill((8, 22, 16, 190))
         surf.blit(ov, (0, 0))
         cx = C.WIDTH // 2
-        pulse = 0.5 + 0.5 * math.sin(self.time * 3)
-        palette.glow(surf, (cx, 190), 300, (120, 250, 170), 0.28 + 0.16 * pulse)
+        palette.glow(surf, (cx, 190), 300, (120, 250, 170), 0.28 + 0.16 * pulse(self.time, 3))
         t = self.bigfont.render("VITORIA!", True, (150, 255, 190))
         surf.blit(t, (cx - t.get_width() // 2, 158))
         sub = self.font.render(f"voce derrotou o chefe primordial na onda {self.rounds.wave}",

@@ -11,7 +11,7 @@ import pygame
 
 from . import config as C
 from . import palette
-from .mathutil import decay
+from .mathutil import decay, pulse
 
 INK = (12, 14, 22)
 LINE = (68, 72, 104)
@@ -137,8 +137,7 @@ def list_menu(surf, font, items, sel, top, accent, t=0.0, width=440, gap=56):
         rects.append(rect)
         chosen = (i == sel)
         if chosen:
-            pulse = 0.5 + 0.5 * math.sin(t * 5)
-            palette.glow(surf, rect.center, width * 0.42, accent, 0.20 + 0.14 * pulse)
+            palette.glow(surf, rect.center, width * 0.42, accent, 0.20 + 0.14 * pulse(t, 5))
             pygame.draw.rect(surf, (26, 30, 46), rect, border_radius=12)
             pygame.draw.rect(surf, accent, rect, 3, border_radius=12)
             # sliding marker on the left edge
