@@ -323,8 +323,8 @@ def main():
             if game.state != prev_state:
                 # play/level-up/camp animate themselves in and out (veil + dropdown +
                 # absorption), so a blackout there would hide the impact we just built
-                soft = ('play', 'levelup', 'camp', 'pause')
-                if not (prev_state in soft and game.state in soft):
+                if not (prev_state in C.SOFT_TRANSITION_STATES
+                        and game.state in C.SOFT_TRANSITION_STATES):
                     fade.start(0.22)
                 prev_state = game.state
             fade.update(frame_dt)

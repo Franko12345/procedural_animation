@@ -206,6 +206,9 @@ CAMP_DOOR_DELAY = 0.30   # 1a porta; as outras escalonam por CAMP_DOOR_STAGGER
 CAMP_DOOR_STAGGER = 0.14
 
 # --- ritmo das telas de jogo (level-up / acampamento) ---------------------- #
+# Estados que animam a propria entrada/saida (veu + dropdown + absorcao):
+# transicoes ENTRE eles nao usam Fade -- o blackout esconderia o impacto.
+SOFT_TRANSITION_STATES = frozenset(('play', 'levelup', 'camp', 'pause'))
 UI_VEIL = 0.20           # fade do fundo escuro antes de qualquer conteudo
 UI_STAGGER = 0.075       # atraso entre um item e o proximo no dropdown
 UI_DROP = 0.30           # duracao da queda de cada item
