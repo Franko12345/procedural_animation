@@ -26,6 +26,7 @@ pick the same character are indistinguishable on screen.
 from . import config as C
 from . import palette
 from .genome import Genome
+from .registry import Registry
 
 
 class Character:
@@ -40,7 +41,7 @@ class Character:
         self.genome = genome
         self.weapon = weapon          # starting weapon id
         self.mods = tuple(mods)       # identity modifiers, listed on the select screen
-        self.apply = apply            # stat/flag surgery on a fresh Player
+        self.apply = apply            # apply(player, game) -- stat/flag surgery
         self.unlock = unlock          # None = free; else a progression unlock id
 
     def color(self):
@@ -55,7 +56,7 @@ class Character:
 #  The four                                                                    #
 # --------------------------------------------------------------------------- #
 
-def _lagarto(p):
+def _lagarto(p, g):
     """The baseline, plus the one thing that makes 'balanced' a real choice.
 
     A default character with no mechanic is the option nobody picks twice, so
@@ -68,7 +69,7 @@ def _lagarto(p):
     p.rerolls = p.rerolls_per_round      # usable before the first round starts
 
 
-def _vibora(p):
+def _vibora(p, g):
     """The tail is the weapon. Manual, rhythmic, close-range.
 
     The weapon cap is the point, not a drawback bolted on: with six auto-weapons
@@ -82,7 +83,7 @@ def _vibora(p):
     p.health = p.max_health
 
 
-def _couracado(p):
+def _couracado(p, g):
     """No dash. You walk through the horde and let it break on you.
 
     Taking away the dash is the most invasive thing any of these do, so it gets
@@ -98,7 +99,7 @@ def _couracado(p):
     p.health = p.max_health
 
 
-def _larva(p):
+def _larva(p, g):
     """Starts pathetic and ends enormous -- and you watch it happen.
 
     This is the character that only this game could have: growth is *visible*
@@ -112,7 +113,7 @@ def _larva(p):
     p.health = p.max_health
 
 
-CHARACTERS = [
+CHARACTERS_LIST = [
     Character(
         'lagarto', 'LAGARTO',
         'Equilibrado. Rerrola a mao de cartas uma vez por round.',
@@ -153,12 +154,12 @@ CHARACTERS = [
         unlock='char_larva',
     ),
 ]
-BY_ID = {c.id: c for c in CHARACTERS}
-DEFAULT = CHARACTERS[0].id
+CHARACTERS = Registry(CHARACTERS_LIST)
+DEFAULT = CHARACTERS_LIST[0].id
 
 
 def get(cid):
-    return BY_ID.get(cid) or BY_ID[DEFAULT]
+    return CHARACTERS.get(cid) or CHARACTERS[DEFAULT]
 
 
 def is_locked(char, meta):

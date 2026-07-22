@@ -565,8 +565,8 @@ class Game:
             for pl in g.players:
                 if pl.dead:
                     continue
-                avail = [c for c in charmlib.CHARMS if c not in pl.charms_owned
-                         and progression.unlocked(self.meta, 'charm', c)]
+                avail = [c.id for c in charmlib.CHARMS if c.id not in pl.charms_owned
+                         and progression.unlocked(self.meta, 'charm', c.id)]
                 if avail:
                     pl.gain_charm(random.choice(avail), g)
         return [
@@ -1202,7 +1202,7 @@ class Game:
             # each player gets it under their own dials instead.
             if p.ability:
                 from . import items as itemlib
-                it = itemlib.BY_ID.get(p.ability)
+                it = itemlib.ITEMS.get(p.ability)
                 if it is not None:
                     if len(self.players) == 1:
                         ix, iy = C.WIDTH - 52, 46

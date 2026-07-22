@@ -724,7 +724,7 @@ class Player(Lizard):
         # thorns, health, whip cooldown), so it cannot run any earlier.
         self.gain_weapon(char.weapon)
         if char.apply:
-            char.apply(self)
+            char.apply(self, None)
 
     @property
     def dashing(self):
@@ -750,9 +750,9 @@ class Player(Lizard):
         if old == cid:
             return
         if old:
-            charms.CHARMS[old].on_unequip(self)
+            charms.CHARMS[old].unapply(self, game)
         self.charm_slots[slot] = cid
-        ch.on_equip(self)
+        ch.apply(self, game)
         if game:
             game.fx.burst(self.pos, ch.color, 16, 200)
             game.fx.spark_burst(self.pos, palette.lighten(ch.color, 0.4), 10, 260)

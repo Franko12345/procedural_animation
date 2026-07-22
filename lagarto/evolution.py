@@ -10,6 +10,7 @@ import random as _random
 
 from . import config as C
 from . import palette
+from .registry import Registry
 
 
 class Mutation:
@@ -19,8 +20,11 @@ class Mutation:
         self.desc = desc
         self.color = palette.vibrant(hue, 0.8, 1.0)
         self.apply = apply
-        self.weight = weight
+        self._weight = weight
         self.icon = mid                 # procedural icon id (see icons.py)
+
+    def weight(self):
+        return self._weight
 
 
 def _m(mid, name, desc, hue, fn, weight=1.0):
@@ -52,7 +56,7 @@ def _plates(p, g): p.grant_part('plates', g)
 def _club(p, g): p.genome.tail = 'club'
 
 
-MUTATIONS = [
+MUTATIONS_LIST = [
     _m('health',  'Coracao Extra',   '+1 vida maxima',              5,   _health),
     _m('speed',   'Agilidade',       '+14% velocidade',             130, _speed),
     _m('dash',    'Arranco Rapido',  '-20% recarga do dash',        190, _dash),
@@ -73,7 +77,7 @@ MUTATIONS = [
     _m('haste',   'Frenesi',         '+15% cadencia das armas',     190, _haste, 1.1),
     _m('amount',  'Fecundidade',     '+1 projetil/orbital',         55,  _amount, 0.9),
 ]
-_BY_ID = {m.id: m for m in MUTATIONS}
+MUTATIONS = Registry(MUTATIONS_LIST)
 _ONCE = ('venom', 'wings', 'club', 'thorns')     # don't offer twice once owned
 
 
@@ -171,6 +175,13 @@ def synergy_factor(player, card):
     return best
 
 
+def _card_weight(card):
+    """Uniform weight accessor: mutations expose weight() (Registry default),
+    weapon/item cards expose a plain float attribute."""
+    w = getattr(card, 'weight', 1.0)
+    return w() if callable(w) else w
+
+
 def roll_cards(player, n=3, rng=_random):
     """Mix of weapon cards (new/upgrade, VS-style) and passive mutation cards."""
     pool = list(_weapon_cards(player))
@@ -182,7 +193,7 @@ def roll_cards(player, n=3, rng=_random):
     for it in _items.in_pool(_items.POOL_LEVEL, getattr(player, 'items', ())):
         pool.append(ItemCard(it))
     rng.shuffle(pool)
-    weights = [c.weight * synergy_factor(player, c) for c in pool]
+    weights = [_card_weight(c) * synergy_factor(player, c) for c in pool]
     chosen = []
     while pool and len(chosen) < n:
         total = sum(weights)
@@ -227,7 +238,7 @@ def _syn_chicote(p, g): p.whip_cooldown *= 0.7
 # `needs` may name a mutation, a weapon, an ITEM or a character id -- see
 # `owned_tags`. Gungeon's rule applies: every synergy is NAMED and shown in the
 # compendium, because one the player never learns about may as well not exist.
-SYNERGIES = [
+SYNERGIES_LIST = [
     Synergy('arachnid', 'ARACNIDEO', {'legs', 'venom'},
             'pernas + peconha: velocidade e veneno', _syn_arachnid),
     Synergy('fortress', 'FORTALEZA', {'plates', 'thorns'},
@@ -253,6 +264,7 @@ SYNERGIES = [
     Synergy('chicote', 'CHICOTE VIVO', {'vibora', 'espiral'},
             'vibora + cauda em espiral: a cauda nao para', _syn_chicote),
 ]
+SYNERGIES = Registry(SYNERGIES_LIST)
 
 
 def owned_tags(player):

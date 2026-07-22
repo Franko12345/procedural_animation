@@ -213,8 +213,8 @@ class Nest:
                 p = game.nearest_player(self.pos) or (game.players[0] if game.players else None)
                 if p and not p.dead:
                     from . import progression as PR
-                    avail = [c for c in CH.CHARMS if c not in p.charms_owned
-                             and PR.unlocked(game.meta, 'charm', c)]
+                    avail = [c.id for c in CH.CHARMS if c.id not in p.charms_owned
+                             and PR.unlocked(game.meta, 'charm', c.id)]
                     if avail:
                         cid = random.choice(avail)
                         p.gain_charm(cid, game)
