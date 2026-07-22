@@ -1,5 +1,12 @@
 # Plano: Sistema de Chefes com Personalidade
 
+> **Legacy design notes.** Actionable work moved to GitHub Issues (see
+> [docs/agents/issue-tracker.md](../docs/agents/issue-tracker.md)). What
+> shipped from this plan lives in
+> [docs/concepts/boss.md](../docs/concepts/boss.md); this file is kept
+> for the Isaac / Gungeon analysis that motivated the pattern catalogue
+> and mood system.
+
 ---
 
 ## Índice
