@@ -24,7 +24,6 @@ from . import settings
 from . import species
 from . import ui
 from . import weapons
-from .mathutil import vfrom_angle
 from .mathutil import approach, clamp, safe_norm, vfrom_angle
 from .lizard import AILizard
 from .camera import Camera
