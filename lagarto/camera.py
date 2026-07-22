@@ -8,7 +8,7 @@ import random
 from pygame import Vector2
 
 from . import config as C
-from .mathutil import clamp, lerp, vfrom_angle
+from .mathutil import clamp, lerp, random_dir
 
 
 class Camera:
@@ -39,7 +39,7 @@ class Camera:
         self.zoom = lerp(self.zoom, target_zoom, clamp(4 * dt, 0, 1))
 
         if self.shake_mag > 0.2:
-            self.shake_off = vfrom_angle(random.uniform(0, 360), self.shake_mag)
+            self.shake_off = random_dir(self.shake_mag)
             self.shake_mag *= math.exp(-9 * dt)
         else:
             self.shake_off = Vector2()

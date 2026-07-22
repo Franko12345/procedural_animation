@@ -7,7 +7,7 @@ import pygame
 
 from . import config as C
 from . import palette
-from .mathutil import clamp, vfrom_angle, safe_norm, decay
+from .mathutil import clamp, vfrom_angle, safe_norm, decay, random_dir
 
 TAU = C.TAU
 
@@ -17,7 +17,7 @@ class Bug:
 
     def __init__(self, pos):
         self.pos = Vector2(pos)
-        self.vel = vfrom_angle(random.uniform(0, 360)) * 30
+        self.vel = random_dir(30)
         self.dead = False
         self.t = random.uniform(0, TAU)
         self.r = 6
@@ -35,7 +35,7 @@ class Bug:
         else:
             self.vel *= math.exp(-1.5 * dt)
             if random.random() < dt * 2:
-                self.vel += vfrom_angle(random.uniform(0, 360)) * 40
+                self.vel += random_dir(40)
         if self.vel.length() > 120:
             self.vel.scale_to_length(120)
         self.pos += self.vel * dt

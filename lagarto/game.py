@@ -13,7 +13,7 @@ import pygame
 
 from . import config as C
 from . import fonts
-from .mathutil import clamp, ease_out, lerp, vfrom_angle, safe_norm, decay, pulse
+from .mathutil import clamp, ease_out, lerp, vfrom_angle, safe_norm, decay, pulse, random_dir
 from .spine import build_radii
 from .lizard import Player, AILizard
 from . import species
@@ -251,7 +251,7 @@ class Game:
                        random.uniform(margin, C.WORLD_H - margin))
 
     def _rand_edge_near(self, center, dist=560):
-        return center + vfrom_angle(random.uniform(0, 360), dist)
+        return center + random_dir(dist)
 
     def shake(self, m):
         self.cam.add_shake(m)
@@ -783,7 +783,7 @@ class Game:
         return best
 
     def spawn_fruit(self, pos):
-        self.pickups.append(Fruit(pos + vfrom_angle(random.uniform(0, 360), 20)))
+        self.pickups.append(Fruit(pos + random_dir(20)))
 
     def spawn_enemy(self, e):
         """Queue an enemy to join next drain -- safe to call while iterating

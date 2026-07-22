@@ -15,7 +15,7 @@ import pygame
 from . import config as C
 from . import audio
 from . import palette
-from .mathutil import safe_norm, vfrom_angle, clamp
+from .mathutil import safe_norm, vfrom_angle, clamp, random_dir
 from .projectile import spit as mk_spit, web as mk_web, Projectile
 
 
@@ -119,7 +119,7 @@ class Ferrao(Weapon):
         mouth = player.spine.joints[0] + player.spine.head_dir() * player.max_r
         n = lv['count'] + player.amount
         for k in range(n):
-            v = vfrom_angle(random.uniform(0, 360), 240)
+            v = random_dir(240)
             pr = Projectile(mouth, v, self.color,
                             dmg=int(round(lv['dmg'] * player.might)),
                             radius=6, hostile=False, life=3.0)
@@ -177,7 +177,7 @@ class Esporos(Weapon):
         for e in _enemies_in(game, player.pos, r):
             e.damage(game, lv['dps'] * player.might * dt)
         if random.random() < dt * 14:
-            p = player.pos + vfrom_angle(random.uniform(0, 360), random.uniform(0, r))
+            p = player.pos + random_dir(random.uniform(0, r))
             game.fx.burst(p, self.color, 1, 40)
 
     def draw(self, surf, cam, player, st, level):
@@ -396,7 +396,7 @@ class Acido(Weapon):
                 base, spread = foes[i].pos, 60
             else:                       # more puddles than targets: scatter wide
                 base, spread = player.pos, 180
-            pos = base + vfrom_angle(random.uniform(0, 360), random.uniform(0, spread))
+            pos = base + random_dir(random.uniform(0, spread))
             game.spawn_puddle(Puddle(pos, lv['r'] * player.area_mult,
                                      lv['dmg'] * player.might, lv['life'], self.hue))
         audio.play('w_puddle', 0.26)

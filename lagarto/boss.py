@@ -28,7 +28,7 @@ from pygame import Vector2
 from . import audio
 from . import config as C
 from . import palette
-from .mathutil import safe_norm, vfrom_angle, clamp, decay
+from .mathutil import safe_norm, vfrom_angle, clamp, decay, random_dir
 from .projectile import spit as game_spit
 
 
@@ -105,7 +105,7 @@ def summon_adds(boss, game, target):
     pool = roundslib.THEMES.get(game.rounds.theme, {}).get('pool', species.ENEMY_SPECIES)
     for _ in range(C.BOSS_SUMMON_COUNT):
         key = random.choice(pool)
-        pos = boss.pos + vfrom_angle(random.uniform(0, 360), boss.max_r * 1.6)
+        pos = boss.pos + random_dir(boss.max_r * 1.6)
         e = species.make(key, pos)
         game.spawn_enemy(e)
         game.fx.ring(pos, boss.color)
@@ -199,8 +199,8 @@ def _select_arms_rain(boss, game, target):
     pat = PATTERNS[boss.boss_ai.pattern_id]
     n = pat.get('count', C.BOSS_ARMS_RAIN_COUNT)
     spread = pat.get('spread', C.BOSS_ARMS_RAIN_SPREAD)
-    boss._rain_points = [Vector2(target.pos) + vfrom_angle(random.uniform(0, 360),
-                         random.uniform(0, spread)) for _ in range(n)]
+    boss._rain_points = [Vector2(target.pos) + random_dir(random.uniform(0, spread))
+                         for _ in range(n)]
 
 
 def arms_rain(boss, game, target):
@@ -346,7 +346,7 @@ def default_personality():
 
 def spawn_scar(boss, game):
     from . import weapons
-    pos = boss.pos + vfrom_angle(random.uniform(0, 360), boss.max_r * 0.6)
+    pos = boss.pos + random_dir(boss.max_r * 0.6)
     p = weapons.Puddle(pos, boss.max_r * 0.9, C.KING_SCAR_DMG, C.KING_SCAR_LIFE,
                        22, hostile=True, tick=0.5,
                        slow=(C.KING_SCAR_SLOW, C.KING_SCAR_TIME))

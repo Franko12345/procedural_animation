@@ -12,7 +12,7 @@ import pygame
 
 from . import config as C
 from . import palette
-from .mathutil import vfrom_angle
+from .mathutil import vfrom_angle, random_dir
 
 
 class FX:
@@ -35,7 +35,7 @@ class FX:
 
     def burst(self, pos, color, n, speed):
         for _ in range(n):
-            v = vfrom_angle(random.uniform(0, 360), random.uniform(0.3, 1.0) * speed)
+            v = random_dir(random.uniform(0.3, 1.0) * speed)
             self._add(pos.x, pos.y, v.x, v.y, random.uniform(0.3, 0.6),
                       random.uniform(3, 6), color, 240, glow=True)
 
@@ -43,13 +43,13 @@ class FX:
         for _ in range(n):
             if len(self.sparks) >= self.MAX_SPARKS:
                 self.sparks.pop(0)
-            v = vfrom_angle(random.uniform(0, 360), random.uniform(0.4, 1.0) * speed)
+            v = random_dir(random.uniform(0.4, 1.0) * speed)
             self.sparks.append([pos.x, pos.y, v.x, v.y,
                                 random.uniform(0.25, 0.5), 0.5, color])
 
     def dust(self, pos):
         for _ in range(3):
-            v = vfrom_angle(random.uniform(0, 360), random.uniform(6, 26))
+            v = random_dir(random.uniform(6, 26))
             self._add(pos.x, pos.y, v.x, v.y - 10, random.uniform(0.25, 0.5),
                       random.uniform(2, 4), (150, 140, 180), 40)
 
