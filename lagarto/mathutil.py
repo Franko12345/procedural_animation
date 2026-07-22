@@ -22,6 +22,11 @@ def approach(cur, target, rate, dt):
     return target + (cur - target) * math.exp(-rate * dt)
 
 
+def decay(value, dt, scale=1.0):
+    """Countdown clamped at zero: ``max(0.0, value - dt * scale)``."""
+    return max(0.0, value - dt * scale)
+
+
 def vfrom_angle(deg, length=1.0):
     r = math.radians(deg)
     return Vector2(math.cos(r) * length, math.sin(r) * length)

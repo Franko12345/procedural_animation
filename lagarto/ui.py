@@ -11,6 +11,7 @@ import pygame
 
 from . import config as C
 from . import palette
+from .mathutil import decay
 
 INK = (12, 14, 22)
 LINE = (68, 72, 104)
@@ -240,7 +241,7 @@ class Fade:
         return self.t > 0
 
     def update(self, dt):
-        self.t = max(0.0, self.t - dt)
+        self.t = decay(self.t, dt)
 
     def draw(self, surf):
         if self.t <= 0:

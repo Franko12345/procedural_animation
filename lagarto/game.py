@@ -13,7 +13,7 @@ import pygame
 
 from . import config as C
 from . import fonts
-from .mathutil import clamp, ease_out, lerp, vfrom_angle, safe_norm
+from .mathutil import clamp, ease_out, lerp, vfrom_angle, safe_norm, decay
 from .spine import build_radii
 from .lizard import Player, AILizard
 from . import species
@@ -583,7 +583,7 @@ class Game:
         """The clearing. Shop mode is the old frozen menu; field mode lets the
         players actually WALK -- touch the tent to shop, cross a door to advance."""
         self.ui_t += dt
-        self.ui_fx = max(0.0, self.ui_fx - dt)
+        self.ui_fx = decay(self.ui_fx, dt)
         if self.pick:                         # absorbing a purchase: everything frozen
             self._step_pick(dt)
             self.fx.update(dt)
@@ -601,8 +601,8 @@ class Game:
                 f.update(dt, self)
         self.world.update(dt)
         self.fx.update(dt)
-        self.combo_flash = max(0.0, self.combo_flash - dt * 2)
-        self.camp['reopen_cd'] = max(0.0, self.camp.get('reopen_cd', 0.0) - dt)
+        self.combo_flash = decay(self.combo_flash, dt, 2)
+        self.camp['reopen_cd'] = decay(self.camp.get('reopen_cd', 0.0), dt)
         self._update_camp_drop()              # the pieces fall in with a slam
         # touch the tent -> open the shop (only once it has landed)
         if self.camp['reopen_cd'] <= 0 and self.camp['tent_landed']:
@@ -931,7 +931,7 @@ class Game:
             # the UI screens have their own clock so the entry animation runs on
             # the same fixed timestep as everything else (FPS-independent)
             self.ui_t += dt
-            self.ui_fx = max(0.0, self.ui_fx - dt)
+            self.ui_fx = decay(self.ui_fx, dt)
             if self.pick:
                 self._step_pick(dt)
             self.fx.update(dt)
@@ -975,13 +975,13 @@ class Game:
             else:
                 self._enter_camp()                  # otherwise: camp (route + shop)
         self.fx.update(dt)
-        self.flash = max(0.0, self.flash - dt * 3.2)
+        self.flash = decay(self.flash, dt, 3.2)
         self.world.update(dt)
         if self.combo_timer > 0:
             self.combo_timer -= dt
             if self.combo_timer <= 0:
                 self.combo = 0
-        self.combo_flash = max(0.0, self.combo_flash - dt * 2)
+        self.combo_flash = decay(self.combo_flash, dt, 2)
         self._revive()
 
         if self.pending_enemies:        # children queued during this step's deaths

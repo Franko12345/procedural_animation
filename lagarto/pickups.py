@@ -7,7 +7,7 @@ import pygame
 
 from . import config as C
 from . import palette
-from .mathutil import clamp, vfrom_angle, safe_norm
+from .mathutil import clamp, vfrom_angle, safe_norm, decay
 
 TAU = C.TAU
 
@@ -26,7 +26,7 @@ class Bug:
 
     def update(self, dt, game):
         self.t += dt * 12
-        self.hop = max(0.0, self.hop - dt)
+        self.hop = decay(self.hop, dt)
         p = game.nearest_player(self.pos)
         if p and p.pos.distance_to(self.pos) < 150:
             self.vel += safe_norm(self.pos - p.pos) * 400 * dt

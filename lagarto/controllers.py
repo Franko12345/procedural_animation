@@ -12,7 +12,7 @@ from pygame import Vector2
 
 from . import config as C
 from . import display
-from .mathutil import safe_norm
+from .mathutil import safe_norm, decay
 
 
 # --------------------------------------------------------------------------- #
@@ -269,7 +269,7 @@ class Controller:
     def _edges(self, dash, tongue, whip=False, item=False, dt=0.0):
         for action, now in zip(_ACTIONS, (dash, tongue, whip, item)):
             if self._buf[action] > 0.0:
-                self._buf[action] = max(0.0, self._buf[action] - dt)
+                self._buf[action] = decay(self._buf[action], dt)
             if now and not self._held[action]:      # rising edge only: holding never repeats
                 self._buf[action] = C.INPUT_BUFFER
             self._held[action] = now
