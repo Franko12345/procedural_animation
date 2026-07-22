@@ -724,7 +724,7 @@ class Player(Lizard):
         # thorns, health, whip cooldown), so it cannot run any earlier.
         self.gain_weapon(char.weapon)
         if char.apply:
-            char.apply(self, None)
+            char.apply(self)
 
     @property
     def dashing(self):
