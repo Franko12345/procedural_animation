@@ -77,14 +77,14 @@ class Registry:
         return out
 
     # ---- weighted roll --------------------------------------------------- #
-    def roll(self, pool=None, n=1, rng=_random, filter=None, weight=None):
+    def roll(self, pool=None, n=1, rng=_random, filter=None):
         """Weighted pick of ``n`` distinct items.
 
         ``pool`` filters to items whose ``pools`` attribute contains ``pool``
         (or, if the attribute is scalar, whose value equals ``pool``).
         ``filter`` is an optional callable ``(item) -> bool`` layered on top.
-        ``weight`` is an optional callable ``(item) -> float``; defaults to
-        the item's ``weight()`` method if present, else 1.0.
+        Item weight comes from ``_default_weight`` (calls ``weight()`` if it is
+        a method, uses the value if it is a scalar, defaults to 1.0).
         """
         cand = self._items
         if pool is not None:
@@ -92,14 +92,10 @@ class Registry:
         if filter is not None:
             cand = [it for it in cand if filter(it)]
         cand = list(cand)                    # local copy: we pop from it
-        if weight is None:
-            weight = _default_weight
         out = []
         while cand and len(out) < n:
-            weights = [weight(it) for it in cand]
+            weights = [_default_weight(it) for it in cand]
             total = sum(weights)
-            if total <= 0:
-                break
             r = rng.uniform(0, total)
             acc = 0.0
             for k, it in enumerate(cand):
