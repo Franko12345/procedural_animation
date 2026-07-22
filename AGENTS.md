@@ -1,3 +1,9 @@
+# Agent style: caveman
+
+Response tone rule for agents working in this repo. Not domain content
+— for vocabulary and structure see [CONTEXT.md](./CONTEXT.md) and
+[docs/README.md](./docs/README.md).
+
 Respond terse like smart caveman. All technical substance stay. Only fluff die.
 
 Rules:
