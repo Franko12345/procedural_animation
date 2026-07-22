@@ -193,7 +193,19 @@ Playtest: cauda esticando MUITO ao mover + streaks gigantes no menu. Duas causas
 - [ ] Arena design (pilares/corredor/poças) por chefe — ainda não precisou
       (Rei Lagarto usa clareira aberta); entra quando um chefe pedir (Muralha).
 
-### Fase 03: 10 chefes + PRIMORDIAL (4/11 prontos — arco do modo NORMAL completo)
+### Fase 03: 10 chefes + PRIMORDIAL (7/11 prontos — normal completo + 3 de endless)
+
+**Estado (7/11):** normal (5/10/15/20) = Rei Lagarto, Centopeiadeira, Kraken-Mor,
+Primordial. Endless (pool tier5+) = Mãe-Escaravelho, **Aranha-Rei**, **Serpente de
+Cristal**. Faltam: Terror Alado (`winged`, corpo novo), Olho-Sísmico (`orbital`,
+corpo novo), ANKH (4 formas), Muralha (precisa de arena/confinamento — mundo é
+aberto). **Aranha-Rei e Serpente de Cristal foram 100% reuso** (nenhum padrão nem
+corpo novo, só combinações + generalização de `pincha_bite`/`web_trap`/`fan_shot`
+pra ler dials do PATTERNS dict). Serpente troca "Reflection"/"Fractal Burst" do doc
+por spiral/deathroll — o motor de projéteis não tem reflexão nem split em voo,
+substituído em vez de ficar pela metade (decisão registrada, não lacuna). Cada
+chefe novo ganhou emblema pixel art (`assets/icons/boss_*.png`) + fallback
+procedural em `icons.py`.
 
 **Remapeamento de onda (decisão, não desvio silencioso):** o doc 03 dá cada chefe
 uma onda narrativa (5,7,8,9...), mas o motor só sorteia chefe a cada `BOSS_EVERY`
