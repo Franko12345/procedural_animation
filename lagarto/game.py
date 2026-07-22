@@ -32,7 +32,6 @@ from .camera import Camera
 from .world import World
 from .collision import separate
 from .rounds import RoundManager
-from .mathutil import vfrom_angle as _vfrom_angle
 
 
 def _bar_tail(surf, bx, by, h, color, phase, t):
