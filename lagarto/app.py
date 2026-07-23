@@ -10,14 +10,14 @@ import time
 
 import pygame
 
-from . import audio
+from .audio import engine as audio
 from .core import config as C
 from . import display
 from .core import fonts
 from . import perf
 from . import ui
 from .core import settings
-from .controllers import (make_controllers, describe_joysticks, Pad, MenuNav,
+from .input.controllers import (make_controllers, describe_joysticks, Pad, MenuNav,
                           KeyboardMouseController, GamepadController)
 from .game import Game
 from .menu import run_menu

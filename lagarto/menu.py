@@ -9,7 +9,7 @@ import random
 from pygame import Vector2
 import pygame
 
-from . import audio
+from .audio import engine as audio
 from . import characters
 from . import charms
 from .core import config as C
@@ -362,7 +362,7 @@ def _compendium_entries(tab):
 
 
 def run_menu(screen, font, bigfont, titlefont, joysticks):
-    from .controllers import MenuNav
+    from .input.controllers import MenuNav
     clock = pygame.time.Clock()
     nav = MenuNav()
     fade = ui.Fade()

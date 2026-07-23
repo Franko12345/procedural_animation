@@ -25,7 +25,7 @@ fight from scratch every threshold.
 import random
 from pygame import Vector2
 
-from . import audio
+from .audio import engine as audio
 from .core import config as C
 from .core import palette
 from .core.mathutil import safe_norm, vfrom_angle, clamp, decay, random_dir
