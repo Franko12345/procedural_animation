@@ -1,0 +1,591 @@
+"""The shared procedural body every lizard is built from.
+
+``Lizard`` wires a Spine to its legs (diagonal gait, radial for spiders, a
+metachronal wave for centipedes) plus arms, squash & stretch, hit testing and
+all the drawing. ``Player`` and ``AILizard`` reuse it unchanged, so any number
+of them can be on screen animating procedurally at once.
+"""
+
+import math
+import random
+from pygame import Vector2
+import pygame
+
+from ..core import config as C
+from ..core import palette
+from . import parts
+from .genome import basic_lizard
+from ..core.mathutil import clamp, lerp, approach, vfrom_angle, safe_norm, angle_of, decay
+from ..anim.spine import Spine, build_radii
+from ..anim.leg import Leg
+from ..anim.anim import Vector2Spring
+
+TAIL_SPRING_JOINTS = 4          # how many tail joints get cosmetic overshoot
+TAIL_SPRING_MAX_LAG = 0.45      # cap on overshoot, as a fraction of max_r -- a
+                                # spring's steady-state lag scales with target
+                                # speed with no ceiling, so an uncapped spring
+                                # turns a dash (or any large jump, e.g. a menu
+                                # backdrop lizard being repositioned) into a
+                                # tail stretched way past the body's own length
+TAIL_SPRING_STIFFNESS = 10.0
+
+TAU = C.TAU
+
+
+class Lizard:
+    def __init__(self, pos, kind, scale=1.0, color=None, genome=None):
+        self.kind = kind
+        self.genome = genome or basic_lizard(scale)
+        g = self.genome
+        self.scale = g.size
+        self.dead = False
+        self.pos = Vector2(pos)          # head position (leads the body)
+        self.vel = Vector2()
+        self.facing = Vector2(1, 0)
+        self.color = color or g.color()
+        self.squash = 1.0
+        self.leg_pull = 1.0      # anticipation hook, twin of squat_bias: < 1 pulls
+                                 # legs in toward the body (a real crouch/coil),
+                                 # > 1 reaches them out (the launch); same
+                                 # decays-on-its-own contract, see integrate()
+        self.squat_bias = 1.0    # anticipation hook (plans/01 #8): a caller sets
+                                 # this < 1 every frame of its own wind-up window
+                                 # (hop/lunge/ranged/dash); integrate() multiplies
+                                 # it into the squash TARGET and decays it back to
+                                 # 1.0 on its own once the caller stops touching it
+                                 # -- composes with the speed-based squash instead
+                                 # of fighting it frame-to-frame
+        self.wobble = random.uniform(0, TAU)
+        self.hit_flash = 0.0
+        self.attack_cd = 0.0
+        self.on_screen = True
+        self.slow_t = 0.0
+        self.slow_mul = 1.0
+
+        self.max_speed = 0.0
+        self._speed_base = 0.0
+        self.rebuild_body(keep_pose=False)
+        self.accel = 900.0
+        self.target_dir = Vector2()
+
+    def rebuild_body(self, keep_pose=True):
+        """Recompute everything derived from the genome -- and nothing else.
+
+        Calling ``__init__`` again also wipes hp, weapons, level, aggro and the
+        rest of the run state, which is why ``champions.py`` had to snapshot a
+        list of fields around it. Three features need the *body* to follow a
+        changed genome while the run continues: the LARVA growing, a champion
+        being promoted, and (phase 5) a boss shedding armour between phases. They
+        all go through here.
+
+        ``max_speed`` accumulates multipliers from meta-progression and cards, so
+        recomputing it from scratch would silently delete them; the ratio against
+        ``_speed_base`` is carried across instead.
+        """
+        g = self.genome
+        self.scale = g.size
+        plan = getattr(g, 'plan', 'normal')
+        if g.radial:                      # spider: compact body, few joints
+            n = 3
+            maxr = 15 * g.size * g.girth
+            link = maxr * 0.7
+        elif plan == 'tentacle':          # octopus: small soft mantle + arms
+            n = 4
+            maxr = 20 * g.size * g.girth
+            link = maxr * 0.55
+        elif plan == 'segmented':         # centipede: long thin chain of segments
+            n = max(10, int(16 * g.size * g.length))
+            maxr = 14 * g.size * g.girth
+            link = maxr * 1.15
+        else:
+            n = max(6, int(11 * g.size * g.length))
+            maxr = 17 * g.size * g.girth
+            link = maxr * 1.05
+        self.max_r = maxr
+        head = Vector2(self.spine.joints[0]) if (keep_pose and hasattr(self, 'spine')) \
+            else Vector2(self.pos)
+        self.spine = Spine(head, n, link, build_radii(n, maxr), bend=26)
+        self.spine.resolve(head)
+        if plan == 'normal':
+            tip = Vector2(self.spine.joints[-1])
+            if keep_pose and getattr(self, 'tail_spring', None) is not None:
+                self.tail_spring.target = tip     # keep momentum across a rebuild
+            else:
+                self.tail_spring = Vector2Spring(tip, stiffness=TAIL_SPRING_STIFFNESS, damping=0.75)
+        else:
+            self.tail_spring = None
+        self.legs = self._build_legs(g, n, maxr)
+        for leg in self.legs:
+            leg.init_foot(self.spine)
+        self.arms = self._build_arms(g, maxr) if plan == 'tentacle' else []
+
+        base = 165 * (0.85 + 0.4 / g.size) * g.speed
+        mult = (self.max_speed / self._speed_base) if self._speed_base else 1.0
+        self.max_speed = base * mult
+        self._speed_base = base
+
+    def _build_legs(self, g, n, maxr):
+        plan = getattr(g, 'plan', 'normal')
+        if plan == 'tentacle':            # arms are not IK legs
+            return []
+        if g.leg_count <= 0:
+            return []
+        if plan == 'segmented':
+            return self._build_centipede_legs(g, n, maxr)
+        if g.radial:
+            return self._build_radial_legs(g, n, maxr)
+        seg = maxr * 1.35 * g.leg_len
+        so = maxr * 1.7
+        step_len = maxr * 1.5
+        pairs = max(1, g.leg_count // 2)
+        if pairs == 1:
+            fracs = [0.35]
+        elif pairs == 2:
+            fracs = [0.22, 0.55]
+        else:
+            fracs = [0.18 + i * (0.52 / (pairs - 1)) for i in range(pairs)]
+        legs = []
+        for pi, frac in enumerate(fracs):
+            idx = max(1, min(n - 2, int(n * frac)))
+            fwd_off = maxr * lerp(0.3, -0.2, pi / max(1, pairs - 1))
+            legs.append(Leg(idx, -1, so, fwd_off, seg, step_len, 0.14, maxr * 0.9))
+            legs.append(Leg(idx, +1, so, fwd_off, seg, step_len, 0.14, maxr * 0.9))
+        # diagonal gait: left of a pair steps with the right of the next pair
+        for i in range(pairs):
+            j = (i + 1) % pairs
+            legs[2 * i].partner = legs[2 * j + 1]
+            legs[2 * i + 1].partner = legs[2 * j]
+        return legs
+
+    def _build_radial_legs(self, g, n, maxr):
+        """Spider-style legs: fixed angles around the body, IK reach outward."""
+        count = max(4, g.leg_count)
+        half = count // 2
+        reach = maxr * 2.4 * g.leg_len
+        seg = reach * 0.62
+        step_len = maxr * 1.15
+        idx = max(1, n // 2)
+        legs = []
+        for k in range(half):
+            a = 38 + k * (118 / (half - 1)) if half > 1 else 90    # 38..156 deg
+            legs.append(Leg(idx, +1, reach, 0, seg, step_len, 0.12, maxr * 0.7,
+                            rest_angle=a, reach=reach))
+            legs.append(Leg(idx, -1, reach, 0, seg, step_len, 0.12, maxr * 0.7,
+                            rest_angle=-a, reach=reach))
+        # opposite legs alternate so it never stands on all/none at once
+        h = len(legs) // 2
+        for i, leg in enumerate(legs):
+            leg.partner = legs[(i + h) % len(legs)]
+        return legs
+
+    def _build_centipede_legs(self, g, n, maxr):
+        """A short pair on (almost) every segment, phased down the body.
+
+        The point is the *metachronal wave*: partnering each pair with the pair
+        two segments back keeps neighbours from planting together, so the many
+        tiny legs ripple front-to-back instead of marching in sync.
+        """
+        seg = maxr * 1.0 * g.leg_len
+        so = maxr * 1.25
+        step_len = maxr * 1.05
+        legs = []
+        for idx in range(1, n - 1):
+            legs.append(Leg(idx, -1, so, 0.0, seg, step_len, 0.11, maxr * 0.5))
+            legs.append(Leg(idx, +1, so, 0.0, seg, step_len, 0.11, maxr * 0.5))
+        m = len(legs)
+        for i, leg in enumerate(legs):
+            leg.partner = legs[(i + 4) % m] if m > 4 else None
+        return legs
+
+    def _build_arms(self, g, maxr):
+        """Octopus arms: each is a follow-the-leader sub-chain hung off the mantle.
+
+        Not IK legs -- they don't plant. They sway/curl on their own and (in
+        ``_resolve_arms``) trail the body, so a moving kraken whips its arms.
+        """
+        count = max(4, g.leg_count or 6)
+        ajoints = 10
+        link = maxr * 0.68 * g.leg_len
+        base = Vector2(self.spine.joints[0])
+        arms = []
+        for k in range(count):
+            arms.append({'a': (360.0 / count) * k,
+                         'phase': k * 1.9,
+                         'link': link,
+                         'j': [Vector2(base) for _ in range(ajoints)]})
+        return arms
+
+    def _resolve_arms(self, dt):
+        """Curl + trail the octopus arms. Each joint eases toward an outward,
+        sine-curled target and then re-clamps to the link length, so the chain
+        stays taut but whips when the body moves (soft follow-the-leader)."""
+        mantle = self.spine.joints[0]
+        base_ang = angle_of(self.spine.head_dir())
+        trailing = -safe_norm(self.vel) if self.vel.length_squared() > 400 else Vector2()
+        k = min(1.0, 18 * dt)
+        # during a grab wind-up the arms all reach toward the target and straighten
+        # -- that convergence IS the telegraph (see ai/grapple.py)
+        reach = getattr(self, 'arm_target', None)
+        reach_ang = angle_of(reach - mantle) if reach is not None else 0.0
+        for arm in self.arms:
+            js = arm['j']
+            link = arm['link']
+            if reach is not None:
+                anchor_ang = reach_ang + arm['a'] * 0.14      # cluster toward target
+                swirl, amp = 7.0, 9.0                          # nearly straight spears
+            else:
+                anchor_ang = base_ang + arm['a']
+                swirl, amp = 24.0, 34.0
+            js[0].update(mantle + vfrom_angle(anchor_ang, self.max_r * 1.35))
+            m = len(js)
+            for i in range(1, m):
+                t = i / (m - 1)
+                # a wave that travels down the arm (i term) + a constant swirl so
+                # even a still arm hooks like a tentacle, not a straight spoke
+                wave = math.sin(self.wobble * 2.4 - i * 0.9 + arm['phase'])
+                ang = anchor_ang + (swirl + wave * amp) * t
+                desired = js[i - 1] + vfrom_angle(ang, link) + trailing * (link * 0.9 * t)
+                js[i] += (desired - js[i]) * k
+                off = js[i] - js[i - 1]
+                L = off.length()
+                if L > 1e-4:
+                    js[i] = js[i - 1] + off * (link / L)
+
+    # ---- hit testing ----------------------------------------------------- #
+    def body_points(self):
+        """Sample points along the spine: [(pos, radius, is_head), ...].
+
+        Damage used to test a single circle at the head, so a 322px snake was only
+        ~5% hittable. Same sampling idea as ``collision._samples``.
+        """
+        js, rs = self.spine.joints, self.spine.radii
+        m = len(js)
+        idx = sorted({0, m // 4, m // 2, (3 * m) // 4, m - 1})
+        return [(js[i], rs[i], i == 0) for i in idx]
+
+    def hit_test(self, pos, radius=0.0):
+        """None if it misses; 'head' (weak point) or 'body' if it connects."""
+        if getattr(self, 'burrowed', False):     # underground = untouchable
+            return None
+        if getattr(self, 'boss_invuln', False):  # boss intro / phase transition
+            return None
+        best = None
+        for jp, r, is_head in self.body_points():
+            dx = jp.x - pos[0]
+            dy = jp.y - pos[1]
+            reach = r + radius
+            if dx * dx + dy * dy <= reach * reach:
+                if is_head:
+                    return 'head'            # weak point wins outright
+                best = 'body'
+        return best
+
+    # ---- status --------------------------------------------------------- #
+    def apply_slow(self, mul, dur):
+        self.slow_mul = min(self.slow_mul, mul) if self.slow_t > 0 else mul
+        self.slow_t = max(self.slow_t, dur)
+
+    def _speed_scale(self):
+        return self.slow_mul if self.slow_t > 0 else 1.0
+
+    # ---- movement ------------------------------------------------------- #
+    def steer(self, desired_dir, dt, speed_mul=1.0):
+        speed_mul *= self._speed_scale()
+        if desired_dir.length_squared() > 1e-4:
+            self.target_dir = safe_norm(desired_dir)
+            target_v = self.target_dir * self.max_speed * speed_mul
+        else:
+            target_v = Vector2()
+        turn_resp = 1.0 - self.genome.angular_damping   # 1.0 = old behaviour unchanged
+        self.vel += (target_v - self.vel) * clamp(self.accel * dt * turn_resp / self.max_speed, 0, 1)
+
+    def integrate(self, dt, on_plant=None):
+        self.pos += self.vel * dt
+        m = self.max_r
+        for ax, lim in ((0, C.WORLD_W), (1, C.WORLD_H)):
+            if self.pos[ax] < m:
+                self.pos[ax] = m
+                self.vel[ax] = abs(self.vel[ax]) * 0.5
+            elif self.pos[ax] > lim - m:
+                self.pos[ax] = lim - m
+                self.vel[ax] = -abs(self.vel[ax]) * 0.5
+
+        self.spine.resolve(self.pos)
+        if self.vel.length_squared() > 1:
+            self.facing = safe_norm(self.vel)
+        for leg in self.legs:
+            leg.update(self.spine, self.vel, dt, on_plant, self.leg_pull)
+        if self.arms:
+            self._resolve_arms(dt)
+        self.update_secondary_springs(dt)
+        self.leg_pull = approach(self.leg_pull, 1.0, 6, dt)  # decays if no one re-asserts it
+
+        if self.genome.linear_damping > 0:
+            self.vel *= math.exp(-self.genome.linear_damping * 3.0 * dt)
+
+        spd = self.vel.length()
+        w = self.genome.weight
+        target_squash = (1.0 + clamp(spd / self.max_speed, 0, 1.6) * 0.16 / w) * self.squat_bias
+        self.squash = approach(self.squash, target_squash, 9 / math.sqrt(w), dt)
+        self.squat_bias = approach(self.squat_bias, 1.0, 6, dt)  # decays if no one re-asserts it
+        self.wobble += dt * 6
+        self.hit_flash = decay(self.hit_flash, dt, 3)
+        self.attack_cd = decay(self.attack_cd, dt)
+        self.slow_t = decay(self.slow_t, dt)
+
+    def update_secondary_springs(self, dt):
+        """Advance every cosmetic spring that chases the physical body.
+
+        A single choke point on purpose: this project has hit "a second call
+        site forgot to update the new state" three times already (the menu's
+        3 hand-rolled ``integrate()`` subsets all forgot ``tail_spring``, see
+        CURRENT_PLAN.md). Any bypass of ``integrate()`` (menu backdrops,
+        bestiary/char-select previews) MUST call this too, and adding a new
+        spring later only means touching this one method.
+        """
+        if self.tail_spring is not None:
+            self.tail_spring.target = self.spine.joints[-1]
+            self.tail_spring.update(dt)
+
+    def reset_secondary_springs(self):
+        """Snap every cosmetic spring to the current pose -- call after
+        teleporting/repositioning a creature outside of normal movement, or
+        the spring spends its next few frames chasing a stale anchor."""
+        if self.tail_spring is not None:
+            self.tail_spring.value = self.tail_spring.target = Vector2(self.spine.joints[-1])
+
+    def _cosmetic_joints(self):
+        """Physical joints with the last few tail joints blended toward
+        ``tail_spring`` (overshoot/lag) -- draw-only, so hit-test/legs/eyes
+        (which read ``spine.joints`` directly) are never thrown off.
+
+        Suppressed while the tail-whip is swinging (``whip_t`` > 0): that
+        directly overwrites these same joints with a hand-tuned arc
+        (``_whip_arc``), and the spring -- still chasing last frame's
+        pre-whip position -- fought it, visibly dulling/glitching the swing.
+        """
+        if self.tail_spring is None or getattr(self, 'whip_t', 0.0) > 0:
+            return None
+        js = list(self.spine.joints)
+        n = len(js)
+        k = min(TAIL_SPRING_JOINTS, n - 1)
+        if k <= 0:
+            return None
+        lag = self.tail_spring.value - js[-1]
+        cap = self.max_r * TAIL_SPRING_MAX_LAG
+        if lag.length_squared() > cap * cap:
+            lag.scale_to_length(cap)
+        wave_amp = self.max_r * 0.12    # traveling ripple (plans/01 #5), on top
+        for i in range(n - k, n):       # of the overshoot -- both draw-only
+            t = (i - (n - k - 1)) / k          # ramps 0 -> 1 toward the tip
+            fwd = safe_norm(js[i] - js[i + 1]) if i < n - 1 else safe_norm(js[i - 1] - js[i])
+            perp = Vector2(-fwd.y, fwd.x)
+            ripple = perp * (wave_amp * t * math.sin(self.wobble * 2.2 - i * 0.9))
+            js[i] = js[i] + lag * t + ripple
+        return js
+
+    # ---- drawing -------------------------------------------------------- #
+    def draw(self, surf, cam):
+        squish = 1.0 / math.sqrt(self.squash)
+        # soft glow behind the body so it pops off the ground (Animal Well vibe).
+        # Bounded to the player (+ bosses via glow_body) so a horde stays cheap;
+        # everyone else pops via rim light + vivid colour instead.
+        if getattr(self, 'glow_body', self.kind == 'player'):
+            mid = self.spine.joints[len(self.spine.joints) // 3]
+            palette.glow(surf, cam.w2s(mid), self.max_r * 2.6 * cam.zoom, self.color, 0.34)
+
+        plan = getattr(self.genome, 'plan', 'normal')
+        leg_col = palette.darken(self.color, 0.3)
+        thin = (plan == 'segmented')      # many little legs read better skinny
+        legw = max(1, int(self.max_r * (0.18 if thin else 0.42) * cam.zoom))
+        footr = max(1, int(self.max_r * (0.14 if thin else 0.28) * cam.zoom))
+        for leg in self.legs:
+            root = self.spine.joints[leg.idx]
+            knee, foot = leg.solve(root)
+            r = cam.w2s(root); k = cam.w2s(knee); f = cam.w2s(foot)
+            pygame.draw.line(surf, leg_col, r, k, legw)
+            pygame.draw.line(surf, leg_col, k, f, legw)
+            pygame.draw.circle(surf, leg_col, f, footr)
+
+        if self.genome.radial:
+            self._draw_spider(surf, cam)
+            return
+        if plan == 'tentacle':
+            self._draw_tentacle(surf, cam)
+            return
+        if plan == 'segmented':
+            self._draw_segmented(surf, cam)
+            return
+
+        cj = self._cosmetic_joints()
+        base = self.color
+        if self.hit_flash > 0:
+            base = palette.lighten(base, self.hit_flash)
+        quads, head_fan, tail_fan, ring = self.spine.body_render_smooth(squish, cj)
+        for q in quads:
+            pygame.draw.polygon(surf, base, [cam.w2s(p) for p in q])
+        if len(head_fan) >= 3:
+            pygame.draw.polygon(surf, base, [cam.w2s(p) for p in head_fan])
+        if len(tail_fan) >= 3:
+            pygame.draw.polygon(surf, base, [cam.w2s(p) for p in tail_fan])
+        poly = [cam.w2s(p) for p in ring]
+        if len(poly) >= 3:
+            # rim light: a bright edge just inside the dark ink outline
+            pygame.draw.polygon(surf, palette.lighten(base, 0.55), poly, max(1, int(3 * cam.zoom)))
+            pygame.draw.polygon(surf, C.COL_INK, poly, max(1, int(2 * cam.zoom)))
+
+        spot = palette.darken(self.color, 0.2)
+        js = cj or self.spine.joints
+        rad = self.spine.radii
+        for i in range(2, len(js) - 2, 2):
+            pygame.draw.circle(surf, spot, cam.w2s(js[i]),
+                               max(1, int(rad[i] * 0.32 * cam.zoom)))
+        parts.draw_all(surf, cam, self)
+        self._draw_head(surf, cam)
+
+    def _draw_spider(self, surf, cam):
+        js = self.spine.joints
+        base = self.color
+        if self.hit_flash > 0:
+            base = palette.lighten(base, self.hit_flash)
+        ink_w = max(1, int(2 * cam.zoom))
+        head = js[0]
+        abdomen = js[-1]
+        d = self.spine.head_dir()
+        hc = cam.w2s(head)
+        ac = cam.w2s(abdomen)
+        ar = max(3, int(self.max_r * 1.5 * cam.zoom))
+        hr = max(2, int(self.max_r * 0.85 * cam.zoom))
+        # abdomen
+        pygame.draw.circle(surf, base, ac, ar)
+        pygame.draw.circle(surf, palette.lighten(base, 0.5), ac, ar, ink_w)
+        pygame.draw.circle(surf, C.COL_INK, ac, ar, ink_w)
+        # cephalothorax
+        pygame.draw.circle(surf, palette.darken(base, 0.1), hc, hr)
+        pygame.draw.circle(surf, C.COL_INK, hc, hr, ink_w)
+        # cluster of eyes on the head
+        perp = Vector2(-d.y, d.x)
+        r = self.max_r
+        for ex, ey in ((0.25, -0.3), (0.25, 0.3), (0.45, -0.12), (0.45, 0.12)):
+            ep = head + d * (r * ex) + perp * (r * ey)
+            pygame.draw.circle(surf, C.COL_WHITE, cam.w2s(ep), max(1, int(r * 0.16 * cam.zoom)))
+
+    def _draw_segmented(self, surf, cam):
+        """Centipede: overlapping ringed segments (the ink ring on each = the
+        segmentation), head last so it sits on top, with mandibles + antennae."""
+        js, rad = self.spine.joints, self.spine.radii
+        n = len(js)
+        base = self.color
+        if self.hit_flash > 0:
+            base = palette.lighten(base, self.hit_flash)
+        seg = palette.lighten(base, 0.05)
+        rim = palette.lighten(base, 0.5)
+        ink_w = max(1, int(1.6 * cam.zoom))
+        for i in range(n - 1, -1, -1):
+            c = cam.w2s(js[i])
+            rr = max(2, int(rad[i] * 1.2 * cam.zoom))
+            pygame.draw.circle(surf, base if i == 0 else seg, c, rr)
+            pygame.draw.circle(surf, rim, (c[0] - int(rr * 0.28), c[1] - int(rr * 0.3)),
+                               max(1, int(rr * 0.36)))
+            pygame.draw.circle(surf, C.COL_INK, c, rr, ink_w)
+        head = js[0]
+        d = self.spine.head_dir()
+        perp = Vector2(-d.y, d.x)
+        r = self.max_r
+        for s in (-1, 1):                                   # mandibles
+            b = head + d * (r * 0.7) + perp * (s * r * 0.42)
+            tip = b + d * (r * 0.6) - perp * (s * r * 0.18)
+            pygame.draw.line(surf, C.COL_INK, cam.w2s(b), cam.w2s(tip), max(2, int(2 * cam.zoom)))
+        acol = palette.darken(base, 0.2)
+        for s in (-1, 1):                                   # antennae
+            b = head + d * (r * 0.5) + perp * (s * r * 0.5)
+            wig = math.sin(self.wobble * 3 + s) * 0.3
+            tip = b + d * (r * 0.95) + perp * (s * r * (0.6 + wig))
+            pygame.draw.line(surf, acol, cam.w2s(b), cam.w2s(tip), max(1, int(1.5 * cam.zoom)))
+        look = self._look_dir()
+        for s in (-1, 1):                                   # eyes
+            ep = head + d * (r * 0.2) + perp * (s * r * 0.46)
+            pygame.draw.circle(surf, C.COL_WHITE, cam.w2s(ep), max(2, int(r * 0.3 * cam.zoom)))
+            pygame.draw.circle(surf, C.COL_INK, cam.w2s(ep + look * (r * 0.1)),
+                               max(1, int(r * 0.15 * cam.zoom)))
+
+    def _arm_polygon(self, cam, js, base_r):
+        """Smooth tapering outline around an arm chain -- same left/right-rim +
+        rounded-tip technique as the spine body, so arms read as continuous flesh
+        (not a string of beads)."""
+        m = len(js)
+        radii = [base_r * (1.0 - 0.93 * (i / (m - 1))) for i in range(m)]
+        left, right = [], []
+        for i in range(m):
+            fwd = safe_norm(js[i + 1] - js[i]) if i < m - 1 else safe_norm(js[i] - js[i - 1])
+            perp = Vector2(-fwd.y, fwd.x) * radii[i]
+            left.append(js[i] + perp)
+            right.append(js[i] - perp)
+        tip, tdir = js[-1], safe_norm(js[-1] - js[-2])
+        base_a = angle_of(tdir)
+        cap = [tip + vfrom_angle(base_a + a, radii[-1] * 1.1) for a in (-60, -25, 0, 25, 60)]
+        return [cam.w2s(p) for p in (left + cap + right[::-1])]
+
+    def _draw_tentacle(self, surf, cam):
+        """Octopus/kraken: reaching arms drawn as smooth continuous tentacles
+        behind a pulsing mantle bulb."""
+        base = self.color
+        if self.hit_flash > 0:
+            base = palette.lighten(base, self.hit_flash)
+        arm_col = palette.darken(base, 0.1)
+        rim = palette.lighten(base, 0.5)
+        spot = palette.darken(base, 0.2)
+        rim_w = max(1, int(2 * cam.zoom))
+        ink_w = max(1, int(2 * cam.zoom))
+        arm_r = self.max_r * 0.62
+        for arm in self.arms:
+            js = arm['j']
+            poly = self._arm_polygon(cam, js, arm_r)
+            if len(poly) >= 3:
+                pygame.draw.polygon(surf, arm_col, poly)
+                pygame.draw.polygon(surf, rim, poly, rim_w)
+                pygame.draw.polygon(surf, C.COL_INK, poly, ink_w)
+            for i in range(2, len(js) - 2, 3):    # faint spots, like the lizard body
+                t = i / (len(js) - 1)
+                rr = max(1, int(arm_r * (1.0 - 0.93 * t) * 0.34 * cam.zoom))
+                pygame.draw.circle(surf, spot, cam.w2s(js[i]), rr)
+        head = self.spine.joints[0]
+        mc = cam.w2s(head)
+        pulse = 1.0 + 0.05 * math.sin(self.wobble * 2.4)
+        mr = max(4, int(self.max_r * 1.7 * pulse * cam.zoom))
+        pygame.draw.circle(surf, base, mc, mr)
+        pygame.draw.circle(surf, rim, (mc[0] - int(mr * 0.3), mc[1] - int(mr * 0.34)),
+                           max(1, int(mr * 0.42)))
+        pygame.draw.circle(surf, palette.lighten(base, 0.55), mc, mr, max(1, int(3 * cam.zoom)))
+        pygame.draw.circle(surf, C.COL_INK, mc, mr, max(1, int(2 * cam.zoom)))
+        d = self.spine.head_dir()
+        perp = Vector2(-d.y, d.x)
+        r = self.max_r
+        look = self._look_dir()
+        for s in (-1, 1):
+            ep = head + d * (r * 0.4) + perp * (s * r * 0.62)
+            sp = cam.w2s(ep)
+            pygame.draw.circle(surf, C.COL_WHITE, sp, max(2, int(r * 0.46 * cam.zoom)))
+            pygame.draw.circle(surf, C.COL_INK, cam.w2s(ep + look * (r * 0.2)),
+                               max(1, int(r * 0.22 * cam.zoom)))
+
+    def _look_dir(self):
+        if self.kind == 'player':
+            return self.facing
+        return safe_norm(self.vel) if self.vel.length_squared() > 1 else self.spine.head_dir()
+
+    def _draw_head(self, surf, cam):
+        head = self.spine.joints[0]
+        d = self.spine.head_dir()
+        perp = Vector2(-d.y, d.x)
+        r = self.max_r
+        look = self._look_dir()
+        eye_glow = getattr(self, 'glow_body', self.kind == 'player')
+        for s in (-1, 1):
+            ep = head + d * (r * 0.15) + perp * (s * r * 0.62)
+            sp = cam.w2s(ep)
+            if eye_glow:
+                palette.glow(surf, sp, r * 0.9 * cam.zoom, (200, 200, 210), 0.5)
+            pygame.draw.circle(surf, C.COL_WHITE, sp, max(2, int(r * 0.42 * cam.zoom)))
+            pygame.draw.circle(surf, C.COL_INK, cam.w2s(ep + look * (r * 0.18)),
+                               max(1, int(r * 0.2 * cam.zoom)))
