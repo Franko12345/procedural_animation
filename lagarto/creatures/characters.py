@@ -23,10 +23,10 @@ comes from the character, hue from the player slot -- otherwise two players who
 pick the same character are indistinguishable on screen.
 """
 
-from .core import config as C
-from .core import palette
+from ..core import config as C
+from ..core import palette
 from .genome import Genome
-from .core.registry import Registry
+from ..core.registry import Registry
 
 
 class Character:
@@ -169,7 +169,7 @@ def get(cid):
 def is_locked(char, meta):
     """Locked characters still appear on the select screen, greyed out with their
     requirement -- a reward you cannot see is not a reward."""
-    from . import progression
+    from .. import progression
     return char.unlock is not None and \
         not progression.unlocked(meta, 'character', char.id)
 

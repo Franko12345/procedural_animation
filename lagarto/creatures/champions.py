@@ -18,9 +18,9 @@ because of what it *does*; an enemy that is merely a sponge teaches nothing.
 
 import random
 
-from .core import config as C
-from .core import palette
-from .core.mathutil import safe_norm
+from ..core import config as C
+from ..core import palette
+from ..core.mathutil import safe_norm
 
 
 class Champion:

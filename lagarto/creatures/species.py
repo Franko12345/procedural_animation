@@ -8,7 +8,7 @@ is the body part the player gains by eating one (Phase 4 wires that up), and
 
 import random as _random
 
-from .core import config as C
+from ..core import config as C
 from .genome import Genome
 
 SPECIES = {
@@ -154,7 +154,7 @@ def info(key):
 
 def make(species_key, pos, rng=_random):
     """Build a jittered instance of ``species_key`` at ``pos``."""
-    from .lizard import AILizard          # local import avoids a cycle
+    from ..lizard import AILizard          # local import avoids a cycle
     spec = SPECIES[species_key]
     g = spec['genome'].random_variation(rng)
     c = AILizard(pos, spec['role'], genome=g)

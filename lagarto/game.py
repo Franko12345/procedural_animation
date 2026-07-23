@@ -16,7 +16,7 @@ from .core import fonts
 from .core.mathutil import clamp, ease_out, lerp, vfrom_angle, safe_norm, decay, pulse, random_dir
 from .anim.spine import build_radii
 from .lizard import Player, AILizard
-from . import species
+from .creatures import species
 from . import evolution
 from .audio import engine as audio
 from .render import icons
@@ -24,7 +24,7 @@ from .render import ui
 from . import progression
 from .core import palette
 from . import weapons
-from . import characters
+from .creatures import characters
 from . import charms as charmlib
 from .world.pickups import Bug, Fruit, Egg
 from .render.fx import FX, shadow

@@ -10,9 +10,9 @@ import math
 from pygame import Vector2
 import pygame
 
-from .core import config as C
-from .core import palette
-from .core.mathutil import safe_norm, lerp
+from ..core import config as C
+from ..core import palette
+from ..core.mathutil import safe_norm, lerp
 
 
 def _poly(surf, cam, pts, fill, edge_w=1):

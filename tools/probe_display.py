@@ -21,7 +21,8 @@ import pygame
 
 from lagarto import config as C
 from lagarto.render import display
-from lagarto import fonts, audio, settings, species
+from lagarto import fonts, audio, settings
+from lagarto.creatures import species
 from lagarto.input.controllers import Controller
 from lagarto.game import Game
 from pygame import Vector2
