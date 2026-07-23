@@ -14,7 +14,7 @@ import pygame
 from .core import config as C
 from .core import fonts
 from .core.mathutil import clamp, ease_out, lerp, vfrom_angle, safe_norm, decay, pulse, random_dir
-from .spine import build_radii
+from .anim.spine import build_radii
 from .lizard import Player, AILizard
 from . import species
 from . import evolution
