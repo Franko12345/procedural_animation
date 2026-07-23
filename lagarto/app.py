@@ -19,7 +19,7 @@ from .render import ui
 from .core import settings
 from .input.controllers import (make_controllers, describe_joysticks, Pad, MenuNav,
                           KeyboardMouseController, GamepadController)
-from .game import Game
+from .game.loop import Game
 from .menu import run_menu
 
 
