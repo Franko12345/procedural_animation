@@ -26,11 +26,11 @@ from .core import palette
 from . import weapons
 from . import characters
 from . import charms as charmlib
-from .pickups import Bug, Fruit, Egg
+from .world.pickups import Bug, Fruit, Egg
 from .render.fx import FX, shadow
 from .render.camera import Camera
-from .world import World
-from .collision import separate
+from .world.terrain import World
+from .world.collision import separate
 from .rounds import RoundManager
 
 

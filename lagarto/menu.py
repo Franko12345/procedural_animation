@@ -27,7 +27,7 @@ from . import weapons
 from .core.mathutil import approach, clamp, safe_norm, vfrom_angle, pulse
 from .lizard import AILizard
 from .render.camera import Camera
-from .world import World
+from .world.terrain import World
 
 
 def _make_backdrop():
