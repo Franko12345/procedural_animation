@@ -60,11 +60,11 @@ Keep design/judgment work in the parent thread.
 
 ## Smoke test
 
-Project uses a venv at `.venv/bin/python` — system python lacks `pygame`.
+Run from the repo (or worktree) root. Use `.venv/bin/python` if a venv exists,
+otherwise plain `python` — `pygame` must be importable either way.
 
 ```bash
-SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
-  /home/heitor/Projects/procedural_animation/.venv/bin/python lizard_game.py --smoke 90
+SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy python lizard_game.py --smoke 90
 ```
 
 Expect `[smoke] 90 frames ok`. Do not proceed to PR without a green smoke.

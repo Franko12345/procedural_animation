@@ -115,6 +115,19 @@ Cada seção aponta pro doc canônico. Se um doc está desatualizado, esse
   headless (blit para `Surface(...,0,24)` e salve BMP→PNG; o driver
   dummy não salva PNG do surface de display direto).
 
+## Ferramentas — sempre use o RTK
+
+`rtk` é um proxy de CLI que corta 60-90% dos tokens em operações de dev.
+Vale para **toda** sessão neste repo, inclusive subagents.
+
+- Comandos comuns (`git`, `ls`, `grep`, …) são reescritos automaticamente
+  pelo hook do Claude Code — nada a fazer.
+- Meta-comandos rodam sempre com `rtk` explícito: `rtk gain`,
+  `rtk gain --history`, `rtk discover`, `rtk proxy <cmd>` (executa cru,
+  sem filtro, para depurar).
+- Se `rtk gain` falhar, há colisão de nome com o `rtk` da
+  reachingforthejack (Rust Type Kit) — confira com `which rtk`.
+
 ## Documentação — como manter consistente
 
 Regras completas em [docs/README.md](docs/README.md) e

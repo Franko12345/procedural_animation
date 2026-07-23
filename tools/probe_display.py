@@ -20,9 +20,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import pygame
 
 from lagarto import config as C
-from lagarto import display, fonts, audio, settings, species
-from lagarto.controllers import Controller
-from lagarto.game import Game
+from lagarto.render import display
+from lagarto import fonts, audio, settings
+from lagarto.creatures import species
+from lagarto.input.controllers import Controller
+from lagarto.game.loop import Game
 from pygame import Vector2
 
 FRAMES = 240
