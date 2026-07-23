@@ -12,9 +12,9 @@ import random
 from pygame import Vector2
 import pygame
 
-from .core import config as C
-from .core import palette
-from .core.mathutil import vfrom_angle, pulse
+from ..core import config as C
+from ..core import palette
+from ..core.mathutil import vfrom_angle, pulse
 
 CELL = 128          # ground tile size (world units)
 VOID = (14, 12, 26)
