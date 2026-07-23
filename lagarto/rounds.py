@@ -17,10 +17,10 @@ from .audio import engine as audio
 from . import boss as bossai
 from . import champions
 from .core import config as C
-from . import icons
+from .render import icons
 from .core import palette
 from . import species
-from . import ui
+from .render import ui
 from .core.mathutil import vfrom_angle, clamp, decay, random_dir
 
 # theme -> (banner, enemy pool, budget multiplier, max alive at once)

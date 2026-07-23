@@ -11,7 +11,7 @@ import pygame
 from pygame import Vector2
 
 from ..core import config as C
-from .. import display
+from ..render import display
 from ..core.mathutil import safe_norm, decay
 
 

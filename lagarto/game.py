@@ -19,16 +19,16 @@ from .lizard import Player, AILizard
 from . import species
 from . import evolution
 from .audio import engine as audio
-from . import icons
-from . import ui
+from .render import icons
+from .render import ui
 from . import progression
 from .core import palette
 from . import weapons
 from . import characters
 from . import charms as charmlib
 from .pickups import Bug, Fruit, Egg
-from .fx import FX, shadow
-from .camera import Camera
+from .render.fx import FX, shadow
+from .render.camera import Camera
 from .world import World
 from .collision import separate
 from .rounds import RoundManager
