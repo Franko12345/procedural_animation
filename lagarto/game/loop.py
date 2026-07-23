@@ -1346,7 +1346,7 @@ class Game:
         return True
 
     def pause_items(self, joysticks=None):
-        from .. import menu as menulib
+        from . import menu as menulib
         if self.pause_mode == 'options':
             return menulib._items_for('options', None, 0, None)
         if self.pause_mode == 'controls':
@@ -1368,7 +1368,7 @@ class Game:
 
     def pause_activate(self, toggle_fs):
         """Returns 'resume', 'quit' or None. Options reuse the menu's own actions."""
-        from .. import menu as menulib
+        from . import menu as menulib
         items = self.pause_items()
         sel = min(self.pause_sel, len(items) - 1)
         if self.pause_mode == 'controls':
@@ -1395,7 +1395,7 @@ class Game:
         return None
 
     def _draw_pause(self, surf, joysticks=None):
-        from .. import menu as menulib
+        from . import menu as menulib
         self._veil(surf, (8, 10, 20), 200)
         cx = C.WIDTH // 2
         toff, talpha = ui.drop_in(self.ui_t, 0, 0.0, C.UI_VEIL, rise=22.0)
