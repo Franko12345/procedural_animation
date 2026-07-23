@@ -154,7 +154,7 @@ def info(key):
 
 def make(species_key, pos, rng=_random):
     """Build a jittered instance of ``species_key`` at ``pos``."""
-    from ..lizard import AILizard          # local import avoids a cycle
+    from .ai import AILizard               # local import avoids a cycle
     spec = SPECIES[species_key]
     g = spec['genome'].random_variation(rng)
     c = AILizard(pos, spec['role'], genome=g)
