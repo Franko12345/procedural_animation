@@ -13,7 +13,7 @@ import random
 from pygame import Vector2
 import pygame
 
-from . import audio
+from .audio import engine as audio
 from . import boss as bossai
 from . import champions
 from .core import config as C

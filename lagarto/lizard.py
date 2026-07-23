@@ -12,7 +12,7 @@ from pygame import Vector2
 import pygame
 
 from .core import config as C
-from . import audio
+from .audio import engine as audio
 from .core import fonts
 from .core import palette
 from . import parts
