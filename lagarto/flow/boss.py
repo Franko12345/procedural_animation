@@ -28,6 +28,8 @@ from pygame import Vector2
 from ..audio import engine as audio
 from ..core import config as C
 from ..core import palette
+from ..creatures.ai import burrow as burrow_ai
+from ..creatures.ai import grapple as grapple_ai
 from ..core.mathutil import safe_norm, vfrom_angle, clamp, decay, random_dir
 from ..combat.projectile import spit as game_spit
 
@@ -287,12 +289,12 @@ PATTERNS = {
                       shots=C.BOSS_DEATHROLL_SHOTS, turn=C.BOSS_DEATHROLL_TURN,
                       gap=C.BOSS_DEATHROLL_GAP, shot_speed=260, shot_dmg=12),
     # burrow has no `fn`/instant fire -- BossAI.tick special-cases `burrow=True`
-    # and delegates every frame to the boss's OWN AILizard._ai_burrow (the
+    # and delegates every frame to the boss's OWN ai.burrow.tick (the
     # regular centipede's dig/erupt state machine, telegraphs included for
     # free -- AILizard.draw() already checks self.burrowed/burrow_state)
     'burrow': dict(fn=None, windup=0.05, telegraph=None, burrow=True),
     # same idea as burrow: no `fn`, BossAI.tick delegates every frame to the
-    # octopus's own AILizard._ai_grapple (reach/root/snap+pull+slow, telegraph
+    # octopus's own ai.grapple.tick (reach/root/snap+pull+slow, telegraph
     # included -- Lizard.draw already shows the arms converging via arm_target)
     'grapple': dict(fn=None, windup=0.05, telegraph=None, grapple=True),
     'spiral': dict(fn=spiral_pattern, windup=C.BOSS_SPIRAL_WINDUP, telegraph='spiral'),
@@ -711,9 +713,9 @@ class BossAI:
 
         if self.state == 'burrowing':
             # delegates every frame to the regular centipede's OWN dig/erupt
-            # state machine (AILizard._ai_burrow) -- one full surface->dig->
+            # state machine (creatures.ai.burrow) -- one full surface->dig->
             # under->erupt cycle, then back to the normal pattern rotation
-            d, speed = b._ai_burrow(dt, game, target)
+            d, speed = burrow_ai.burrow_tick(b, game, dt, target)
             if b.burrow_state == 'under':
                 self._burrow_seen_under = True
             elif self._burrow_seen_under and b.burrow_state == 'surface':
@@ -723,9 +725,9 @@ class BossAI:
 
         if self.state == 'grappling':
             # delegates every frame to the regular octopus's OWN reach/snap
-            # cycle (AILizard._ai_grapple) -- one windup-to-snap(or-miss)
+            # cycle (creatures.ai.grapple) -- one windup-to-snap(or-miss)
             # cycle, then back to the normal pattern rotation
-            d, speed = b._ai_grapple(dt, game, target)
+            d, speed = grapple_ai.grapple_tick(b, game, dt, target)
             if b.grapple_t > 0:
                 self._grapple_seen_windup = True
             elif self._grapple_seen_windup:

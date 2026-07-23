@@ -94,7 +94,7 @@ def _act_muda(p, game):
 
 def _act_chamado(p, game):
     """Call the swarm: temporary allies, on the same terms an egg hatches them."""
-    from ..lizard import AILizard
+    from ..creatures.ai import AILizard
     for _ in range(C.ITEM_CHAMADO_COUNT):
         pos = p.pos + Vector2(random.uniform(-70, 70), random.uniform(-70, 70))
         f = AILizard(pos, 'friend', 0.9, C.COL_FRIEND)

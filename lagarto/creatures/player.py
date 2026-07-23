@@ -1,0 +1,633 @@
+"""The player lizard: input, dash, tail whip, tongue, weapons and evolution.
+
+Body/animation come from :class:`~lagarto.creatures.base.Lizard`; everything
+here is the run state a human drives -- energy, charms, items, mutations, xp.
+"""
+
+import math
+from pygame import Vector2
+import pygame
+
+from ..core import config as C
+from ..audio import engine as audio
+from ..core import palette
+from ..combat import weapons
+from ..core.mathutil import clamp, approach, vfrom_angle, safe_norm, angle_of, decay
+from .base import Lizard
+
+
+class Player(Lizard):
+    def __init__(self, pos, controller, colorset, index, character=None):
+        from . import characters
+        char = character if character is not None else characters.get(characters.DEFAULT)
+        # Shape comes from the character, HUE comes from the player slot: the
+        # colourset is what tells P1 from P2, so letting a character own the hue
+        # would make two players who picked the same one indistinguishable.
+        super().__init__(pos, 'player', genome=char.make_genome(), color=colorset[0])
+        self.character = char
+        self.character_id = char.id
+        self.colorset = colorset
+        self.ctrl = controller
+        self.index = index
+        self.energy = 100.0
+        self.max_energy = 100.0
+        self.max_health = 100.0
+        self.health = 100.0
+        self.food = 0
+        self.dash_time = 0.0
+        self.dash_cd = 0.0
+        # everything this dash already hit -- collisions run every frame, so
+        # without this one dash lands ~10 hits on whatever it overlaps
+        self.dash_hits = set()
+        self.clog = 0.0           # how buried in enemy bodies we are (collision.py)
+        self.clog_f = 0.0         # smoothed, so the drag eases in/out
+        # tail whip ("rabada"): a lateral lunge whose follow-through swings the tail
+        self.whip_t = 0.0         # 0 -> 1 over the swing
+        self.whip_cd = 0.0
+        self.whip_cooldown = 0.85
+        self.whip_hits = set()    # one hit per enemy per swing (see dash_hits)
+        self.whip_side = 1
+        self.whip_dir = Vector2()
+        self.tongue_t = 0.0
+        self.tongue_target = None
+        self.aim = Vector2(1, 0)
+        self.down = False
+        self.revive = 0.0
+        self.xp = 0.0
+        self.level = 1
+        self.xp_to_next = 20.0        # level-ups pause the action: keep them meaningful
+        self.pending_levelups = 0
+        # evolution state
+        self.mutations = []
+        self.synergies = set()
+        self.thorns = 0
+        self.venom = False
+        self.wings = False
+        self.regen = 0.0
+        self._regen_acc = 0.0
+        self.xp_mult = 1.0
+        self.speed_mult = 1.0
+        self.dash_cooldown = 0.45
+        self.tongue_range = 230
+        # global weapon stats (Vampire-Survivors style; boosted by passives)
+        self.might = 1.0             # damage multiplier
+        self.area_mult = 1.0         # aura/range size
+        self.cooldown_mult = 1.0     # <1 = faster
+        self.amount = 0              # +projectiles / +orbitals
+        self.pollen_mult = 1.0       # from meta-progression (Colheita)
+        self.weapons = {}            # weapon id -> level
+        self.weapon_state = {}       # weapon id -> per-weapon state
+        # --- character-driven knobs (characters.py sets these via char.apply) ---
+        self.weapon_cap = 6          # VIBORA caps at 2, LARVA grows 1 -> 6
+        self.can_dash = True         # COURACADO cannot dash at all
+        self.knockback_immune = False
+        self.whip_mult = 1.0         # VIBORA's tail hits far harder
+        self.rerolls_per_round = 0   # LAGARTO: rerolls of the level-up hand,
+        # refilled once per ROUND (not per level-up: you level several times a
+        # round, so refilling there made them effectively unlimited)
+        self.rerolls = 0
+        self.growth = 0              # LARVA: kills banked toward the next size step
+        # --- items (items.py) ---
+        self.items = []              # owned item ids, in pickup order
+        self.ability = None          # equipped ACTIVE item id (the socket)
+        self.ability_cd = 0.0
+        self.ability_charge = 0.0    # 0..1, for the HUD ring
+        self.ability_kills = 0       # the real counter (integers do not drift)
+        self.shed_t = 0.0            # Muda de Pele / Casulo: extra i-frames
+        self._trail_cd = 0.0         # spacing of the dash's corrosive puddles
+        # mechanic-rewriting passives. Each is read at exactly ONE call site --
+        # the dash taught us what happens when the same rule lives in two places.
+        self.dash_trail = False      # dash leaves a corrosive puddle
+        self.dash_marks = False      # dashing through marks the enemy
+        self.dash_chain_bonus = False
+        self.tongue_throw = False    # tongue throws instead of pulling
+        self.tongue_drain = False
+        self.whip_darts = False      # whip fires darts from the arc tips
+        self.whip_reflect = False    # whip bats enemy shots back
+        self.whip_full = False       # whip sweeps the whole circle
+        self.kill_blast = False
+        self.kill_heal = False
+        self.poison_spreads = False
+        self.pollen_magnet = False
+        self.amount_back = False     # weapons also fire backwards
+        self.adrenaline = False
+        self.extra_life = False
+        self.used_extra_life = False
+        self.shed_on_hurt = False    # Casulo: extra i-frames after being hit
+        # charms (Hollow-Knight-style adaptations in 3 body slots)
+        self.armor = 0.0             # fraction of damage blocked (carapaca)
+        self.charm_slots = {'head': None, 'back': None, 'tail': None}
+        self.charms_owned = []
+        # LAST: the character reads and adjusts fields declared above (armour,
+        # thorns, health, whip cooldown), so it cannot run any earlier.
+        self.gain_weapon(char.weapon)
+        if char.apply:
+            char.apply(self)
+
+    @property
+    def dashing(self):
+        return self.dash_time > 0
+
+    def gain_charm(self, cid, game=None):
+        from ..combat import charms
+        ch = charms.CHARMS.get(cid)
+        if not ch or cid in self.charms_owned:
+            return False
+        self.charms_owned.append(cid)
+        if self.charm_slots.get(ch.slot) is None:      # auto-equip an empty slot
+            self.equip_charm(cid, game)
+        return True
+
+    def equip_charm(self, cid, game=None):
+        from ..combat import charms
+        ch = charms.CHARMS.get(cid)
+        if not ch:
+            return
+        slot = ch.slot
+        old = self.charm_slots.get(slot)
+        if old == cid:
+            return
+        if old:
+            charms.CHARMS[old].unapply(self, game)
+        self.charm_slots[slot] = cid
+        ch.apply(self, game)
+        if game:
+            game.fx.burst(self.pos, ch.color, 16, 200)
+            game.fx.spark_burst(self.pos, palette.lighten(ch.color, 0.4), 10, 260)
+            game.fx.ring(self.pos, ch.color)
+
+    def damage_mult(self):
+        """Every player damage source multiplies by this.
+
+        Adrenalina lives here rather than in each weapon/dash/whip: a global rule
+        written once cannot drift out of sync with the sources that read it.
+        """
+        m = self.might
+        if self.adrenaline and self.health < self.max_health * C.ITEM_ADRENALINE_HP:
+            m *= C.ITEM_ADRENALINE_MULT
+        return m
+
+    def dash_damage(self):
+        """Damage one dash contact deals.
+
+        Single source of truth on purpose: the nest call site in ``game`` read
+        ``C.DASH_DAMAGE`` directly, so any scaling added at the enemy call site
+        would have silently skipped nests -- the same "two places that must agree"
+        shape as the whip's hitbox vs. its animation span.
+        """
+        return (C.DASH_DAMAGE * (C.DASH_WINGS_MULT if self.wings else 1.0)
+                * self.damage_mult())
+
+    def gain_weapon(self, wid):
+        if wid not in self.weapons and len(self.weapons) < self.weapon_cap:
+            self.weapons[wid] = 1
+            self.weapon_state[wid] = weapons.WEAPONS[wid].new_state()
+            return True
+        return False
+
+    def level_weapon(self, wid):
+        w = weapons.WEAPONS.get(wid)
+        if wid in self.weapons and w and self.weapons[wid] < w.maxlevel():
+            self.weapons[wid] += 1
+            return True
+        return False
+
+    def apply_mutation(self, mutation, game):
+        mutation.apply(self, game)
+        self.mutations.append(mutation.id)
+        game.fx.burst(self.pos, mutation.color, 24, 260)
+        game.fx.spark_burst(self.pos, palette.lighten(mutation.color, 0.4), 16, 340)
+        game.fx.ring(self.pos, mutation.color)
+        from ..combat.evolution import check_synergies
+        for name in check_synergies(self, game):
+            game.fx.popup(self.pos + Vector2(0, -40), name, C.COL_WHITE)
+            game.fx.ring(self.pos, self.colorset[0])
+            game.shake(5)
+
+    def gain_xp(self, amount, game):
+        if self.down or self.dead:
+            return
+        self.xp += amount * self.xp_mult
+        while self.xp >= self.xp_to_next:
+            self.xp -= self.xp_to_next
+            self.level += 1
+            self.xp_to_next *= 1.42
+            self.pending_levelups += 1     # game.step turns these into card picks
+
+    def grant_part(self, part, game):
+        g = self.genome
+        if part == 'spikes':
+            g.spikes += 1
+        elif part == 'horns':
+            g.horns = min(3, g.horns + 1)
+        elif part == 'plates':
+            g.plates += 1
+        elif part == 'sting':
+            g.tail = 'sting'
+        elif part == 'legs':
+            if g.leg_count >= 10:            # cap so legs don't pile up absurdly
+                return
+            g.leg_count += 2
+            self.max_speed *= 1.05           # more legs = better locomotion
+            self.speed_mult *= 1.05
+            self.legs = self._build_legs(g, len(self.spine.joints), self.max_r)
+            for leg in self.legs:
+                leg.init_foot(self.spine)
+        game.fx.popup(self.pos, "EVOLUIU!", C.COL_WHITE)
+        game.fx.ring(self.pos, self.color)
+        game.fx.ring(self.pos, palette.lighten(self.color, 0.4))
+        game.fx.burst(self.pos, palette.lighten(self.color, 0.3), 20, 240)
+        game.fx.spark_burst(self.pos, C.COL_WHITE, 14, 320)
+        game.shake(4)
+
+    def hurt(self, game, src_dir, dmg=10):
+        """Take damage. Returns True only if it actually LANDED.
+
+        The return value matters: side effects that ride along with a hit (the
+        scorpion's slow) must not fire when the hit bounced off i-frames --
+        otherwise you get a debuff with no damage number to explain it.
+        """
+        if self.dashing or self.hit_flash > 0.45 or self.down or self.shed_t > 0:
+            return False
+        dmg *= (1.0 - self.armor)                       # carapaca charm blocks a %
+        self.health -= dmg
+        self.hit_flash = 1.0
+        if not self.knockback_immune:   # COURACADO does not get moved, by anything
+            self.vel = src_dir * (140 + dmg * 6)
+        game.fx.burst(self.pos, self.color, 10 + int(dmg / 2), 200)
+        game.fx.spark_burst(self.pos, C.COL_FX_SPARK, 8 + int(dmg / 3), 320)
+        game.shake(4 + dmg * 0.4)
+        if self.shed_on_hurt:
+            self.shed_t = max(self.shed_t, C.ITEM_CASULO_TIME)
+        if self.health <= 0 and self.extra_life and not self.used_extra_life:
+            # Segundo Folego: one escape per run, and it has to be LOUD or the
+            # player will not know it happened
+            self.used_extra_life = True
+            self.health = self.max_health * 0.5
+            self.shed_t = C.ITEM_MUDA_TIME
+            game.punch(0.12, 16, flash=0.5)
+            game.fx.ring(self.pos, C.COL_FX_REVIVE)
+            game.fx.spark_burst(self.pos, C.COL_FX_REVIVE, 34, 460)
+            game.fx.popup(self.pos, "SEGUNDO FOLEGO!", C.COL_FX_REVIVE)
+            audio.play('levelup', 0.9)
+        elif self.health <= 0:
+            self.health = 0
+            self.down = True
+            self.revive = 6.0
+            game.fx.burst(self.pos, C.COL_WHITE, 26, 260)
+            game.fx.ring(self.pos, self.color)
+        return True
+
+    def update(self, dt, game):
+        if self.down:
+            self.revive -= dt
+            self.steer(Vector2(), dt)
+            self.integrate(dt)
+            self.squash = approach(self.squash, 0.7, 6, dt)
+            if self.revive <= 0:
+                self.dead = True
+            return
+
+        c = self.ctrl
+        self.aim = safe_norm(c.aim_world - self.pos)
+
+        # Soft collision: pushing through enemies costs speed instead of shoving you
+        # around (collision.py fills `clog` with the overlap depth). Eased so it
+        # doesn't stutter, and ignored mid-dash -- ploughing through is the point.
+        # `clog` sums the overlap of 5x5 sample pairs, so ONE enemy already reached
+        # ~25 against the old max_r*1.2 divisor -- the drag saturated on first
+        # contact and read as binary (full speed or half speed, nothing between).
+        # Scaling the divisor to CONTACT_FULL enemies restores the gradient: one
+        # body slows you a little, being buried in the horde slows you a lot.
+        full = max(self.max_r * 1.2 * C.CONTACT_FULL, 1.0)
+        target_clog = clamp(self.clog / full, 0.0, 1.0)
+        self.clog_f = approach(self.clog_f, target_clog, 9, dt)
+        drag = 1.0 - C.CONTACT_DRAG * self.clog_f
+
+        speed_mul = 1.0
+        if self.dash_time > 0:
+            self.dash_time -= dt
+            speed_mul = 3.4 if self.wings else 2.9
+            drag = 1.0
+            game.fx.trail(self.pos, self.color)
+            if self.dash_trail:
+                self._trail_cd -= dt
+                if self._trail_cd <= 0:
+                    from ..combat import weapons as W
+                    self._trail_cd = C.ITEM_TRAIL_DROP
+                    # hostile=False -> `dmg` is DPS and hits ENEMIES (see Puddle)
+                    game.spawn_puddle(W.Puddle(self.pos, C.ITEM_TRAIL_R,
+                                               C.ITEM_TRAIL_DMG, C.ITEM_TRAIL_LIFE,
+                                               hue=95))
+        speed_mul *= drag
+        self.dash_cd = decay(self.dash_cd, dt)
+
+        if c.dash_edge and self.can_dash and self.dash_cd <= 0 \
+                and self.energy >= C.DASH_COST:
+            c.consume('dash')
+            move = c.move if c.move.length_squared() > 0.1 else self.facing
+            self.vel = safe_norm(move) * self.max_speed * (3.5 if self.wings else 3.0)
+            self.dash_time = 0.2 if self.wings else 0.16
+            self.dash_hits.clear()          # fresh dash -> everyone is hittable again
+            self.dash_cd = self.dash_cooldown * (0.8 if self.wings else 1.0)
+            self.energy -= C.DASH_COST if self.wings else C.DASH_COST + 4
+            audio.play('dash')
+            game.fx.burst(self.pos, self.color, 14, 200)
+            game.fx.spark_burst(self.pos, palette.lighten(self.color, 0.3), 12, 340)
+            game.shake(5)
+
+        self.steer(c.move, dt, speed_mul)
+        self.integrate(dt, on_plant=game.fx.dust)
+        self._whip_arc(dt)
+
+        if c.tongue_edge and self.tongue_t == 0 and self.energy >= C.TONGUE_COST:
+            c.consume('tongue')
+            self.tongue_t = 0.001
+            self.energy -= C.TONGUE_COST                       # tongue costs energy
+            # auto-aim at the nearest edible OR enemy, whichever is closer
+            ed = game.nearest_edible(self.pos, self.tongue_range)
+            en = game.nearest_enemy(self.pos, self.tongue_range)
+            if ed and en:
+                self.tongue_target = ed if self.pos.distance_to(ed.pos) <= \
+                    self.pos.distance_to(en.pos) else en
+            else:
+                self.tongue_target = ed or en
+            if self.tongue_target:
+                self.aim = safe_norm(self.tongue_target.pos - self.pos)
+        if self.tongue_t > 0:
+            self.tongue_t += dt / 0.22
+            if self.tongue_t >= 1:
+                self.tongue_t = 0.0
+                t = self.tongue_target
+                if t and not t.dead:
+                    if getattr(t, 'kind', None) == 'enemy':    # tongue: hurt + move
+                        t.take_hit(game, safe_norm(t.pos - self.pos), 2)
+                        if self.tongue_throw:      # Arremesso: fling OUT, not in
+                            t.vel += safe_norm(t.pos - self.pos) * C.ITEM_THROW_SPEED
+                        else:
+                            t.vel += safe_norm(self.pos - t.pos) * 200   # yank in
+                        if self.tongue_drain:      # Sanguessuga: steal life
+                            self.health = min(self.max_health,
+                                              self.health + C.ITEM_DRAIN)
+                            game.fx.popup(self.pos, "+vida", (120, 240, 140))
+                        game.fx.spark_burst(t.pos, C.COL_FX_SPARK, 7, 240)
+                    else:
+                        game.eat(self, t)
+                self.tongue_target = None
+
+        # Iman de Polen: coletaveis (fruta/inseto/ovo) driftam ate voce. Pollen is
+        # a counter, not a world pickup, so the magnet pulls the things you can
+        # actually pick up -- and killing near them is how you bank pollen anyway.
+        if self.pollen_magnet:
+            for pk in game.pickups:
+                if pk.dead:
+                    continue
+                d = pk.pos - self.pos
+                dist = d.length()
+                if 1.0 < dist < C.ITEM_MAGNET_R:
+                    pk.pos += safe_norm(d) * -min(dist, C.ITEM_MAGNET_PULL * dt)
+
+        # --- active item ------------------------------------------------- #
+        # Same buffer/consume contract as dash and whip: the press survives a
+        # frame that ran zero sim steps, and is eaten only when it actually fires.
+        self.shed_t = decay(self.shed_t, dt)
+        if c.item_edge and self.ability and self.ability_charge >= 1.0:
+            from ..combat import items as itemlib
+            if itemlib.use_active(self, game):
+                c.consume('item')
+                audio.play('levelup', 0.5)
+
+        # --- tail whip ("rabada") ---------------------------------------- #
+        self.whip_cd = decay(self.whip_cd, dt)
+        if c.whip_edge and self.whip_cd <= 0 and self.energy >= C.WHIP_COST:
+            c.consume('whip')
+            self.whip_t = 0.001
+            self.whip_cd = self.whip_cooldown
+            self.energy -= C.WHIP_COST
+            self.whip_hits.clear()          # fresh swing -> everyone hittable again
+            # swing toward the nearest enemy; with nobody around, alternate sides
+            side = self.whip_side
+            foe = game.nearest_enemy(self.pos, 280)
+            if foe is not None:
+                d = foe.pos - self.pos
+                side = 1 if (self.facing.x * d.y - self.facing.y * d.x) > 0 else -1
+            self.whip_side = -side
+            # Sideways ARC, not a velocity impulse. An impulse got erased within a
+            # few frames by steer() pulling velocity back to the input direction --
+            # what survived was whatever pointed the way you were already going, so
+            # the whip read as a forward lunge. Driving the head along the arc (and
+            # muting steer while it runs) is what makes the tail crack sideways.
+            self.whip_dir = Vector2(-self.facing.y, self.facing.x) * side
+            if self.whip_darts:                 # Farpas: piercing barbs off the arc
+                self._fire_whip_darts(game)
+            audio.play('dash', 0.65)
+            game.shake(3)
+        if self.whip_t > 0:
+            self.whip_t += dt / C.WHIP_TIME
+            if self.whip_t >= 1:
+                self.whip_t = 0.0
+            else:
+                game.fx.trail(self.spine.joints[-1], palette.lighten(self.color, 0.3))
+                self._whip_hit(game)
+
+        # --- auto-weapons (Vampire-Survivors style: they act on their own) ---
+        self.ability_cd = decay(self.ability_cd, dt)
+        for wid, lvl in self.weapons.items():
+            weapons.WEAPONS[wid].tick(self, game, dt, self.weapon_state[wid], lvl)
+
+        self.energy = clamp(self.energy + dt * 6, 0, self.max_energy)
+        if self.regen > 0 and self.health < self.max_health:
+            self.health = min(self.max_health, self.health + self.regen * dt)
+
+    def _whip_span(self):
+        """(pivot index, joint count) of the section that whips.
+
+        Shared by the animation and the hitbox on purpose: the damaging joints
+        MUST be the ones that visibly move, or you get the classic 'it looked
+        like it hit' complaint. When only the last 3 joints were tested and the
+        swinging section grew to 6, the tail swept right past enemies.
+        """
+        n = len(self.spine.joints)
+        k = max(4, n // 2)                      # blend the bend over half the body
+        pv = n - k - 1                          # pivot joint (behind the legs)
+        return (pv, k) if pv >= 1 else (None, 0)
+
+    def _whip_arc(self, dt):
+        """Curl the TAIL sideways through the swing, leaving the head where it is.
+
+        The spine is follow-the-leader, so it can only be *driven* from the head --
+        which is exactly why an earlier version swung the whole player instead of
+        the tail. Here the last few joints are rebuilt from a pivot with a
+        per-segment angle offset: link distances stay exact, and the club/sting
+        art follows for free because ``parts.draw_tail`` reads js[-1]/js[-2].
+
+        This override survives to draw time only because player contact is soft
+        (``collision.py``): the player is never pushed, so ``separate`` skips the
+        re-resolve that would otherwise wipe it the same frame.
+        """
+        if self.whip_t <= 0 or self.whip_dir.length_squared() < 1e-6:
+            return
+        js = self.spine.joints
+        pv, k = self._whip_span()
+        if pv is None:
+            return
+        n = len(js)
+        # Anchor the swing to the BODY (straight back from the pivot), not to last
+        # frame's tail: spine.resolve rebuilds joint directions from their previous
+        # positions, so anchoring to the tail fed the curl back into itself and the
+        # swing cancelled out to a wobble.
+        back = js[pv] - js[max(0, pv - 2)]
+        if back.length_squared() < 1e-6:
+            return
+        cross = back.x * self.whip_dir.y - back.y * self.whip_dir.x
+        side = 1.0 if cross > 0 else -1.0
+        # A full period, not a half: the tail sweeps out one side, back through
+        # the middle and out the other in a single press. Starts and ends at 0
+        # with matching slope, so it eases in and out on its own.
+        env = math.sin(self.whip_t * 2.0 * math.pi)
+        sweep = C.WHIP_SWEEP * (C.ITEM_SPIRAL_MULT if self.whip_full else 1.0)
+        total = side * sweep * env
+        # Spread the bend across every joint instead of turning the whole section
+        # at the pivot -- that hinge is what read as "a rigid chunk rotating".
+        # The ramp toward the tip is GENTLE on purpose: a steep one (quadratic)
+        # put ~80 deg into the last link, well past the spine's own bend limit
+        # (26 deg), so it showed as a kink and then got clamped by the next
+        # resolve. Near-uniform turns = near-circular arc = the lizard keeps its
+        # natural curve while still whipping a little harder at the end.
+        w = [0.6 + 0.8 * (idx / max(1, k - 1)) for idx in range(k)]
+        inv = 1.0 / sum(w)
+        ang = angle_of(back)
+        for idx, i in enumerate(range(pv + 1, n)):
+            ang += total * w[idx] * inv
+            js[i] = js[i - 1] + vfrom_angle(ang, self.spine.link)
+
+    def _fire_whip_darts(self, game):
+        """Farpas de Cauda: a fan of PIERCING barbs thrown along the swing.
+
+        Fired once at swing start (not per frame). Piercing so they read as the
+        tail flinging shrapnel through the horde, not single-target pokes.
+        """
+        from ..combat.projectile import Projectile
+        base = angle_of(self.whip_dir)
+        tail = self.spine.joints[-1]
+        for k in range(C.ITEM_DART_COUNT):
+            off = (k - (C.ITEM_DART_COUNT - 1) / 2) * C.ITEM_DART_SPREAD
+            v = vfrom_angle(base + off, C.ITEM_DART_SPEED)
+            pr = Projectile(tail, v, (255, 210, 120),
+                            dmg=int(round(C.ITEM_DART_DMG * self.damage_mult())),
+                            radius=5, hostile=False, life=0.9)
+            pr.pierce = True
+            game.spawn_projectile(pr)
+        game.fx.spark_burst(tail, (255, 220, 150), 8, 300)
+
+    def _whip_reflect(self, game):
+        """Contragolpe: the swinging tail bats enemy shots back at their owners."""
+        js = self.spine.joints
+        pv, _k = self._whip_span()
+        tail = js[pv + 1:] if pv is not None else js[-3:]
+        reach = self.max_r * 1.6
+        for pr in game.projectiles:
+            if not pr.hostile:
+                continue
+            if any(pr.pos.distance_to(j) < reach for j in tail):
+                pr.hostile = False              # now it hits enemies
+                pr.vel = -pr.vel
+                pr.color = (255, 230, 150)
+                pr.dmg = max(pr.dmg, int(round(8 * self.damage_mult())))
+                game.fx.spark_burst(pr.pos, (255, 240, 180), 5, 240)
+
+    def _whip_hit(self, game):
+        """The real tail joints are the hitbox -- what you see is what hits.
+
+        The tip's own ``spine.radii`` is tiny (~0.22*max_r), so the swing uses an
+        explicit reach instead. Gated by ``whip_hits`` for the same reason as
+        ``dash_hits``: this runs every frame of the swing.
+        """
+        if self.whip_t < 0.06 or self.whip_t > 0.97:
+            return                      # only the very start/end don't connect
+        if self.whip_reflect:
+            self._whip_reflect(game)
+        js = self.spine.joints
+        # Hitbox is the TIP end of the swing, not the whole animated span. The
+        # span (half the body) still *moves* -- but damaging all of it hit ~7 of
+        # 12 enemies in a full circle, which read as "the tail one-shots the room".
+        # The last few joints are the fastest, most visible part of the sweep, so
+        # concentrating damage there keeps "what you see hits" while shrinking the
+        # area to the arc behind/beside you (measured 2-3 targets).
+        tail = js[-C.WHIP_HIT_JOINTS:]
+        reach = self.max_r * C.WHIP_REACH
+        club = self.genome.tail == 'club'
+        sting = self.genome.tail == 'sting'
+        # scales with `might` like every auto-weapon does. Without this the whip
+        # was a flat number for the whole run -- strong on wave 1, irrelevant by
+        # wave 15 -- and no upgrade could ever improve it.
+        dmg = (C.WHIP_DAMAGE * (C.WHIP_CLUB_MULT if club else 1.0)
+               * self.damage_mult() * self.whip_mult)
+        knock = C.WHIP_KNOCK_CLUB if club else C.WHIP_KNOCK
+        for e in game.enemies:
+            if e.dead or e in self.whip_hits:
+                continue
+            for j in tail:
+                where = e.hit_test(j, reach)
+                if not where:
+                    continue
+                self.whip_hits.add(e)
+                d = dmg * (C.CRIT_MULT if where == 'head' else 1.0)
+                if where == 'head':
+                    game.crit_fx(e.spine.joints[0])
+                away = safe_norm(e.pos - j)
+                e.take_hit(game, away, int(round(d)))
+                e.vel += away * knock   # take_hit ASSIGNS vel, so add afterwards
+                if sting:
+                    e.apply_poison(2.5, 2.5)
+                game.fx.spark_burst(j, palette.lighten(self.color, 0.4), 9, 320)
+                game.shake(6 if club else 3)
+                if e.dead:
+                    game.punch(0.05, 7)
+                break
+
+    def tongue_tip(self):
+        if self.tongue_t <= 0:
+            return None
+        reach = math.sin(self.tongue_t * math.pi)
+        if self.tongue_target and not self.tongue_target.dead:
+            aim = self.tongue_target.pos
+        else:
+            aim = self.pos + self.aim * 210
+        mouth = self.spine.joints[0] + self.spine.head_dir() * self.max_r
+        return mouth.lerp(aim, reach), mouth
+
+    def _draw_slow_mark(self, surf, cam):
+        """Show WHY you are slow.
+
+        Two independent brakes multiply on the player (a sting's slow and the
+        contact drag) and neither had any tell, so being at half speed looked
+        like the game misbehaving. Cold rings under the body read as "something
+        is holding you" without adding a HUD element.
+        """
+        if self.slow_t <= 0:
+            return
+        sp = cam.w2s(self.pos)
+        f = clamp(self.slow_t / 0.4, 0, 1)
+        r = int(self.max_r * 1.9 * cam.zoom)
+        col = (120, 190, 255)
+        palette.glow(surf, sp, r, col, 0.22 * f)
+        pygame.draw.circle(surf, col, sp, r, max(1, int(2 * cam.zoom)))
+
+    def draw(self, surf, cam):
+        self._draw_slow_mark(surf, cam)
+        for wid, lvl in self.weapons.items():        # auras behind the body
+            w = weapons.WEAPONS[wid]
+            if w.layer == 'under':
+                w.draw(surf, cam, self, self.weapon_state[wid], lvl)
+        tip = self.tongue_tip()
+        if tip:
+            t, mouth = tip
+            pygame.draw.line(surf, (230, 60, 90), cam.w2s(mouth), cam.w2s(t),
+                             max(2, int(3 * cam.zoom)))
+            pygame.draw.circle(surf, (255, 90, 120), cam.w2s(t), max(2, int(4 * cam.zoom)))
+        super().draw(surf, cam)
+        for wid, lvl in self.weapons.items():        # orbitals in front
+            w = weapons.WEAPONS[wid]
+            if w.layer == 'over':
+                w.draw(surf, cam, self, self.weapon_state[wid], lvl)

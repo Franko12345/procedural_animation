@@ -15,7 +15,8 @@ from .core import config as C
 from .core import fonts
 from .core.mathutil import clamp, ease_out, lerp, vfrom_angle, safe_norm, decay, pulse, random_dir
 from .anim.spine import build_radii
-from .lizard import Player, AILizard
+from .creatures.ai import AILizard
+from .creatures.player import Player
 from .creatures import species
 from .combat import evolution
 from .audio import engine as audio
