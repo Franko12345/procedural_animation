@@ -10,9 +10,9 @@ import math
 import pygame
 
 from . import assets
-from .core import config as C
-from .core import palette
-from .core.mathutil import vfrom_angle
+from ..core import config as C
+from ..core import palette
+from ..core.mathutil import vfrom_angle
 
 INK = C.COL_INK
 

@@ -16,7 +16,7 @@ from . import audio
 from .core import fonts
 from .core import palette
 from . import parts
-from . import ui
+from .render import ui
 from . import weapons
 from .genome import basic_lizard
 from .core.mathutil import clamp, lerp, approach, vfrom_angle, safe_norm, angle_of, decay, pulse, random_dir

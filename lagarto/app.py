@@ -12,10 +12,10 @@ import pygame
 
 from . import audio
 from .core import config as C
-from . import display
+from .render import display
 from .core import fonts
-from . import perf
-from . import ui
+from .render import perf
+from .render import ui
 from .core import settings
 from .controllers import (make_controllers, describe_joysticks, Pad, MenuNav,
                           KeyboardMouseController, GamepadController)

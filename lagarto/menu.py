@@ -13,20 +13,20 @@ from . import audio
 from . import characters
 from . import charms
 from .core import config as C
-from . import display
+from .render import display
 from . import evolution
-from . import icons
+from .render import icons
 from . import items
 from .core import palette
-from . import perf
+from .render import perf
 from . import progression
 from .core import settings
 from . import species
-from . import ui
+from .render import ui
 from . import weapons
 from .core.mathutil import approach, clamp, safe_norm, vfrom_angle, pulse
 from .lizard import AILizard
-from .camera import Camera
+from .render.camera import Camera
 from .world import World
 
 

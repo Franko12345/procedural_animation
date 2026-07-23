@@ -20,8 +20,8 @@ import time
 
 import pygame
 
-from .core import config as C
-from .core import palette
+from ..core import config as C
+from ..core import palette
 
 OFF, BASIC, FULL = 0, 1, 2
 LEVEL_NAMES = ('desligado', 'fps', 'detalhado')

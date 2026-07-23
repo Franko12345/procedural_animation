@@ -11,7 +11,7 @@ mouse position must go through ``to_logical()`` (aim *and* UI clicks).
 
 import pygame
 
-from .core import config as C
+from ..core import config as C
 
 SCALES = (1, 2, 3)
 
