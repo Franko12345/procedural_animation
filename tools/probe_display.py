@@ -24,7 +24,7 @@ from lagarto.render import display
 from lagarto import fonts, audio, settings
 from lagarto.creatures import species
 from lagarto.input.controllers import Controller
-from lagarto.game import Game
+from lagarto.game.loop import Game
 from pygame import Vector2
 
 FRAMES = 240

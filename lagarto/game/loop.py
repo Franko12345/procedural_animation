@@ -11,162 +11,29 @@ import random
 from pygame import Vector2
 import pygame
 
-from .core import config as C
-from .core import fonts
-from .core.mathutil import clamp, ease_out, lerp, vfrom_angle, safe_norm, decay, pulse, random_dir
-from .anim.spine import build_radii
-from .creatures.ai import AILizard
-from .creatures.player import Player
-from .creatures import species
-from .combat import evolution
-from .audio import engine as audio
-from .render import icons
-from .render import ui
-from .flow import progression
-from .core import palette
-from .combat import weapons
-from .creatures import characters
-from .combat import charms as charmlib
-from .world.pickups import Bug, Fruit, Egg
-from .render.fx import FX, shadow
-from .render.camera import Camera
-from .world.terrain import World
-from .world.collision import separate
-from .flow.rounds import RoundManager
-
-
-def _bar_tail(surf, bx, by, h, color, phase, t):
-    """A little lizard TAIL wagging off the top of the bar.
-
-    Same vocabulary as the real body (``spine.RADII_PROFILE``): a curved chain
-    that tapers to a point, not a stick with a bead on the end. Drawn as a run of
-    filled circles shrinking base->tip; the sway grows toward the tip so the last
-    segments whip like a follow-through.
-    """
-    n = 9
-    length = h * 1.5                       # long and whippy, still clears the label row
-    r0 = max(2.0, h * 0.32)                # slimmer root than a leaf
-    core = palette.lighten(color, 0.3)
-    for k in range(n):
-        f = k / (n - 1)
-        py = by - f * length
-        # tip sways most; a phase per tail so they don't wag in unison
-        px = bx + math.sin(t * 3.4 + phase + f * 2.6) * (h * 0.62) * f * f
-        r = max(1, int(r0 * (1.0 - f) ** 1.3 + 0.8))   # curved taper -> pointed tip
-        pygame.draw.circle(surf, color, (int(px), int(py)), r)
-        if r > 2:                                   # top-left highlight = light source
-            pygame.draw.circle(surf, core,
-                               (int(px - r * 0.3), int(py - r * 0.3)), max(1, r // 2))
-
-
-def _bio_bar(surf, x, y, w, h, frac, color, t, flagella=0, glow=None):
-    """An organic 'membrane sac' bar instead of a flat rectangle.
-
-    Drawn entirely with primitives (no per-frame Surface -- the ui._tint rule),
-    animated purely by ``t`` so it costs the same whether it moves or not:
-      * a dark rounded capsule (the sac),
-      * a fill whose leading edge bulges and breathes,
-      * a soft inner highlight up top (a light source), and
-      * optional flagella -- little cilia that sway off the fill's leading edge,
-        which is what sells "biological" at a glance.
-    """
-    frac = 0.0 if frac < 0 else (1.0 if frac > 1 else frac)
-    r = h // 2
-    cap = pygame.Rect(x, y, w, h)
-    pygame.draw.rect(surf, (16, 18, 28), cap, border_radius=r)
-    fw = int(w * frac)
-    if fw > 1:
-        fill = pygame.Rect(x, y, fw, h)
-        pygame.draw.rect(surf, palette.darken(color, 0.25), fill, border_radius=r)
-        # top meniscus: a lighter band with a slow breathing wobble
-        band_h = max(2, h // 3)
-        pygame.draw.rect(surf, palette.lighten(color, 0.35),
-                         (x, y + 1, fw, band_h), border_radius=r)
-        # leading-edge bulge, pulsing -- reads as fluid under pressure
-        bulge = int(h * (0.55 + 0.12 * math.sin(t * 3.0)))
-        tip = (x + fw, y + h // 2)
-        palette.glow(surf, tip, bulge, color, 0.5)
-        pygame.draw.circle(surf, palette.lighten(color, 0.5), tip, max(2, h // 3))
-        for k in range(flagella):
-            fx = x + int(fw * (k + 0.5) / max(1, flagella))
-            _bar_tail(surf, fx, y + 1, h, color, phase=k * 2.1, t=t)
-    if glow:
-        palette.glow(surf, (x + fw, y + h // 2), h, color, 0.25)
-    # living rim
-    pygame.draw.rect(surf, palette.lighten(color, 0.15) if frac > 0 else (40, 44, 60),
-                     cap, 2, border_radius=r)
-
-def _dial(surf, center, r, frac, color, font, label, t, enabled=True):
-    """Radial cooldown dial: fills as the ability recharges, pulses when ready.
-
-    ``enabled=False`` (not enough energy) greys the whole thing out.
-    """
-    ready = frac >= 0.999 and enabled
-    if not enabled:
-        color = (78, 82, 104)
-    pygame.draw.circle(surf, (34, 38, 54), center, r)
-    if frac > 0:
-        pts = [center]
-        steps = max(3, int(frac * 22))
-        for i in range(steps + 1):
-            pts.append(center + vfrom_angle(-90 + 360 * frac * (i / steps), r))
-        if len(pts) >= 3:
-            pygame.draw.polygon(surf, color, pts)
-    if ready:
-        palette.glow(surf, center, r * 2.2, color, 0.35 + 0.25 * pulse(t, 6))
-    pygame.draw.circle(surf, (96, 102, 136) if not ready else color, center, r, 2)
-    ui.text(surf, font, label, (center[0] + r + 6, center[1] - font.get_height() // 2),
-            (232, 234, 250) if ready else (146, 150, 178))
-
-
-_VIGNETTE = None
-
-
-def _vignette(surf):
-    """Smooth radial dark edges so the vivid centre pops (built once, then blitted)."""
-    global _VIGNETTE
-    if _VIGNETTE is None:
-        s = 80
-        small = pygame.Surface((s, s), pygame.SRCALPHA)
-        cx = cy = (s - 1) / 2.0
-        maxd = (cx * cx + cy * cy) ** 0.5
-        for y in range(s):
-            for x in range(s):
-                d = (((x - cx) ** 2 + (y - cy) ** 2) ** 0.5) / maxd
-                a = 0 if d < 0.4 else int(150 * ((d - 0.4) / 0.6) ** 2)
-                small.set_at((x, y), (0, 0, 0, min(150, a)))
-        _VIGNETTE = pygame.transform.smoothscale(small, (C.WIDTH, C.HEIGHT))
-    surf.blit(_VIGNETTE, (0, 0))
-
-
-class TopStack:
-    """Vertical layout for the top-centre column.
-
-    Six things live there -- score, wave line, combo, theme banner, boss name and
-    boss bar -- and each used to hardcode its own ``y`` with no idea of the others.
-    On a boss wave with a live combo that was *three* overlaps at once, and the
-    banner writes for 2.2s exactly when the boss spawns, so it was guaranteed to
-    be seen. Now every element asks for the height it needs and gets the next free
-    band, which also means new elements (boss phase bars, Phase 4) can never
-    silently land on top of an existing one.
-
-    Elements reserve in draw order, so the caller must draw top-down: HUD, then
-    banner, then boss bar.
-    """
-
-    def __init__(self, top=10, gap=4):
-        self.top = top
-        self.gap = gap
-        self.y = top
-
-    def reset(self):
-        self.y = self.top
-
-    def take(self, h):
-        """Reserve a band ``h`` tall and return its top ``y``."""
-        y = self.y
-        self.y += h + self.gap
-        return y
+from ..core import config as C
+from ..core import fonts
+from ..core.mathutil import clamp, ease_out, lerp, safe_norm, decay, pulse, random_dir
+from ..anim.spine import build_radii
+from ..creatures.ai import AILizard
+from ..creatures.player import Player
+from ..creatures import species
+from ..combat import evolution
+from ..audio import engine as audio
+from ..render import icons
+from ..render import ui
+from ..flow import progression
+from ..core import palette
+from ..combat import weapons
+from ..creatures import characters
+from ..combat import charms as charmlib
+from ..world.pickups import Bug, Fruit, Egg
+from ..render.fx import FX, shadow
+from ..render.camera import Camera
+from ..world.terrain import World
+from ..world.collision import separate
+from ..flow.rounds import RoundManager
+from . import hud
 
 
 class Game:
@@ -231,7 +98,7 @@ class Game:
         self.ui_fx = 0.0          # keeps fx drawn over the veil just after an impact
         self._uilayer = None      # scratch surface so screen shake can move the whole UI
         self._panels = {}         # rendered card/shop/route panels, keyed by their state
-        self.top = TopStack()     # shared top-centre column (see TopStack)
+        self.top = hud.TopStack()     # shared top-centre column (see TopStack)
         self._card_rects = []
         self._shop_rects = []
         self._route_rects = []
@@ -490,7 +357,7 @@ class Game:
 
     # ---- camp (route + shop between rounds) ----------------------------- #
     def _enter_camp(self):
-        from .flow.rounds import THEMES, THEME_KEYS
+        from ..flow.rounds import THEMES, THEME_KEYS
         picks = random.sample(THEME_KEYS, min(3, len(THEME_KEYS)))
         bonuses = ['cura', 'polen', 'carta']
         random.shuffle(bonuses)
@@ -1114,7 +981,7 @@ class Game:
         self.fx.draw(surf, self.cam, self.font)
         if self.flash > 0:
             ui._tint(surf, (255, 255, 255), int(150 * min(1.0, self.flash)))
-        _vignette(surf)
+        hud.vignette(surf)
         if self.state == 'play':
             self._draw_offscreen(surf)
         # The top-centre column is shared and elements reserve their band in draw
@@ -1166,7 +1033,7 @@ class Game:
             # health: the big organic sac, with swaying flagella
             hy = y + 26
             hr = clamp(p.health / p.max_health, 0, 1)
-            _bio_bar(surf, x, hy, bw, 16, hr, palette.health_color(hr), self.time,
+            hud.bio_bar(surf, x, hy, bw, 16, hr, palette.health_color(hr), self.time,
                      flagella=3, glow=True)
             # light glyphs + dark rim, not dark-on-bar: the fill shifts green ->
             # orange -> red under it, and dark ink lost contrast on every shade.
@@ -1175,23 +1042,23 @@ class Game:
 
             # energy + xp: slim sacs (no flagella -- too short to read)
             ey = hy + 22
-            _bio_bar(surf, x, ey, bw, 8, p.energy / p.max_energy, (96, 206, 240),
+            hud.bio_bar(surf, x, ey, bw, 8, p.energy / p.max_energy, (96, 206, 240),
                      self.time)
             xy = ey + 12
-            _bio_bar(surf, x, xy, bw, 6, clamp(p.xp / p.xp_to_next, 0, 1),
+            hud.bio_bar(surf, x, xy, bw, 6, clamp(p.xp / p.xp_to_next, 0, 1),
                      (245, 205, 84), self.time + 1.7)
             # ability cooldown dials (dash / tongue) -> readable "can I act?" feedback
             dy = xy + 16
             # three dials in a 216px panel: 78px pitch overflowed, so 11px radius
             # on a 68px pitch, with short labels
             dash_frac = 1.0 - clamp(p.dash_cd / max(0.001, p.dash_cooldown), 0, 1)
-            _dial(surf, (x + 12, dy + 14), 11, dash_frac, p.colorset[0],
+            hud.dial(surf, (x + 12, dy + 14), 11, dash_frac, p.colorset[0],
                   self.smallfont, "DASH", self.time, enabled=p.energy >= C.DASH_COST)
             t_frac = 0.0 if p.tongue_t > 0 else 1.0
-            _dial(surf, (x + 80, dy + 14), 11, t_frac, (235, 90, 120),
+            hud.dial(surf, (x + 80, dy + 14), 11, t_frac, (235, 90, 120),
                   self.smallfont, "LING", self.time, enabled=p.energy >= C.TONGUE_COST)
             w_frac = 1.0 - clamp(p.whip_cd / max(0.001, p.whip_cooldown), 0, 1)
-            _dial(surf, (x + 148, dy + 14), 11, w_frac, (250, 190, 90),
+            hud.dial(surf, (x + 148, dy + 14), 11, w_frac, (250, 190, 90),
                   self.smallfont, "RABO", self.time, enabled=p.energy >= C.WHIP_COST)
 
             if p.down:
@@ -1202,7 +1069,7 @@ class Game:
             # Top-right when it is free; in co-op that corner IS P2's panel, so
             # each player gets it under their own dials instead.
             if p.ability:
-                from .combat import items as itemlib
+                from ..combat import items as itemlib
                 it = itemlib.ITEMS.get(p.ability)
                 if it is not None:
                     if len(self.players) == 1:
@@ -1407,31 +1274,13 @@ class Game:
         return f
 
     def _draw_offscreen(self, surf):
-        """Edge arrows pointing at enemies (and nests) you can't see -> find stragglers."""
-        cx, cy = C.WIDTH / 2, C.HEIGHT / 2
-        hw, hh = cx - 28, cy - 28
-        shown = 0
-        targets = [(e, e.color) for e in self.enemies if not e.dead]
-        targets += [(n, (190, 130, 95)) for n in self.rounds.nests if not n.dead]
-        for obj, col in targets:
-            sp = self.cam.w2s(obj.pos)
-            if -12 < sp[0] < C.WIDTH + 12 and -12 < sp[1] < C.HEIGHT + 12:
-                continue
-            d = Vector2(sp[0] - cx, sp[1] - cy)
-            if d.length_squared() < 1:
-                continue
-            scale = min(hw / abs(d.x) if d.x else 1e9, hh / abs(d.y) if d.y else 1e9)
-            c = Vector2(cx, cy) + d * scale
-            ang = d.as_polar()[1]
-            tip = c + vfrom_angle(ang, 12)
-            b1 = c + vfrom_angle(ang + 138, 10)
-            b2 = c + vfrom_angle(ang - 138, 10)
-            palette.glow(surf, (int(c.x), int(c.y)), 16, col, 0.5)
-            pygame.draw.polygon(surf, col, [tip, b1, b2])
-            pygame.draw.polygon(surf, C.COL_INK, [tip, b1, b2], 1)
-            shown += 1
-            if shown >= 22:
-                break
+        """Edge arrows pointing at enemies (and nests) you can't see -> find stragglers.
+
+        Picking the targets is run state; the arrows themselves are hud.
+        """
+        targets = [(e.pos, e.color) for e in self.enemies if not e.dead]
+        targets += [(n.pos, (190, 130, 95)) for n in self.rounds.nests if not n.dead]
+        hud.draw_offscreen(surf, targets, self.cam)
 
     def _shop_surface(self, it, i, focused):
         """One beetle-shop item, drawn at the origin (see _card_surface)."""

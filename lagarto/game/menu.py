@@ -9,25 +9,25 @@ import random
 from pygame import Vector2
 import pygame
 
-from .audio import engine as audio
-from .creatures import characters
-from .combat import charms
-from .core import config as C
-from .render import display
-from .combat import evolution
-from .render import icons
-from .combat import items
-from .core import palette
-from .render import perf
-from .flow import progression
-from .core import settings
-from .creatures import species
-from .render import ui
-from .combat import weapons
-from .core.mathutil import approach, clamp, safe_norm, vfrom_angle, pulse
-from .creatures.ai import AILizard
-from .render.camera import Camera
-from .world.terrain import World
+from ..audio import engine as audio
+from ..creatures import characters
+from ..combat import charms
+from ..core import config as C
+from ..render import display
+from ..combat import evolution
+from ..render import icons
+from ..combat import items
+from ..core import palette
+from ..render import perf
+from ..flow import progression
+from ..core import settings
+from ..creatures import species
+from ..render import ui
+from ..combat import weapons
+from ..core.mathutil import approach, clamp, safe_norm, vfrom_angle, pulse
+from ..creatures.ai import AILizard
+from ..render.camera import Camera
+from ..world.terrain import World
 
 
 def _make_backdrop():
@@ -362,7 +362,7 @@ def _compendium_entries(tab):
 
 
 def run_menu(screen, font, bigfont, titlefont, joysticks):
-    from .input.controllers import MenuNav
+    from ..input.controllers import MenuNav
     clock = pygame.time.Clock()
     nav = MenuNav()
     fade = ui.Fade()
