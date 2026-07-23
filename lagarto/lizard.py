@@ -17,12 +17,12 @@ from .core import fonts
 from .core import palette
 from .creatures import parts
 from .render import ui
-from . import weapons
+from .combat import weapons
 from .creatures.genome import basic_lizard
 from .core.mathutil import clamp, lerp, approach, vfrom_angle, safe_norm, angle_of, decay, pulse, random_dir
 from .anim.spine import Spine, build_radii
 from .anim.leg import Leg
-from .projectile import spit as game_spit
+from .combat.projectile import spit as game_spit
 from .anim.anim import Vector2Spring
 
 TAIL_SPRING_JOINTS = 4          # how many tail joints get cosmetic overshoot
@@ -731,7 +731,7 @@ class Player(Lizard):
         return self.dash_time > 0
 
     def gain_charm(self, cid, game=None):
-        from . import charms
+        from .combat import charms
         ch = charms.CHARMS.get(cid)
         if not ch or cid in self.charms_owned:
             return False
@@ -741,7 +741,7 @@ class Player(Lizard):
         return True
 
     def equip_charm(self, cid, game=None):
-        from . import charms
+        from .combat import charms
         ch = charms.CHARMS.get(cid)
         if not ch:
             return
@@ -800,7 +800,7 @@ class Player(Lizard):
         game.fx.burst(self.pos, mutation.color, 24, 260)
         game.fx.spark_burst(self.pos, palette.lighten(mutation.color, 0.4), 16, 340)
         game.fx.ring(self.pos, mutation.color)
-        from .evolution import check_synergies
+        from .combat.evolution import check_synergies
         for name in check_synergies(self, game):
             game.fx.popup(self.pos + Vector2(0, -40), name, C.COL_WHITE)
             game.fx.ring(self.pos, self.colorset[0])
@@ -915,7 +915,7 @@ class Player(Lizard):
             if self.dash_trail:
                 self._trail_cd -= dt
                 if self._trail_cd <= 0:
-                    from . import weapons as W
+                    from .combat import weapons as W
                     self._trail_cd = C.ITEM_TRAIL_DROP
                     # hostile=False -> `dmg` is DPS and hits ENEMIES (see Puddle)
                     game.spawn_puddle(W.Puddle(self.pos, C.ITEM_TRAIL_R,
@@ -994,7 +994,7 @@ class Player(Lizard):
         # frame that ran zero sim steps, and is eaten only when it actually fires.
         self.shed_t = decay(self.shed_t, dt)
         if c.item_edge and self.ability and self.ability_charge >= 1.0:
-            from . import items as itemlib
+            from .combat import items as itemlib
             if itemlib.use_active(self, game):
                 c.consume('item')
                 audio.play('levelup', 0.5)
@@ -1109,7 +1109,7 @@ class Player(Lizard):
         Fired once at swing start (not per frame). Piercing so they read as the
         tail flinging shrapnel through the horde, not single-target pokes.
         """
-        from .projectile import Projectile
+        from .combat.projectile import Projectile
         base = angle_of(self.whip_dir)
         tail = self.spine.joints[-1]
         for k in range(C.ITEM_DART_COUNT):
@@ -1983,7 +1983,7 @@ class AILizard(Lizard):
             game.kills += 1
             game.give_xp(self.xp_value)
             from .creatures import characters
-            from . import items as itemlib
+            from .combat import items as itemlib
             for p in game.players:            # LARVA feeds on the whole run
                 if p.dead:
                     continue

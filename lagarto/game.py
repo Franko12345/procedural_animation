@@ -17,15 +17,15 @@ from .core.mathutil import clamp, ease_out, lerp, vfrom_angle, safe_norm, decay,
 from .anim.spine import build_radii
 from .lizard import Player, AILizard
 from .creatures import species
-from . import evolution
+from .combat import evolution
 from .audio import engine as audio
 from .render import icons
 from .render import ui
 from . import progression
 from .core import palette
-from . import weapons
+from .combat import weapons
 from .creatures import characters
-from . import charms as charmlib
+from .combat import charms as charmlib
 from .world.pickups import Bug, Fruit, Egg
 from .render.fx import FX, shadow
 from .render.camera import Camera
@@ -1201,7 +1201,7 @@ class Game:
             # Top-right when it is free; in co-op that corner IS P2's panel, so
             # each player gets it under their own dials instead.
             if p.ability:
-                from . import items as itemlib
+                from .combat import items as itemlib
                 it = itemlib.ITEMS.get(p.ability)
                 if it is not None:
                     if len(self.players) == 1:
