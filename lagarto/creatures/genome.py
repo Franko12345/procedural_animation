@@ -1,7 +1,7 @@
 """Genome: a creature described entirely by numbers (RujiK the Comatose's idea).
 
 A ``Genome`` is a bag of numeric traits -- size, body length, leg count, colour,
-which parts it has, how it behaves. The generic ``Creature`` in ``lizard.py``
+which parts it has, how it behaves. The generic ``Creature`` in ``creatures/base.py``
 reads the genome to build its spine, legs and parts and to pick a colour, so
 lizards / snakes / spiders / scorpions are just *different genomes*, not different
 classes. The player's evolutions (Phase 4) mutate this same genome and the body

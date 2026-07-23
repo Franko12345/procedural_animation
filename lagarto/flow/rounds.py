@@ -339,7 +339,7 @@ class RoundManager:
         # commits to its own movement, it doesn't get knocked off it
         gen.knockback = 0.0
         # Fase 5: the FSM drives the fight now, not the species' own chase/
-        # ranged/etc behavior -- 'boss' is a distinct dispatch (lizard.py).
+        # ranged/etc behavior -- 'boss' is a distinct dispatch (creatures/ai/).
         gen.behavior = 'boss'
         boss.__init__(pos, 'enemy', genome=gen)
         boss.species = key

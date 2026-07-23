@@ -25,7 +25,7 @@ from .creatures import species
 from .render import ui
 from .combat import weapons
 from .core.mathutil import approach, clamp, safe_norm, vfrom_angle, pulse
-from .lizard import AILizard
+from .creatures.ai import AILizard
 from .render.camera import Camera
 from .world.terrain import World
 
