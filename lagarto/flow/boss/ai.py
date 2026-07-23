@@ -1,0 +1,288 @@
+"""The boss FSM: intro -> [approach -> windup -> attack -> recover] x N ->
+phase transition -> ... -> death.
+
+Consumes ``patterns`` and ``personality``; neither may import this module.
+"""
+
+import random
+from pygame import Vector2
+
+from ...core import config as C
+from ...core import palette
+from ...creatures.ai import burrow as burrow_ai
+from ...creatures.ai import grapple as grapple_ai
+from ...core.mathutil import safe_norm, vfrom_angle, clamp, decay, random_dir
+from .patterns import PATTERNS, _tick_barrage, _tick_spiral, default_phases
+from .personality import default_personality
+
+# --------------------------------------------------------------------------- #
+#  Rei Lagarto (plans/03, first authored boss, onda 5): CicatriZ mechanic --   #
+#  every 25% HP lost, a scarred patch (slow + tick damage) appears underfoot;  #
+#  it clears whenever the fight moves to the next phase.                      #
+# --------------------------------------------------------------------------- #
+
+def spawn_scar(boss, game):
+    from ...combat import weapons
+    pos = boss.pos + random_dir(boss.max_r * 0.6)
+    p = weapons.Puddle(pos, boss.max_r * 0.9, C.KING_SCAR_DMG, C.KING_SCAR_LIFE,
+                       22, hostile=True, tick=0.5,
+                       slow=(C.KING_SCAR_SLOW, C.KING_SCAR_TIME))
+    game.spawn_puddle(p)
+    game.fx.burst(pos, (150, 90, 50), 10, 140)
+    return p
+
+
+# --------------------------------------------------------------------------- #
+#  The FSM itself                                                             #
+# --------------------------------------------------------------------------- #
+
+class BossAI:
+    def __init__(self, boss, phases=None, personality=None, name=None, on_phase=None):
+        self.boss = boss
+        self.phases = phases or default_phases()
+        self.personality = personality or default_personality()
+        self.name = name
+        self.on_phase = on_phase   # optional (boss, phase_i) hook -- per-boss mechanics
+        self.phase_i = 0
+        self.state = 'intro'
+        self.t = C.BOSS_INTRO_TIME
+        self.cd = random.uniform(C.BOSS_CD_MIN, C.BOSS_CD_MAX)
+        self.pattern_id = None
+        self.summon_cd = 0.0
+        self.mood = 'calm'
+        self.no_hit_t = 0.0        # time since this boss last connected -- frustration
+        self.scar_thresholds = None   # e.g. [0.75, 0.5, 0.25] -- opt-in (Rei Lagarto)
+        self.scars = []
+        boss.boss_invuln = True
+
+    def phase(self):
+        return self.phases[self.phase_i]
+
+    def _maybe_advance_phase(self):
+        b = self.boss
+        frac = b.hp / max(1, b.max_hp)
+        while self.phase_i + 1 < len(self.phases) and frac <= self.phases[self.phase_i + 1]['hp_frac']:
+            self.phase_i += 1
+            self.state = 'transition'
+            self.t = C.BOSS_TRANSITION_TIME
+            b.boss_invuln = True
+            b.hit_flash = 1.0
+            self.pattern_id = None
+            if self.scars:                     # scars don't survive a phase change
+                for s in self.scars:
+                    s.dead = True
+                self.scars = []
+            if self.on_phase:
+                self.on_phase(b, self.phase_i)
+
+    def _update_mood(self, dt, target):
+        if target is None:
+            self.mood = 'calm'
+            return
+        self.no_hit_t += dt
+        dist = target.pos.distance_to(self.boss.pos)
+        frac = self.boss.hp / max(1, self.boss.max_hp)
+        if dist < C.BOSS_CORNERED_DIST:
+            self.mood = 'cornered'
+        elif frac < 0.33:
+            self.mood = 'enraged'
+        elif frac < 0.66:
+            self.mood = 'agitated'
+        elif self.no_hit_t > C.BOSS_FRUSTRATION_SEC:
+            self.mood = 'frustrated'
+        else:
+            self.mood = 'calm'
+
+    def _choose_pattern(self, pats):
+        weights = [self.personality.weight(p, self.mood) for p in pats]
+        return random.choices(pats, weights=weights, k=1)[0]
+
+    def tick(self, dt, game):
+        b = self.boss
+        game.dt_last = dt          # aimed_barrage's/spiral's per-frame tick reads this
+        _tick_barrage(b, game)
+        _tick_spiral(b, game)
+        self.summon_cd = decay(self.summon_cd, dt)
+        self._maybe_advance_phase()
+        if self.scar_thresholds:
+            frac = b.hp / max(1, b.max_hp)
+            while self.scar_thresholds and frac <= self.scar_thresholds[0]:
+                self.scar_thresholds.pop(0)
+                self.scars.append(spawn_scar(b, game))
+        target = game.nearest_player(b.pos)
+        self._update_mood(dt, target)
+        speed_mul = self.personality.mood_speed.get(self.mood, 1.0)
+        if target is None:
+            return Vector2(), 0.0
+
+        if self.state == 'intro':
+            self.t -= dt
+            if self.t <= 0:
+                self.state = 'approach'
+                b.boss_invuln = False
+            return Vector2(), 0.0
+
+        if self.state == 'transition':
+            self.t -= dt
+            if self.t <= 0:
+                self.state = 'approach'
+                b.boss_invuln = False
+                self.cd = random.uniform(C.BOSS_CD_MIN, C.BOSS_CD_MAX) * self.phase()['cd_mul']
+            return safe_norm(target.pos - b.pos) * 0.1, 0.15
+
+        to = safe_norm(target.pos - b.pos)
+        dist = target.pos.distance_to(b.pos)
+
+        if self.state == 'approach':
+            self.cd -= dt
+            if self.cd <= 0:
+                pats = list(self.phase()['patterns'])
+                if 'summon' in pats and self.summon_cd > 0:
+                    pats.remove('summon')          # on cooldown -- don't roll it
+                pid = self._choose_pattern(pats) if pats else 'fan'
+                self.pattern_id = pid
+                self.state = 'windup'
+                self.t = PATTERNS[pid]['windup'] * self.personality.windup_mult(self.mood)
+                self._windup_target = Vector2(target.pos)
+                select = PATTERNS[pid].get('select')
+                if select:
+                    select(b, game, target)
+                return Vector2(), 0.0
+            speed = C.BOSS_APPROACH_SPEED * speed_mul if dist > 240 else 0.0
+            return to, speed
+
+        if self.state == 'windup':
+            self.t -= dt
+            b.squat_bias = 0.85     # coiling for whatever's coming -- same
+                                    # anticipation hook regular AI wind-ups use
+            if self.t <= 0:
+                pat = PATTERNS[self.pattern_id]
+                if pat.get('burrow'):
+                    self.state = 'burrowing'
+                    self._burrow_seen_under = False
+                    return Vector2(), 0.0
+                if pat.get('grapple'):
+                    self.state = 'grappling'
+                    self._grapple_seen_windup = False
+                    return Vector2(), 0.0
+                pat['fn'](b, game, target)
+                b.squat_bias = 1.4   # release the coil
+                if self.pattern_id == 'summon':
+                    self.summon_cd = C.BOSS_SUMMON_CD
+                if pat.get('charge'):
+                    self.state = 'charging'
+                    self.t = C.BOSS_CHARGE_TIME
+                else:
+                    self.state = 'recover'
+                    self.t = 0.5
+            return Vector2(), 0.0
+
+        if self.state == 'burrowing':
+            # delegates every frame to the regular centipede's OWN dig/erupt
+            # state machine (creatures.ai.burrow) -- one full surface->dig->
+            # under->erupt cycle, then back to the normal pattern rotation
+            d, speed = burrow_ai.burrow_tick(b, game, dt, target)
+            if b.burrow_state == 'under':
+                self._burrow_seen_under = True
+            elif self._burrow_seen_under and b.burrow_state == 'surface':
+                self.state = 'recover'
+                self.t = 0.5
+            return d, speed
+
+        if self.state == 'grappling':
+            # delegates every frame to the regular octopus's OWN reach/snap
+            # cycle (creatures.ai.grapple) -- one windup-to-snap(or-miss)
+            # cycle, then back to the normal pattern rotation
+            d, speed = grapple_ai.grapple_tick(b, game, dt, target)
+            if b.grapple_t > 0:
+                self._grapple_seen_windup = True
+            elif self._grapple_seen_windup:
+                self.state = 'recover'
+                self.t = 0.6
+            return d, speed
+
+        if self.state == 'charging':
+            self.t -= dt
+            if dist < (b.max_r + target.max_r) * 1.1 and b.attack_cd <= 0:
+                b._contact(game, target)
+                self.no_hit_t = 0.0
+            if self.t <= 0:
+                self.state = 'recover'
+                self.t = 0.4
+                return Vector2(), 0.0
+            return getattr(b, '_charge_dir', to), C.BOSS_CHARGE_SPEED_MULT
+
+        if self.state == 'recover':
+            self.t -= dt
+            if self.t <= 0:
+                self.state = 'approach'
+                self.cd = random.uniform(C.BOSS_CD_MIN, C.BOSS_CD_MAX) * self.phase()['cd_mul']
+            return Vector2(), 0.0
+
+        return Vector2(), 0.0
+
+    # ---- drawing: the telegraph IS the pattern's real hitbox preview ------- #
+    def draw(self, surf, cam):
+        b = self.boss
+        base_color = self.personality.glow_color(self.mood, b.color)
+        if self.state == 'intro' or self.state == 'transition':
+            f = clamp(self.t / (C.BOSS_INTRO_TIME if self.state == 'intro'
+                                 else C.BOSS_TRANSITION_TIME), 0, 1)
+            sp = cam.w2s(b.pos)
+            col = palette.lighten(base_color, 0.5)
+            palette.glow(surf, sp, int(b.max_r * (2.2 + 1.4 * f) * cam.zoom), col, 0.35 + 0.25 * f)
+            return
+        if self.state == 'charging':
+            sp = cam.w2s(b.spine.joints[0])
+            aim = b.spine.joints[0] + getattr(b, '_charge_dir', Vector2(1, 0)) * 260
+            col = palette.lighten(base_color, 0.4)
+            import pygame
+            pygame.draw.line(surf, col, sp, cam.w2s(aim), max(1, int(3 * cam.zoom)))
+            return
+        if self.state != 'windup' or not self.pattern_id:
+            return
+        kind = PATTERNS[self.pattern_id]['telegraph']
+        mouth = b.spine.joints[0]
+        sp = cam.w2s(mouth)
+        windup_dur = PATTERNS[self.pattern_id]['windup'] * self.personality.windup_mult(self.mood)
+        prog = 1.0 - clamp(self.t / max(1e-4, windup_dur), 0, 1)   # 0 -> 1
+        blink = 0.5 + 0.5 * __import__('math').sin(prog * prog * 40)
+        col = palette.lighten(base_color, 0.35)
+        import pygame
+        if kind == 'radial':
+            r = int(C.BOSS_RADIAL_SPEED * 0.9 * cam.zoom)
+            pygame.draw.circle(surf, col, sp, r, max(1, int((1 + 2 * prog) * cam.zoom)))
+            palette.glow(surf, sp, r, col, (0.12 + 0.2 * prog) * (0.5 + 0.5 * blink))
+        elif kind == 'fan':
+            spread = PATTERNS[self.pattern_id].get('spread', C.BOSS_FAN_SPREAD)
+            base = safe_norm(self._windup_target - mouth) if hasattr(self, '_windup_target') else Vector2(1, 0)
+            for s in (-0.5, 0.5):
+                edge = base.rotate(s * spread)
+                far = mouth + edge * 340
+                pygame.draw.line(surf, col, sp, cam.w2s(far), max(1, int((1 + 2 * prog) * cam.zoom)))
+        elif kind == 'line':
+            aim = getattr(self, '_windup_target', mouth + Vector2(100, 0))
+            pygame.draw.line(surf, col, sp, cam.w2s(aim), max(1, int((1 + 3 * prog) * cam.zoom)))
+            palette.glow(surf, cam.w2s(aim), int(14 * cam.zoom), col, 0.2 + 0.3 * prog)
+        elif kind == 'horn':
+            r = int(b.max_r * (1.3 + 0.6 * prog) * cam.zoom)
+            palette.glow(surf, sp, r, (255, 226, 90), (0.2 + 0.3 * prog) * (0.5 + 0.5 * blink))
+            pygame.draw.circle(surf, (255, 226, 90), sp, r, max(1, int(2 * cam.zoom)))
+        elif kind == 'shockwave':
+            r = int(C.BOSS_SHOCKWAVE_RADIUS * cam.zoom * (0.3 + 0.7 * prog))
+            pygame.draw.circle(surf, col, sp, r, max(1, int((1 + 2 * prog) * cam.zoom)))
+            palette.glow(surf, sp, r, col, (0.14 + 0.22 * prog) * (0.5 + 0.5 * blink))
+        elif kind == 'spiral':
+            n_spokes = 8
+            rr = int(b.max_r * (1.5 + prog * 2) * cam.zoom)
+            for i in range(n_spokes):
+                ang = (360 / n_spokes) * i + prog * 300
+                end = mouth + vfrom_angle(ang, rr / max(cam.zoom, 1e-4))
+                pygame.draw.line(surf, col, sp, cam.w2s(end), max(1, int(2 * cam.zoom)))
+        elif kind == 'rain':
+            r = int(C.BOSS_ARMS_RAIN_RADIUS * cam.zoom * (0.3 + 0.7 * prog))
+            for pt in getattr(b, '_rain_points', []):
+                psp = cam.w2s(pt)
+                pygame.draw.circle(surf, col, psp, r, max(1, int((1 + 2 * prog) * cam.zoom)))
+                palette.glow(surf, psp, r, col, (0.12 + 0.2 * prog) * (0.5 + 0.5 * blink))
+
