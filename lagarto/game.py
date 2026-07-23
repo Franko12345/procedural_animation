@@ -21,7 +21,7 @@ from .combat import evolution
 from .audio import engine as audio
 from .render import icons
 from .render import ui
-from . import progression
+from .flow import progression
 from .core import palette
 from .combat import weapons
 from .creatures import characters
@@ -31,7 +31,7 @@ from .render.fx import FX, shadow
 from .render.camera import Camera
 from .world.terrain import World
 from .world.collision import separate
-from .rounds import RoundManager
+from .flow.rounds import RoundManager
 
 
 def _bar_tail(surf, bx, by, h, color, phase, t):
@@ -489,7 +489,7 @@ class Game:
 
     # ---- camp (route + shop between rounds) ----------------------------- #
     def _enter_camp(self):
-        from .rounds import THEMES, THEME_KEYS
+        from .flow.rounds import THEMES, THEME_KEYS
         picks = random.sample(THEME_KEYS, min(3, len(THEME_KEYS)))
         bonuses = ['cura', 'polen', 'carta']
         random.shuffle(bonuses)

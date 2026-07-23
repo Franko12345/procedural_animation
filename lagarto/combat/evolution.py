@@ -128,7 +128,7 @@ class ItemCard:
 
 def _weapon_cards(player):
     from . import weapons
-    from .. import progression
+    from ..flow import progression
     meta = getattr(player, 'meta', None)
     cards = []
     for wid, w in weapons.WEAPONS.items():
