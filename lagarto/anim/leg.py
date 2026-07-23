@@ -8,7 +8,7 @@ Diagonal partners never step at the same time, giving a natural lizard gait.
 import math
 from pygame import Vector2
 
-from .core.mathutil import clamp, ease_out, angle_of, vfrom_angle, safe_norm
+from ..core.mathutil import clamp, ease_out, angle_of, vfrom_angle, safe_norm
 
 
 class Leg:

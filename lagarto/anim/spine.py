@@ -7,7 +7,7 @@ one, and its direction is clamped so the body cannot kink onto itself.
 
 from pygame import Vector2
 
-from .core.mathutil import angle_of, clamp_angle, vfrom_angle, safe_norm, lerp, catmull_rom
+from ..core.mathutil import angle_of, clamp_angle, vfrom_angle, safe_norm, lerp, catmull_rom
 
 SMOOTH_SUBDIV = 1   # extra points per segment for the smoothed outline (plans/01 #6)
 

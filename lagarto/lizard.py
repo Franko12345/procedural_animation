@@ -20,10 +20,10 @@ from .render import ui
 from . import weapons
 from .genome import basic_lizard
 from .core.mathutil import clamp, lerp, approach, vfrom_angle, safe_norm, angle_of, decay, pulse, random_dir
-from .spine import Spine, build_radii
-from .leg import Leg
+from .anim.spine import Spine, build_radii
+from .anim.leg import Leg
 from .projectile import spit as game_spit
-from .anim import Vector2Spring
+from .anim.anim import Vector2Spring
 
 TAIL_SPRING_JOINTS = 4          # how many tail joints get cosmetic overshoot
 TAIL_SPRING_MAX_LAG = 0.45      # cap on overshoot, as a fraction of max_r -- a
