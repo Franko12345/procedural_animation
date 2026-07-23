@@ -15,10 +15,10 @@ from .core import config as C
 from .audio import engine as audio
 from .core import fonts
 from .core import palette
-from . import parts
+from .creatures import parts
 from .render import ui
 from . import weapons
-from .genome import basic_lizard
+from .creatures.genome import basic_lizard
 from .core.mathutil import clamp, lerp, approach, vfrom_angle, safe_norm, angle_of, decay, pulse, random_dir
 from .anim.spine import Spine, build_radii
 from .anim.leg import Leg
@@ -620,7 +620,7 @@ class Lizard:
 
 class Player(Lizard):
     def __init__(self, pos, controller, colorset, index, character=None):
-        from . import characters
+        from .creatures import characters
         char = character if character is not None else characters.get(characters.DEFAULT)
         # Shape comes from the character, HUE comes from the player slot: the
         # colourset is what tells P1 from P2, so letting a character own the hue
@@ -1982,7 +1982,7 @@ class AILizard(Lizard):
             game.add_pollen(max(1, self.score_value // 12))
             game.kills += 1
             game.give_xp(self.xp_value)
-            from . import characters
+            from .creatures import characters
             from . import items as itemlib
             for p in game.players:            # LARVA feeds on the whole run
                 if p.dead:
@@ -2006,7 +2006,7 @@ class AILizard(Lizard):
             self._do_split(game)
 
     def _do_split(self, game):
-        from . import species as splib
+        from .creatures import species as splib
         game.fx.ring(self.pos, self.color)
         for k in range(self.split_count):
             child = splib.make(self.species, self.pos)

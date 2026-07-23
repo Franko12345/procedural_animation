@@ -15,11 +15,11 @@ import pygame
 
 from .audio import engine as audio
 from . import boss as bossai
-from . import champions
+from .creatures import champions
 from .core import config as C
 from .render import icons
 from .core import palette
-from . import species
+from .creatures import species
 from .render import ui
 from .core.mathutil import vfrom_angle, clamp, decay, random_dir
 

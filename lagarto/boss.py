@@ -100,7 +100,7 @@ def summon_adds(boss, game, target):
     """Call in reinforcements from the round's own theme pool (a real cost:
     it spends a window where the boss does nothing else, and the adds count
     against the round's cap like anything else)."""
-    from . import species
+    from .creatures import species
     from . import rounds as roundslib
     pool = roundslib.THEMES.get(game.rounds.theme, {}).get('pool', species.ENEMY_SPECIES)
     for _ in range(C.BOSS_SUMMON_COUNT):

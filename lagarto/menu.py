@@ -10,7 +10,7 @@ from pygame import Vector2
 import pygame
 
 from .audio import engine as audio
-from . import characters
+from .creatures import characters
 from . import charms
 from .core import config as C
 from .render import display
@@ -21,7 +21,7 @@ from .core import palette
 from .render import perf
 from . import progression
 from .core import settings
-from . import species
+from .creatures import species
 from .render import ui
 from . import weapons
 from .core.mathutil import approach, clamp, safe_norm, vfrom_angle, pulse

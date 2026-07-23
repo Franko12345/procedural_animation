@@ -8,7 +8,7 @@ classes. The player's evolutions (Phase 4) mutate this same genome and the body
 redraws itself -- no hand-made art per combination.
 """
 
-from .core import palette
+from ..core import palette
 
 
 class Genome:
