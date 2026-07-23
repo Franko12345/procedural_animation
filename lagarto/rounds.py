@@ -209,7 +209,7 @@ class Nest:
             if random.random() < 0.5:
                 game.spawn_fruit(self.pos)
             if random.random() < 0.22:              # rare: nests can drop a charm
-                from . import charms as CH
+                from .combat import charms as CH
                 p = game.nearest_player(self.pos) or (game.players[0] if game.players else None)
                 if p and not p.dead:
                     from . import progression as PR

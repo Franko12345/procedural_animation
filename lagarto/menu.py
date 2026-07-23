@@ -11,19 +11,19 @@ import pygame
 
 from .audio import engine as audio
 from .creatures import characters
-from . import charms
+from .combat import charms
 from .core import config as C
 from .render import display
-from . import evolution
+from .combat import evolution
 from .render import icons
-from . import items
+from .combat import items
 from .core import palette
 from .render import perf
 from . import progression
 from .core import settings
 from .creatures import species
 from .render import ui
-from . import weapons
+from .combat import weapons
 from .core.mathutil import approach, clamp, safe_norm, vfrom_angle, pulse
 from .lizard import AILizard
 from .render.camera import Camera

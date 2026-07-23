@@ -29,7 +29,7 @@ from .audio import engine as audio
 from .core import config as C
 from .core import palette
 from .core.mathutil import safe_norm, vfrom_angle, clamp, decay, random_dir
-from .projectile import spit as game_spit
+from .combat.projectile import spit as game_spit
 
 
 # --------------------------------------------------------------------------- #
@@ -225,7 +225,7 @@ def sky_slam(boss, game, target):
     """Primordial: the same single-point slam as ``arms_rain`` (pattern dict
     sets count=1) plus a lingering magma puddle where it lands -- 'Sky Slam'
     and 'Magma Spit' folded into one attack instead of two separate ones."""
-    from . import weapons
+    from .combat import weapons
     pts = list(getattr(boss, '_rain_points', []))
     arms_rain(boss, game, target)
     for pt in pts:
@@ -243,7 +243,7 @@ def web_trap(boss, game, target):
     from the pattern dict -- Aranha-Rei's Web Dome reuses this exact
     function with more points and a bigger radius via ``arms_rain``'s
     ``count``/``spread`` select, no new selection or hazard code either."""
-    from . import weapons
+    from .combat import weapons
     pat = PATTERNS[boss.boss_ai.pattern_id]
     radius = pat.get('radius', C.BOSS_WEB_TRAP_R)
     dmg = pat.get('dmg', C.BOSS_WEB_TRAP_DMG)
@@ -345,7 +345,7 @@ def default_personality():
 # --------------------------------------------------------------------------- #
 
 def spawn_scar(boss, game):
-    from . import weapons
+    from .combat import weapons
     pos = boss.pos + random_dir(boss.max_r * 0.6)
     p = weapons.Puddle(pos, boss.max_r * 0.9, C.KING_SCAR_DMG, C.KING_SCAR_LIFE,
                        22, hostile=True, tick=0.5,
