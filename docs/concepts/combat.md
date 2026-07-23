@@ -1,0 +1,170 @@
+# Combat
+
+The core is automatic ([Weapons](./weapon.md)). The player has three
+manual verbs on top:
+
+- **Dash** — contact damage + i-frames + **chain** (dash-kill recharges
+  dash and refunds energy).
+- **Tongue** — auto-aims the nearest edible / enemy; enemy takes damage
+  and is pulled; costs energy.
+- **Whip (Rabada)** — tail sweep on a dedicated button.
+
+Combo streak (`game.combo`) climbs on kills and decays if you break off.
+
+## Whip (Rabada)
+
+`Player._whip_hit`. Manual tail strike. Buttons: **middle click / Q**,
+P2 **RAlt**, gamepad **Y**. Costs `C.WHIP_COST`, cooldown
+`Player.whip_cooldown`.
+
+### How the tail moves (`Player._whip_arc`)
+
+The **tail** sweeps, not the body. Since [Spine](./spine.md) is
+follow-the-leader, the only way to _steer_ it is via the head — which is
+why the first two attempts missed (impulse on velocity then arc on head:
+both threw the **entire body** sideways). The fix: **rebuild the rear
+half's joints** from a pivot (`_whip_span`), distributing `C.WHIP_SWEEP`
+degrees of curvature across all of them.
+
+- **Ramp must be soft.** Putting the full turn in the first joint reads
+  as a hinge (a "rigid piece rotating"); a quadratic ramp toward the tip
+  puts ~80° in one link, above the spine's own bend limit (`bend=26`) —
+  the corner beaks and the following `resolve` clamps it. A near-uniform
+  ramp gives a near-circular arc — the lizard **keeps its natural
+  curvature**.
+- **Full-period envelope** (`sin(t*2π)`): sweeps one side, passes through
+  centre, sweeps the other — one strike, in and out smoothly at zero.
+- Anchor the angle on the **body** (`js[pv] - js[pv-2]`), **never on last
+  frame's tail**: `spine.resolve` derives direction from previous
+  positions, so anchoring on the tail feeds the curve back and the swing
+  cancels to a tremor.
+- The override survives to draw only because player contact is **soft** —
+  the player is never pushed, so `collision.separate` skips its
+  re-resolve. If contact turns hard again, this breaks.
+
+### Hitbox = the actual joints
+
+`spine.joints[-3:]` with an explicit reach `max_r*1.15` (the tip radius
+is ~0.22 × max_r, too small). What you see is what hits; enemy head still
+crits.
+
+`whip_hits` (set, cleared on fire) = **one hit per target per swing**,
+same pattern as `dash_hits`. Without it the damage-per-frame bug returns.
+
+Hitbox uses the **same span that moves** (`_whip_span` serves both).
+When only the last 3 joints were tested and the moving span grew to 6,
+the tail visibly swept over the enemy without hitting.
+
+### Tail modifiers (were cosmetic)
+
+- **`club`** → `WHIP_CLUB_MULT` damage + `WHIP_KNOCK_CLUB` knockback +
+  bigger shake.
+- **`sting`** → `apply_poison`. Enemy stings `apply_slow` — the divergence
+  is on purpose.
+
+### Damage scales with Might
+
+`_whip_hit` multiplies by `player.might`. Naked whip is weak on purpose;
+the damage comes from upgrades. **Vigor** (+20%/card) and **Potência**
+(DNA, +6%/level) finally improve the strike. Values: 2 naked → 5 with
+club → 12 with club + Vigor + DNA.
+
+Dash gets the same treatment (`Player.dash_damage()`): base 5 → 4, ×
+`DASH_WINGS_MULT` (1.5) with Membranas, × `might`. Membranas already
+improved dash speed / duration / cooldown / cost but **not** damage,
+despite the card saying "stronger dash" — now it does. 4 naked → 6
+with membranas → 13 with membranas + Vigor + DNA.
+
+The calc lives in a method because there were **two** call sites reading
+`C.DASH_DAMAGE` directly (enemy and nest); scaling one would skip the
+other silently. See [ADR-0008](../adr/0008-might-scales-all-damage.md).
+
+Card descriptions must tell the truth: `might` touches weapons **and**
+dash **and** whip. Membranas' unkept promise went unnoticed for a long
+time.
+
+### Reach
+
+The arc behind / beside the lizard (measured: 1-2 targets per strike),
+not the whole screen. When the strike still moved the body it caught
+4-5, and per-hit damage was lowered to compensate; with the tail alone
+it went back near dash, and the cost is a longer cooldown.
+No repeat hits on the same target (`whip_hits`), and the tail does not
+hurt outside a strike.
+
+`take_hit` **assigns** `vel`, so extra push comes **after** the call.
+
+## Dash damage — one hit per lunge
+
+`_collisions` runs **every frame**; while `p.dashing` (0.16 s ≈ 10
+frames) the same enemy was hit 10× — **30 damage per dash instead of 3**
+(60 with head crit). That, not HP balance, was the real cause of
+"enemies die too easily". `Player.dash_hits` (set, cleared on dash
+start) enforces one hit per target per dash; damage is `C.DASH_DAMAGE`
+(5, crit 10; nest takes 2×).
+
+**When you touch contact damage, always check if the source is
+per-frame.**
+
+## Collision: allies do not collide
+
+`kind ∈ {player, friend}` never collide with each other
+(`collision.FRIENDLY`) — fluid battles. Enemy ↔ enemy still separates
+hard.
+
+## Soft player↔enemy contact
+
+Feedback: being pushed by every enemy felt like pinball. The player is
+**never displaced**: passes through, **pushes the enemy** (full push, no
+weight-by-size), and pays in **speed**. `collision.separate` accumulates
+overlap depth in `creature.clog`; `Player.update` normalises, smooths
+(`clog_f`, approach 9/s) and applies `C.CONTACT_DRAG`. Ignored during
+dash (passing through is the point).
+
+Enemy ↔ enemy still uses hard separation — otherwise the stacking bug
+returns.
+
+See [ADR-0006](../adr/0006-soft-player-contact.md).
+
+### Two independent brakes that multiply
+
+Sting slow × contact clog. Measured in a 6-enemy fight: 89% × 89% =
+**80% average speed**, 40% of the time under 80%. Neither is bad alone;
+together they explain "why am I slow?" — and neither had any on-screen
+cue. `Player._draw_slow_mark` now draws cold rings under the body while
+the slow lasts.
+
+### Sting slow triggered even without a hit landing
+
+`_contact` called `apply_slow` outside `hurt()`'s result — which exits
+early on i-frames. So you took **50% slow with no damage number to
+explain it**. Worse: duration 1.4 s vs `attack_cd` of 0.8 s — permanent
+by construction. Measured: a scorpion kept the player slow **59% of the
+time**. Today `hurt()` **returns whether the hit landed** and the sting
+only slows on true. `STING_SLOW_TIME` (0.4) is much less than
+`attack_cd`.
+
+Third time this project trips on "effect lasts longer than the interval
+that reapplies it" — Ácido, venom puddle, sting. See
+[Enemy behaviors](./enemy-behaviors.md).
+
+### Two more clog fixes
+
+- **Prey braked like enemies.** `movers` includes prey, and the soft
+  ramp fires for any non-ally pair with the player. A harmless grazer at
+  30 px was leaving the player at 49% speed. Today only
+  `collision.DRAGS_PLAYER` (= enemies) accumulates clog; prey still get
+  pushed but do not cost speed.
+- **Saturated with one enemy.** `clog` sums 5×5 sample pairs; a runner
+  already hit ~25 against divisor `max_r*1.2` → binary brake
+  (100% or 45%), no gradient. `C.CONTACT_FULL` (3.0) scales the divisor
+  to "buried in ~3 bodies". Measured after: 1 enemy ≈ 90%, 4 ≈ 68%,
+  6 ≈ 65%.
+
+## Related
+
+- [Weapon](./weapon.md) — the automatic core.
+- [Hitbox](./hitbox.md) — body sampling + head crit.
+- [Damage model](./damage.md) — player HP flow.
+- [ADR-0006](../adr/0006-soft-player-contact.md) — soft contact.
+- [ADR-0008](../adr/0008-might-scales-all-damage.md) — Might everywhere.
