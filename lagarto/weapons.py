@@ -13,7 +13,7 @@ from pygame import Vector2
 import pygame
 
 from .core import config as C
-from . import audio
+from .audio import engine as audio
 from .core import palette
 from .core.mathutil import safe_norm, vfrom_angle, clamp, random_dir
 from .projectile import spit as mk_spit, web as mk_web, Projectile

@@ -18,7 +18,7 @@ from .spine import build_radii
 from .lizard import Player, AILizard
 from . import species
 from . import evolution
-from . import audio
+from .audio import engine as audio
 from . import icons
 from . import ui
 from . import progression
