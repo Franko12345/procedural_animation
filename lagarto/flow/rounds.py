@@ -13,15 +13,15 @@ import random
 from pygame import Vector2
 import pygame
 
-from .audio import engine as audio
+from ..audio import engine as audio
 from . import boss as bossai
-from .creatures import champions
-from .core import config as C
-from .render import icons
-from .core import palette
-from .creatures import species
-from .render import ui
-from .core.mathutil import vfrom_angle, clamp, decay, random_dir
+from ..creatures import champions
+from ..core import config as C
+from ..render import icons
+from ..core import palette
+from ..creatures import species
+from ..render import ui
+from ..core.mathutil import vfrom_angle, clamp, decay, random_dir
 
 # theme -> (banner, enemy pool, budget multiplier, max alive at once)
 THEMES = {
@@ -209,7 +209,7 @@ class Nest:
             if random.random() < 0.5:
                 game.spawn_fruit(self.pos)
             if random.random() < 0.22:              # rare: nests can drop a charm
-                from .combat import charms as CH
+                from ..combat import charms as CH
                 p = game.nearest_player(self.pos) or (game.players[0] if game.players else None)
                 if p and not p.dead:
                     from . import progression as PR

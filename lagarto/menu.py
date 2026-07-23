@@ -19,7 +19,7 @@ from .render import icons
 from .combat import items
 from .core import palette
 from .render import perf
-from . import progression
+from .flow import progression
 from .core import settings
 from .creatures import species
 from .render import ui

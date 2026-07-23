@@ -169,7 +169,7 @@ def get(cid):
 def is_locked(char, meta):
     """Locked characters still appear on the select screen, greyed out with their
     requirement -- a reward you cannot see is not a reward."""
-    from .. import progression
+    from ..flow import progression
     return char.unlock is not None and \
         not progression.unlocked(meta, 'character', char.id)
 
