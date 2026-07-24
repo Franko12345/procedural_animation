@@ -15,15 +15,23 @@ item / charm / mutation FREE straight into the player via the real grant APIs, a
 the ``store`` category stages the REAL camp shop -- a catalog of the five native
 offers plus any weapon/item/charm wrapped as a shop entry -- with ``game.pollen``
 set sky-high so the real ``camp_buy`` cost check never blocks. Nothing here
-reimplements a grant or a buy; it only funnels into the existing paths.
+reimplements a grant or a buy; it only funnels into the existing paths. SB7 adds
+the launch preset (plans/04 §12): the ``debug`` category's Save button serialises
+the live scene to ``~/.lagarto/sandbox.json`` (character, toggles, hand-spawned
+entities, loadout, active round, generated store) and Clear deletes it; at
+``--sandbox`` launch a present preset is replayed through this same spawn/grant/
+round/store path (``Sandbox.apply_preset``), else the sandbox opens idle.
 """
 
+import json
+import os
 import random
 
 import pygame
 from pygame import Vector2
 
 from .core import config as C
+from .core import settings
 from .core.mathutil import random_dir
 from . import champions
 from . import characters
@@ -56,7 +64,7 @@ PICKUP_CTORS = {'bug': Bug, 'fruit': Fruit, 'egg': Egg}
 # ``debug`` category lists as clickable rows. God/pause read live state so the
 # label shows ON/OFF; kill-all and step fire once per click. ``char`` is its own
 # category that lists CHARACTERS -- a click rebuilds the player as that one.
-DEBUG_ACTIONS = ('god', 'killall', 'pauseai', 'step')
+DEBUG_ACTIONS = ('god', 'killall', 'pauseai', 'step', 'save', 'clear')
 
 # The loadout pools (SB5). ``equip`` grants any of the four free; ``store`` wraps
 # the three purchasable kinds as shop entries (mutations are level-up cards, not
@@ -75,6 +83,50 @@ SANDBOX_BOSS_TIER = 1
 # marks the price up 1.6x per purchase.
 SANDBOX_STORE_COST = 10
 INFINITE_POLLEN = 10 ** 9
+
+
+# ---- preset I/O (SB7, plans/04 §12) ------------------------------------- #
+# The launch preset lives beside settings.json in ``~/.lagarto`` and is written
+# through the same atomic tmp->rename primitive (``settings._atomic_write``), so
+# there is one on-disk write pattern for the whole ``~/.lagarto`` folder. The file
+# is authored only from the overlay's Save button and replayed at ``--sandbox``
+# launch; a normal run never reads or writes it.
+def preset_path():
+    """``~/.lagarto/sandbox.json`` -- same dir handling as settings.py."""
+    return os.path.join(settings._dir(), 'sandbox.json')
+
+
+def preset_exists():
+    return os.path.exists(preset_path())
+
+
+def load_preset():
+    """Return the parsed preset dict, or None when absent/unreadable/corrupt."""
+    try:
+        with open(preset_path(), 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else None
+    except Exception:
+        return None
+
+
+def write_preset(data):
+    try:
+        settings._atomic_write(preset_path(), data)
+        return True
+    except Exception:
+        return False
+
+
+def clear_preset():
+    """Delete the preset file; a missing file already counts as cleared."""
+    try:
+        os.remove(preset_path())
+        return True
+    except FileNotFoundError:
+        return True
+    except Exception:
+        return False
 
 
 class Sandbox:
@@ -112,6 +164,9 @@ class Sandbox:
         self.pool = 'weapon'
         self.store_pick = set()          # {(pool, id)} chosen for a specific store
         self.store_n = 5                 # size of a random-N store roll
+        self.store_entries = []          # (pool, id) of the last generated store,
+        # kept as the serialisable record the preset replays (the wrapped dicts
+        # carry lambdas, so we remember the sources, not the entries)
         self.infinite_money = False
         self.msg = None                  # transient confirmation line
         self.msg_t = 0                   # frames left to show it (drawn frame-clock)
@@ -232,10 +287,13 @@ class Sandbox:
     def _debug_items(self):
         """(action, label) rows for the debug category; toggles show live state."""
         g = self.game
+        got = 'sim' if preset_exists() else 'nao'
         return [('god', f"God mode: {'ON' if g.god_mode else 'OFF'}"),
                 ('killall', 'Kill-all (hostis)'),
                 ('pauseai', f"Pause-AI: {'ON' if g.pause_ai else 'OFF'}"),
-                ('step', 'Step +1 tick')]
+                ('step', 'Step +1 tick'),
+                ('save', 'Save preset'),
+                ('clear', f'Clear preset ({got})')]
 
     def _debug_action(self, action):
         """Dispatch a click on a debug row (plans/04 §11)."""
@@ -250,6 +308,10 @@ class Sandbox:
             self._flash(f"pause-AI: {'ON' if g.pause_ai else 'OFF'}")
         elif action == 'step':
             self._step()
+        elif action == 'save':
+            self.save_preset()
+        elif action == 'clear':
+            self.clear_preset()
 
     def _step(self):
         """Advance the frozen AI exactly one fixed tick (``C.DT``).
@@ -329,23 +391,28 @@ class Sandbox:
                     hue=c.hue, icon=pid,
                     fn=lambda g, pid=pid: [pl.gain_charm(pid, g) for pl in g.players])
 
-    def _random_entries(self, n):
-        """N random wrapped entries drawn across the three purchasable pools."""
+    def _random_sources(self, n):
+        """N random ``(pool, id)`` sources drawn across the three purchasable pools."""
         allpool = [(pool, pid) for pool, _ in STORE_POOLS
                    for pid, _ in self._pool_items(pool)]
-        picks = random.sample(allpool, min(n, len(allpool)))
-        return [self._wrap_entry(pool, pid) for pool, pid in picks]
+        return random.sample(allpool, min(n, len(allpool)))
 
-    def _generate_store(self, entries):
-        """Stage the REAL camp shop with our catalog and switch infinite money on.
+    def _generate_store(self, sources):
+        """Stage the REAL camp shop from ``(pool, id)`` sources; infinite money on.
 
         Catalog = the five native ``_roll_shop`` offers + our wrapped entries.
         We reuse ``_enter_camp`` (it builds every camp field the shop UI needs),
         then override the shop list, open it in ``shop`` mode, and set pollen far
         above any price. From there the untouched camp path (app.main -> camp_buy
         -> _apply_buy) does the buying; nothing about the flow is special-cased.
+
+        The ``(pool, id)`` sources are remembered on ``store_entries`` so the SB7
+        preset can serialise and replay the store through this same path.
         """
         g = self.game
+        sources = list(sources)
+        self.store_entries = sources
+        entries = [self._wrap_entry(pool, pid) for pool, pid in sources]
         catalog = g._roll_shop() + entries
         g._enter_camp()
         g.camp['shop'] = catalog
@@ -459,6 +526,95 @@ class Sandbox:
         self.spawned = []            # the hand-spawned registry is gone with the scene
         self.armed = None
         self.champ_sel = None
+
+    # ---- preset (SB7, plans/04 §12) ------------------------------------- #
+    def _serialize(self):
+        """Snapshot the live scene as the JSON-able preset (plans/04 §12).
+
+        Records only what the overlay can author: the player's character, the
+        three toggles, every hand-spawned entity as ``(kind, key, pos)`` off
+        ``self.spawned``, the player loadout (weapons+levels / items / charms),
+        the active round descriptor ``(theme, wave)``, and the generated store as
+        its ``(pool, id)`` sources. Round mobs are NOT serialised individually --
+        only the descriptor, so replay re-runs ``start_round``.
+        """
+        g = self.game
+        p = g.players[0] if g.players else None
+        entities = []
+        for e in self.spawned:
+            tag = getattr(e, '_sb', None)
+            if not tag:
+                continue
+            kind, key = tag
+            entities.append([kind, key, [round(e.pos.x, 2), round(e.pos.y, 2)]])
+        loadout = {}
+        if p is not None:
+            loadout = {'weapons': {wid: lvl for wid, lvl in p.weapons.items()},
+                       'items': list(p.items),
+                       'charms': list(p.charms_owned)}
+        rm = g.rounds
+        rnd = [rm.theme, rm.wave] if rm.wave > 0 else None
+        return {'character': p.character_id if p else None,
+                'toggles': {'god_mode': g.god_mode, 'pause_ai': g.pause_ai,
+                            'infinite_money': self.infinite_money},
+                'entities': entities,
+                'loadout': loadout,
+                'round': rnd,
+                'store': [[pool, pid] for pool, pid in self.store_entries]}
+
+    def save_preset(self):
+        """Serialise the live scene and write it atomically to the preset file."""
+        ok = write_preset(self._serialize())
+        self._flash("preset salvo" if ok else "falha ao salvar preset")
+
+    def clear_preset(self):
+        """Delete the preset file so the next --sandbox launch opens idle."""
+        clear_preset()
+        self._flash("preset apagado")
+
+    def apply_preset(self, data):
+        """Rebuild a saved scene through the SAME spawn()/grant/round/store paths.
+
+        Called once at ``--sandbox`` launch when a preset exists (plans/04 §12).
+        Zero divergent reconstruction: character via ``_swap_character``, loadout
+        via the player's ``gain_*``/``items.give``, entities via ``spawn``, round
+        via ``_start_round`` (re-runs the wave machine), store via
+        ``_generate_store``. Toggles are applied last.
+        """
+        if not isinstance(data, dict):
+            return
+        g = self.game
+        cid = data.get('character')
+        if cid:
+            self._swap_character(cid)
+        p = g.players[0] if g.players else None
+        load = data.get('loadout') or {}
+        if p is not None:
+            weps = load.get('weapons') or {}
+            for wid in weps:
+                p.gain_weapon(wid)
+                for _ in range(int(weps[wid]) - 1):   # replay the earned levels
+                    p.level_weapon(wid)
+            for iid in load.get('items') or []:
+                items.give(p, items.ITEMS.get(iid), g)
+            for ch in load.get('charms') or []:
+                p.gain_charm(ch, g)
+        for ent in data.get('entities') or []:
+            kind, key, pos = ent
+            self.spawn(kind, key, pos)
+        rnd = data.get('round')
+        if rnd:
+            self.round_theme, self.round_wave = rnd[0], int(rnd[1])
+            self._start_round()
+        store = data.get('store') or []
+        if store:
+            self._generate_store([(pool, pid) for pool, pid in store])
+        tg = data.get('toggles') or {}
+        g.god_mode = bool(tg.get('god_mode', False))
+        g.pause_ai = bool(tg.get('pause_ai', False))
+        if tg.get('infinite_money'):
+            g.pollen = INFINITE_POLLEN
+            self.infinite_money = True
 
     # ---- store control (SB5) -------------------------------------------- #
     def _store_layout(self):
@@ -591,11 +747,10 @@ class Sandbox:
                 self.store_n += 1
                 return
             if sl['spec'].collidepoint(mp):
-                self._generate_store([self._wrap_entry(p, i)
-                                      for p, i in sorted(self.store_pick)])
+                self._generate_store(sorted(self.store_pick))
                 return
             if sl['rand'].collidepoint(mp):
-                self._generate_store(self._random_entries(self.store_n))
+                self._generate_store(self._random_sources(self.store_n))
                 return
             if sl['clear'].collidepoint(mp):
                 self.store_pick.clear()
