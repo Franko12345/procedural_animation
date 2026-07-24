@@ -31,10 +31,11 @@ from .patterns import (
     king_phases, centipede_phases, centipede_on_phase, kraken_phases,
     primordial_phases, beetle_phases, spider_king_phases, crystal_phases,
     wasp_phases, default_phases,
+    eye_phases, eye_on_phase, eye_setup, eye_blink_tick,
 )
 from .personality import (
     BossPersonality, default_personality,
     king_personality, centipede_personality, kraken_personality,
     primordial_personality, beetle_personality, spider_king_personality,
-    crystal_personality, wasp_personality,
+    crystal_personality, wasp_personality, eye_personality,
 )

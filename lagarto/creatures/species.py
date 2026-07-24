@@ -103,6 +103,15 @@ SPECIES = {
                                   angular_damping=0.7, linear_damping=0.6, weight=3.0,
                                   diet=('prey',))),
 
+    # OLHO-SISMICO: a floating eyeball (plan='orbital'). Only ever spawned as a
+    # boss (B9); the entry exists so species.make(key) works. Floating = heavy
+    # weight + high damping (no run inertia, holds its spot).
+    'olho_sismico': dict(role='enemy', xp=12, score=90, grants=None,
+                         genome=Genome(name='olho_sismico', plan='orbital', size=1.1,
+                                       leg_count=6, hue=280, sat=0.7, val=0.85,
+                                       speed=0.6, behavior='chase', hp=12, diet=(),
+                                       angular_damping=0.9, linear_damping=0.85, weight=4.0)),
+
     # ---- extra prey ------------------------------------------------------- #
     'frog': dict(role='prey', xp=3, score=18, grants=None,
                  genome=Genome(name='frog', size=0.7, leg_count=4, length=0.6, girth=1.3,

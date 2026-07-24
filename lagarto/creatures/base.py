@@ -118,6 +118,10 @@ class Lizard:
             n = max(10, int(16 * g.size * g.length))
             maxr = 14 * g.size * g.girth
             link = maxr * 1.15
+        elif plan == 'orbital':           # eye: a compact near-round sphere + arms
+            n = 4
+            maxr = 26 * g.size * g.girth
+            link = maxr * 0.3             # tiny link so the joints cluster into a ball
         else:
             n = max(6, int(11 * g.size * g.length))
             maxr = 17 * g.size * g.girth
@@ -138,7 +142,7 @@ class Lizard:
         self.legs = self._build_legs(g, n, maxr)
         for leg in self.legs:
             leg.init_foot(self.spine)
-        self.arms = self._build_arms(g, maxr) if plan == 'tentacle' else []
+        self.arms = self._build_arms(g, maxr) if plan in ('tentacle', 'orbital') else []
 
         base = 165 * (0.85 + 0.4 / g.size) * g.speed
         mult = (self.max_speed / self._speed_base) if self._speed_base else 1.0
@@ -147,7 +151,7 @@ class Lizard:
 
     def _build_legs(self, g, n, maxr):
         plan = getattr(g, 'plan', 'normal')
-        if plan == 'tentacle':            # arms are not IK legs
+        if plan in ('tentacle', 'orbital'):   # arms/tentacles are not IK legs
             return []
         if g.leg_count <= 0:
             return []
@@ -296,7 +300,10 @@ class Lizard:
             dy = jp.y - pos[1]
             reach = r + radius
             if dx * dx + dy * dy <= reach * reach:
-                if is_head:
+                # Olho-Sismico: a blinking eye is shielded -- the head can't be
+                # crit while the membrane is down (default False = every other
+                # creature unchanged). The 75%-off is applied in take_hit.
+                if is_head and not getattr(self, 'eye_shielded', False):
                     return 'head'            # weak point wins outright
                 best = 'body'
         return best
@@ -455,6 +462,9 @@ class Lizard:
         if plan == 'tentacle':
             self._draw_tentacle(surf, cam)
             return
+        if plan == 'orbital':
+            self._draw_orbital(surf, cam)
+            return
         if plan == 'segmented':
             self._draw_segmented(surf, cam)
             return
@@ -610,6 +620,63 @@ class Lizard:
             pygame.draw.circle(surf, C.COL_WHITE, sp, max(2, int(r * 0.46 * cam.zoom)))
             pygame.draw.circle(surf, C.COL_INK, cam.w2s(ep + look * (r * 0.2)),
                                max(1, int(r * 0.22 * cam.zoom)))
+
+    def _draw_orbital(self, surf, cam):
+        """Olho-Sismico (plan='orbital'): a floating eyeball. 6 thin bone-tipped
+        tentacles (the octopus arm chains drawn skinny, travelling-wave + trail
+        for free via _resolve_arms), then a glowing sphere with pulsing veins, a
+        vertical cat-slit iris that lags toward the player (the same pupil spring
+        every eye uses -> it lags on a dash automatically), and a blink membrane.
+        Float/veins ride self.wobble; the blink STATE that shields the eye lives
+        in the sim (patterns.eye_blink_tick), this only reads it."""
+        base = self.color
+        if self.hit_flash > 0:
+            base = palette.lighten(base, self.hit_flash)
+        ink_w = max(1, int(2 * cam.zoom))
+        # tentacles: thin, with a pale bone tip
+        arm_r = self.max_r * 0.16
+        arm_col = palette.darken(base, 0.15)
+        bone = (232, 226, 212)
+        for arm in self.arms:
+            js = arm['j']
+            poly = self._arm_polygon(cam, js, arm_r)
+            if len(poly) >= 3:
+                pygame.draw.polygon(surf, arm_col, poly)
+                pygame.draw.polygon(surf, C.COL_INK, poly, ink_w)
+            pygame.draw.circle(surf, bone, cam.w2s(js[-1]), max(2, int(arm_r * 0.95 * cam.zoom)))
+        # eyeball -- floats: sine bob (~8px, ~1.5Hz via wobble) applied to the sphere
+        c = cam.w2s(self.spine.joints[0])
+        bob = 8.0 * math.sin(self.wobble * 1.57) * cam.zoom
+        sc = (int(c[0]), int(c[1] + bob))
+        R = max(4, int(self.max_r * cam.zoom))
+        phase_i = self.boss_ai.phase_i if getattr(self, 'boss_ai', None) is not None else 0
+        palette.glow(surf, sc, int(R * 1.6), base, 0.4)
+        pygame.draw.circle(surf, (238, 236, 240), sc, R)          # sclera
+        pygame.draw.circle(surf, C.COL_INK, sc, R, ink_w)
+        # veins: heartbeat pulse, redder/denser each phase (agitated = faster)
+        vein_col = palette.mix((190, 70, 70), (255, 24, 24), min(1.0, phase_i / 2))
+        beat = 0.5 + 0.5 * math.sin(self.wobble * (2.5 + phase_i * 1.5))
+        nveins = 5 + phase_i * 3
+        for i in range(nveins):
+            a = math.radians((360 / nveins) * i + self.wobble * 6)
+            r0 = R * (0.45 + 0.1 * beat)
+            p0 = (int(sc[0] + math.cos(a) * r0), int(sc[1] + math.sin(a) * r0))
+            p1 = (int(sc[0] + math.cos(a) * R), int(sc[1] + math.sin(a) * R))
+            pygame.draw.line(surf, vein_col, p0, p1, max(1, int((1 + beat) * cam.zoom)))
+        # iris: coloured disc + vertical cat-slit pupil, lagged toward the player;
+        # dilates (slit widens) each phase -- "iris mais aberta" / "arregalado"
+        look = self._pupil_offset()
+        ix = int(sc[0] + look.x * R * 0.42)
+        iy = int(sc[1] + look.y * R * 0.42)
+        iris_r = max(2, int(R * (0.34 + 0.05 * phase_i)))
+        pygame.draw.circle(surf, palette.darken(base, 0.35), (ix, iy), iris_r)
+        slit_w = max(2, int(iris_r * (0.4 + 0.22 * phase_i)))   # dilates per phase
+        slit_h = max(2, int(iris_r * 1.7))
+        pygame.draw.ellipse(surf, C.COL_INK, (ix - slit_w, iy - slit_h, slit_w * 2, slit_h * 2))
+        # blink membrane: a lid over the whole sphere for the 0.1s it's shielded
+        if getattr(self, 'eye_shielded', False):
+            pygame.draw.circle(surf, palette.darken(base, 0.55), sc, R)
+            pygame.draw.circle(surf, C.COL_INK, sc, R, ink_w)
 
     def _look_dir(self):
         if self.kind == 'player':

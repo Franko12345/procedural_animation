@@ -492,6 +492,9 @@ class AILizard(Lizard):
                 e.apply_poison(self.poison_dps, 2.6)
 
     def take_hit(self, game, direction, dmg):
+        # Olho-Sismico: 75% off while the eye is blinking (default 1.0 = everyone
+        # else unchanged). hit_test already denies the crit during the blink.
+        dmg *= getattr(self, 'dmg_taken_mult', 1.0)
         if self.marked:                  # Presa Marcada, consumed on use
             self.marked = False
             dmg *= C.CRIT_MULT

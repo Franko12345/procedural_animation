@@ -617,6 +617,7 @@ ICONS = {
     'boss_kraken_mor': _boss_kraken_eye, 'boss_mae_escaravelho': _boss_hive,
     'boss_primordial': _boss_primordial_flame, 'boss_aranha_rei': _boss_web,
     'boss_serpente_cristal': _boss_crystal, 'boss_terror_alado': _boss_wing,
+    'boss_olho_sismico': _boss_kraken_eye,   # an eye mark for the eye boss (reused)
 }
 
 

@@ -12,7 +12,7 @@ from pygame import Vector2
 from ...audio import engine as audio
 from ...core import config as C
 from ...core import palette
-from ...core.mathutil import safe_norm, vfrom_angle, random_dir
+from ...core.mathutil import safe_norm, vfrom_angle, random_dir, angle_of
 from ...combat.projectile import spit as game_spit
 
 # --------------------------------------------------------------------------- #
@@ -239,6 +239,35 @@ def web_trap(boss, game, target):
     game.fx.burst(boss.pos, (240, 240, 250), 8, 140)
 
 
+# --------------------------------------------------------------------------- #
+#  Olho-Sismico (B9, tier 5): the new patterns. gaze/bullet_hell reuse the      #
+#  spiral tick; tentacle_swipe reuses pincha_bite; seismic_pulse IS shockwave.  #
+# --------------------------------------------------------------------------- #
+
+def gaze(boss, game, target):
+    """A slow sweeping beam from the iris. Reuses the spiral tick (a rotating
+    stream of shots), just started ARC/2 *before* the player and turning slowly,
+    so it reads as a laser sweeping ACROSS the player, not an omni spiral."""
+    spiral_pattern(boss, game, target)          # sets up _spiral_* from the dict
+    pat = PATTERNS[boss.boss_ai.pattern_id]
+    boss._spiral_ang = angle_of(target.pos - boss.spine.joints[0]) - pat.get('arc', 70) / 2
+
+
+def spawn_orb(boss, game, target):
+    """Spawns a few floating shooters around the eye. Reuses species.make +
+    spawn_enemy: a ranged 'gunner' stands in for an orb (it hovers near the eye
+    and streams shots) instead of a bespoke orb entity the engine doesn't have."""
+    from ...creatures import species
+    n = PATTERNS[boss.boss_ai.pattern_id].get('count', C.EYE_ORB_COUNT)
+    for _ in range(n):
+        pos = boss.pos + random_dir(boss.max_r * 1.9)
+        e = species.make('gunner', pos)
+        game.spawn_enemy(e)
+        game.fx.ring(pos, boss.color)
+    game.fx.spark_burst(boss.spine.joints[0], palette.lighten(boss.color, 0.4), 16, 280)
+    audio.play('nest', 0.5)
+
+
 PATTERNS = {
     'radial': dict(fn=radial_burst, windup=C.BOSS_RADIAL_WINDUP, telegraph='radial'),
     'fan': dict(fn=fan_shot, windup=C.BOSS_FAN_WINDUP, telegraph='fan'),
@@ -280,6 +309,19 @@ PATTERNS = {
     'grapple': dict(fn=None, windup=0.05, telegraph=None, grapple=True),
     'spiral': dict(fn=spiral_pattern, windup=C.BOSS_SPIRAL_WINDUP, telegraph='spiral'),
     'charge': dict(fn=charge_attack, windup=C.BOSS_CHARGE_WINDUP, telegraph='line', charge=True),
+    # Olho-Sismico. seismic_pulse = the existing 'shockwave' (reused in eye_phases).
+    'gaze': dict(fn=gaze, windup=C.EYE_GAZE_WINDUP, telegraph='line',
+                 shots=C.EYE_GAZE_SHOTS, turn=C.EYE_GAZE_TURN, gap=C.EYE_GAZE_GAP,
+                 shot_speed=C.EYE_GAZE_SPEED, shot_dmg=C.EYE_GAZE_DMG, arc=C.EYE_GAZE_ARC),
+    # tentacle sweep: same pincha_bite contact fn, longer reach via the dict
+    'tentacle_swipe': dict(fn=pincha_bite, windup=C.EYE_SWIPE_WINDUP, telegraph='line',
+                           reach=C.EYE_SWIPE_REACH, dmg=C.EYE_SWIPE_DMG),
+    'spawn_orb': dict(fn=spawn_orb, windup=C.EYE_ORB_WINDUP, telegraph='horn',
+                      count=C.EYE_ORB_COUNT),
+    # bullet hell: a dense/fast spiral -- same spiral_pattern, denser dict
+    'bullet_hell': dict(fn=spiral_pattern, windup=C.EYE_BULLET_WINDUP, telegraph='radial',
+                        shots=C.EYE_BULLET_SHOTS, turn=C.EYE_BULLET_TURN, gap=C.EYE_BULLET_GAP,
+                        shot_speed=C.EYE_BULLET_SPEED, shot_dmg=C.EYE_BULLET_DMG),
 }
 
 
@@ -402,6 +444,66 @@ def wasp_phases():
         dict(hp_frac=0.6, patterns=['charge', 'fan', 'barrage'], cd_mul=0.85),
         dict(hp_frac=0.3, patterns=['charge', 'barrage', 'spiral'], cd_mul=0.6),
     ]
+
+
+# --------------------------------------------------------------------------- #
+#  Olho-Sismico (B9, tier 5): "O Observador" -- nao se move, so observa. Fase   #
+#  1 vigia; fase 2 acrescenta seismic_pulse (=shockwave); fase 3 troca para o   #
+#  bullet_hell. O olho pisca (mecanica unica) via eye_setup/eye_blink_tick.     #
+# --------------------------------------------------------------------------- #
+
+def eye_phases():
+    return [
+        dict(hp_frac=1.0, patterns=['gaze', 'tentacle_swipe', 'spawn_orb'], cd_mul=1.0),
+        # 66%: mantem gaze+spawn_orb, adiciona shockwave (=seismic_pulse) -- 2 mudancas
+        dict(hp_frac=0.66, patterns=['gaze', 'spawn_orb', 'shockwave'], cd_mul=0.9),
+        # 33%: mantem shockwave, adiciona bullet_hell + gaze simultaneo -- 2 mudancas
+        dict(hp_frac=0.33, patterns=['gaze', 'shockwave', 'bullet_hell'], cd_mul=0.7),
+    ]
+
+
+def eye_on_phase(boss, phase_i):
+    """A cada fase o olho pisca mais rapido (entediado -> constante). O <33% e um
+    flip abrupto, nao uma rampa -- ver eye_personality (enraged salta o mood_speed)."""
+    boss.blink_interval = C.EYE_BLINK_INTERVAL[min(phase_i, len(C.EYE_BLINK_INTERVAL) - 1)]
+
+
+def eye_blink_tick(boss, dt, game):
+    """Per-frame eye state (registered in champion_ticks by eye_setup -- that list
+    is just 'the (self, dt, game) hooks run every frame'). Advances the random
+    blink (2-5s apart, 0.1s long); while blinking the eye is shielded: it can't
+    be crit (hit_test -> 'body') and takes 75% less (dmg_taken_mult). Also points
+    the pupil spring at the player so the iris tracks it with lag."""
+    b = boss
+    if b._blink_t > 0:
+        b._blink_t -= dt
+        blinking = b._blink_t > 0
+    else:
+        b._blink_cd -= dt
+        if b._blink_cd <= 0:
+            lo, hi = b.blink_interval
+            b._blink_cd = random.uniform(lo, hi)
+            b._blink_t = C.EYE_BLINK_DUR
+            blinking = True
+        else:
+            blinking = False
+    b.eye_shielded = blinking
+    b.dmg_taken_mult = C.EYE_BLINK_DMG_MULT if blinking else 1.0
+    p = game.nearest_player(b.pos)
+    if p is not None:                    # iris follows the player (via the pupil spring)
+        b.aggro = p
+        b.aggro_t = 1.0
+
+
+def eye_setup(boss):
+    """Wire the eye's blink state + register its per-frame tick. Called once at
+    spawn (BOSS_POOL 'setup' hook)."""
+    boss.blink_interval = C.EYE_BLINK_INTERVAL[0]
+    boss._blink_cd = random.uniform(*boss.blink_interval)
+    boss._blink_t = 0.0
+    boss.eye_shielded = False
+    boss.dmg_taken_mult = 1.0
+    boss.champion_ticks.append(eye_blink_tick)
 
 
 # --------------------------------------------------------------------------- #
