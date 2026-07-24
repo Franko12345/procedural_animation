@@ -340,9 +340,9 @@ def main():
             if game.state == 'pause':
                 game._draw_pause(screen, joysticks)
             fade.draw(screen)
+            meter.draw(screen, font)
             if sb is not None:
                 sb.draw(screen)              # debug overlay on top of everything
-            meter.draw(screen, font)
             draw_ms = (time.perf_counter() - _t) * 1000.0
             _t = time.perf_counter()
             display.present()
