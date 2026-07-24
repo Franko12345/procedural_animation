@@ -113,16 +113,26 @@ BOSS_POOL = {
                          # flying=True: collision pula voadores (paira, nao empurra),
                          # mas hit_test continua acertando -- reuso do flag do wasp
                          boss_attrs=dict(flying=True)),
+    'olho_sismico': dict(species='olho_sismico', name='OLHO-SISMICO',
+                         emblem='boss_olho_sismico',
+                         phases=lambda: bossai.eye_phases(),
+                         personality=lambda: bossai.eye_personality(),
+                         on_phase=bossai.eye_on_phase, scar=None,
+                         # setup: liga a piscada (mecanica do Olho) + o tick por frame
+                         setup=bossai.eye_setup,
+                         overrides=dict(hue=280, sat=0.75, val=0.8)),
 }
 
 # tier (wave // BOSS_EVERY) -> which pool ids can be rolled there. Ranges,
 # not single tiers, so late/infinite tiers can share a pool without listing
 # every tier by hand. `range` end is exclusive, same as normal Python ranges.
 BOSS_TIER_POOLS = [
-    (range(1, 4), ['rei_lagarto', 'centopeiadeira', 'kraken_mor']),   # onda 5/10/15
-    (range(5, 10_000), ['mae_escaravelho', 'aranha_rei', 'serpente_cristal',
-                        'terror_alado']),      # onda 25+ (so infinito) -- cresce
-                                               # conforme mais chefes entram
+    (range(1, 5), ['rei_lagarto', 'centopeiadeira', 'kraken_mor']),   # onda 5/10/15/20
+    (range(5, 6), ['mae_escaravelho', 'aranha_rei', 'serpente_cristal',
+                   'terror_alado', 'olho_sismico']),   # onda 25: banda tier-5
+    (range(6, 10_000), ['mae_escaravelho', 'aranha_rei', 'serpente_cristal',
+                        'terror_alado']),      # onda 30+ (so infinito) -- cresce
+                                               # conforme mais chefes entram (#74/#75)
 ]
 BOSS_FINAL = 'primordial'   # is_final always this one -- the run's fixed climax,
                            # not part of the roll (matches Isaac's true-final-boss)
@@ -377,6 +387,8 @@ class RoundManager:
                 boss.boss_ai.scar_thresholds = list(named['scar'])
             for k, v in named.get('boss_attrs', {}).items():
                 setattr(boss, k, v)
+            if named.get('setup'):        # per-boss wiring (Olho-Sismico's blink tick)
+                named['setup'](boss)
         else:
             name, _ = species.info(key)
             boss.boss_name = f"{name} PRIMORDIAL" if self.is_final else f"{name} ALFA"

@@ -14,8 +14,10 @@ class BossPersonality:
     """How a boss REACTS. A generic default works for any boss; a named boss
     (Rei Lagarto) can pass its own to bias which patterns it favours."""
 
-    def __init__(self, pattern_weights=None):
-        self.mood_speed = {
+    def __init__(self, pattern_weights=None, mood_speed=None):
+        # mood_speed is overridable so a "calm observer" (Olho-Sismico) can barely
+        # move without touching any other boss; default keeps today's values.
+        self.mood_speed = mood_speed or {
             'calm': 1.0, 'agitated': 1.3, 'enraged': 1.6,
             'frustrated': 1.4, 'cornered': 0.8,
         }
@@ -115,3 +117,16 @@ def wasp_personality():
         'charge': {'calm': 1.5, 'agitated': 1.4, 'cornered': 1.6},
         'barrage': {'frustrated': 2.0},
     })
+
+
+def eye_personality():
+    """Observador calmo: mal se mexe (mood_speed baixo em tudo). O pânico do
+    <33% é um flip abrupto -- 'enraged' salta o mood_speed em vez de rampar. Os
+    telegrafos NUNCA encurtam (tell_mult zerado), então o gaze fica sempre 36
+    frames (a regra do telegrafo vale em qualquer mood)."""
+    p = BossPersonality(
+        pattern_weights={'bullet_hell': {'enraged': 1.8}, 'shockwave': {'enraged': 1.4}},
+        mood_speed={'calm': 0.2, 'agitated': 0.3, 'enraged': 0.9,
+                    'frustrated': 0.25, 'cornered': 0.2})
+    p.tell_mult = {}
+    return p

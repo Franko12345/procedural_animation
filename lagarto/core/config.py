@@ -386,3 +386,33 @@ BOSS_WEB_TRAP_R = 85
 BOSS_WEB_TRAP_DMG = 2
 BOSS_WEB_TRAP_LIFE = 6.0
 BOSS_WEB_TRAP_SLOW = 0.4
+
+# Olho-Sismico (B9, tier 5) -- "O Observador": globo ocular flutuante (plan='orbital').
+# Mecanica do Olho: acertar o olho ABERTO da o critico de cabeca de graca (ja e o
+# ponto fraco); durante a piscada (0.1s aleatoria) o olho fica blindado -- nao pode
+# ser critico (hit_test devolve 'body') e leva 75% menos (dmg_taken_mult).
+EYE_BLINK_DUR = 0.1              # membrana desce+sobe: janela em que o olho e blindado
+EYE_BLINK_DMG_MULT = 0.25       # golpe durante a piscada = 75% menos dano
+# (lo, hi) do intervalo entre piscadas por fase: entediado -> constante. O flip
+# do <33% e abrupto (a fase 3 pisca sem parar), casando com eye_personality.
+EYE_BLINK_INTERVAL = ((3.5, 5.0), (2.0, 3.2), (0.45, 0.9))
+EYE_GAZE_WINDUP = 0.6           # iris brilha 0.6s * 60 = 36 frames (> 27); a
+                                # eye_personality zera o encurtamento de tell, entao
+                                # o gaze fica 36 frames em TODO mood (regra do telegrafo)
+EYE_GAZE_SHOTS = 22
+EYE_GAZE_GAP = 0.04
+EYE_GAZE_TURN = 9               # varredura lenta (graus por tiro) -- "varre lentamente"
+EYE_GAZE_SPEED = 300
+EYE_GAZE_DMG = 10
+EYE_GAZE_ARC = 70               # comeca a varredura ARC/2 antes do jogador
+EYE_SWIPE_WINDUP = 0.4          # tentaculo levanta
+EYE_SWIPE_REACH = 2.6          # x max_r (o tentaculo alcanca longe)
+EYE_SWIPE_DMG = 18
+EYE_ORB_WINDUP = 0.7           # glow nos tentaculos
+EYE_ORB_COUNT = 3
+EYE_BULLET_WINDUP = 0.7
+EYE_BULLET_SHOTS = 60          # bullet hell: spiral bem denso reusando spiral_pattern
+EYE_BULLET_TURN = 33
+EYE_BULLET_GAP = 0.035
+EYE_BULLET_SPEED = 200
+EYE_BULLET_DMG = 12
