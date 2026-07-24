@@ -9,8 +9,13 @@ Reached only via ``python lizard_game.py --sandbox`` -- a flag nobody passes on 
 normal run. See ``plans/04_sandbox_debug.md`` for the full design. SB3 adds the
 title feature: pick a category+target in the dropdown to *arm* a spawn, then
 left-click in the world to drop it there (sticky -- each click drops another until
-right-click / Esc cancels). Later slices hang round/store/loadout tooling off the
-same spine.
+right-click / Esc cancels). SB4 hangs round control off the same spine. SB5 adds
+the loadout tooling (plans/04 §9-10): the ``equip`` category grants any weapon /
+item / charm / mutation FREE straight into the player via the real grant APIs, and
+the ``store`` category stages the REAL camp shop -- a catalog of the five native
+offers plus any weapon/item/charm wrapped as a shop entry -- with ``game.pollen``
+set sky-high so the real ``camp_buy`` cost check never blocks. Nothing here
+reimplements a grant or a buy; it only funnels into the existing paths.
 """
 
 import random
@@ -21,9 +26,13 @@ from pygame import Vector2
 from .core import config as C
 from .core.mathutil import random_dir
 from . import champions
+from . import charms
 from . import display
+from . import evolution
+from . import items
 from . import species
 from . import ui
+from . import weapons
 from .pickups import Bug, Fruit, Egg
 from .rounds import BOSS_POOL, THEMES, THEME_KEYS, make_boss
 
@@ -36,13 +45,28 @@ TOGGLE_KEYS = (pygame.K_BACKQUOTE, pygame.K_F1)
 # not a spawn -- picking it swaps the item list for the theme picker and reveals
 # the round-control footer (SB4).
 CATEGORIES = (('boss', 'Boss'), ('champion', 'Champ'),
-              ('species', 'Spec'), ('pickup', 'Pick'), ('round', 'Rnd'))
+              ('species', 'Spec'), ('pickup', 'Pick'), ('round', 'Rnd'),
+              ('equip', 'Equip'), ('store', 'Loja'))
 PICKUP_KEYS = ('bug', 'fruit', 'egg')
 PICKUP_CTORS = {'bug': Bug, 'fruit': Fruit, 'egg': Egg}
+
+# The loadout pools (SB5). ``equip`` grants any of the four free; ``store`` wraps
+# the three purchasable kinds as shop entries (mutations are level-up cards, not
+# shop stock, so the store leaves them out).
+EQUIP_POOLS = (('weapon', 'Arma'), ('item', 'Item'),
+               ('charm', 'Charm'), ('mutation', 'Mut'))
+STORE_POOLS = (('weapon', 'Arma'), ('item', 'Item'), ('charm', 'Charm'))
 
 # tier only scales a boss's hp/xp/score; the phase kit + name come from BOSS_POOL.
 # A hand-spawned boss has no wave to derive a tier from, so pick a sane mid default.
 SANDBOX_BOSS_TIER = 1
+
+# Flat debug price on every wrapped store entry (plans/04 §9/§15: a fixed default
+# is enough for v1). ``infinite_money`` sets pollen far above any price so the real
+# ``camp_buy`` cost check (`pollen < cost`) can never block, even after _apply_buy
+# marks the price up 1.6x per purchase.
+SANDBOX_STORE_COST = 10
+INFINITE_POLLEN = 10 ** 9
 
 
 class Sandbox:
@@ -74,6 +98,15 @@ class Sandbox:
         # Round control (SB4): the theme + wave a manual start_round will fire.
         self.round_theme = THEME_KEYS[0]
         self.round_wave = 1
+        # Loadout (SB5): which loadout pool the equip/store list is showing, the
+        # set of (pool, id) staged for a "generate specific" store, the random-N
+        # size, and whether infinite money is on (set once a store is generated).
+        self.pool = 'weapon'
+        self.store_pick = set()          # {(pool, id)} chosen for a specific store
+        self.store_n = 5                 # size of a random-N store roll
+        self.infinite_money = False
+        self.msg = None                  # transient confirmation line
+        self.msg_t = 0                   # frames left to show it (drawn frame-clock)
 
     # ---- registry ------------------------------------------------------- #
     def track(self, entity, kind, key):
@@ -133,10 +166,105 @@ class Sandbox:
             return [(k, species.info(k)[0]) for k in species.SPECIES]
         if self.cat == 'round':
             return [(k, THEMES[k]['banner']) for k in THEME_KEYS]
+        if self.cat == 'equip':
+            return self._pool_items(self.pool)
+        if self.cat == 'store':
+            # price rides in the label so it is visible in the picker itself
+            return [(pid, f"{name}  {SANDBOX_STORE_COST}p")
+                    for pid, name in self._pool_items(self.pool)]
         # champion: pick the champ first, then a species to apply it to
         if self.champ_sel is None:
             return [(cid, champions.BY_ID[cid].name) for cid in champions.BY_ID]
         return [(k, species.info(k)[0]) for k in species.SPECIES]
+
+    # ---- loadout pools (SB5) -------------------------------------------- #
+    def _pool_items(self, pool):
+        """(id, name) rows for one loadout pool, straight off the real registry."""
+        if pool == 'weapon':
+            return [(wid, weapons.WEAPONS[wid].name) for wid in weapons.WEAPONS]
+        if pool == 'item':
+            return [(it.id, it.name) for it in items.ITEMS]
+        if pool == 'charm':
+            return [(c.id, c.name) for c in charms.CHARMS]
+        if pool == 'mutation':
+            return [(m.id, m.name) for m in evolution.MUTATIONS]
+        return []
+
+    def _flash(self, msg):
+        """Show a one-line confirmation for a short while (frame-clocked in draw)."""
+        self.msg = msg
+        self.msg_t = 90
+
+    def _equip(self, pool, pid):
+        """Grant one loadout entry FREE to the player via the existing grant APIs.
+
+        No grant is reimplemented (plans/04 §10): weapons/charms go through the
+        player's own ``gain_*``; items through ``items.give``; mutations apply
+        their own effect. The player at index 0 is the sandbox's test subject.
+        """
+        g = self.game
+        p = g.players[0] if g.players else None
+        if p is None:
+            return
+        if pool == 'weapon':
+            p.gain_weapon(pid)
+        elif pool == 'item':
+            items.give(p, items.ITEMS.get(pid), g)
+        elif pool == 'charm':
+            p.gain_charm(pid, g)
+        elif pool == 'mutation':
+            evolution.MUTATIONS[pid].apply(p, g)
+        self._flash(f"equip: {pid}")
+
+    # ---- store (SB5) ---------------------------------------------------- #
+    def _wrap_entry(self, pool, pid):
+        """Wrap a weapon/item/charm as a camp shop entry dict (plans/04 §9).
+
+        Shape matches ``Game._roll_shop``'s native offers: ``fn(game)`` runs the
+        REAL grant on every player, so ``_apply_buy`` calls it unchanged.
+        """
+        if pool == 'weapon':
+            w = weapons.WEAPONS[pid]
+            return dict(name=w.name, desc='arma (debug)', cost=SANDBOX_STORE_COST,
+                        hue=w.hue, icon=pid,
+                        fn=lambda g, pid=pid: [pl.gain_weapon(pid) for pl in g.players])
+        if pool == 'item':
+            it = items.ITEMS.get(pid)
+            return dict(name=it.name, desc=it.desc, cost=SANDBOX_STORE_COST,
+                        hue=it.hue, icon=it.icon,
+                        fn=lambda g, it=it: [items.give(pl, it, g) for pl in g.players])
+        c = charms.CHARMS.get(pid)          # pool == 'charm'
+        return dict(name=c.name, desc=c.desc, cost=SANDBOX_STORE_COST,
+                    hue=c.hue, icon=pid,
+                    fn=lambda g, pid=pid: [pl.gain_charm(pid, g) for pl in g.players])
+
+    def _random_entries(self, n):
+        """N random wrapped entries drawn across the three purchasable pools."""
+        allpool = [(pool, pid) for pool, _ in STORE_POOLS
+                   for pid, _ in self._pool_items(pool)]
+        picks = random.sample(allpool, min(n, len(allpool)))
+        return [self._wrap_entry(pool, pid) for pool, pid in picks]
+
+    def _generate_store(self, entries):
+        """Stage the REAL camp shop with our catalog and switch infinite money on.
+
+        Catalog = the five native ``_roll_shop`` offers + our wrapped entries.
+        We reuse ``_enter_camp`` (it builds every camp field the shop UI needs),
+        then override the shop list, open it in ``shop`` mode, and set pollen far
+        above any price. From there the untouched camp path (app.main -> camp_buy
+        -> _apply_buy) does the buying; nothing about the flow is special-cased.
+        """
+        g = self.game
+        catalog = g._roll_shop() + entries
+        g._enter_camp()
+        g.camp['shop'] = catalog
+        g.camp['shop_sel'] = 0
+        g.camp['focus'] = 'shop'
+        g.camp['mode'] = 'shop'
+        g.pollen = INFINITE_POLLEN
+        self.infinite_money = True
+        self.open = False               # hide the panel so the shop is clickable
+        self._flash(f"loja: {len(catalog)} itens - polen infinito")
 
     def _armed_label(self):
         """Human name of the armed spawn, for the HUD; None when nothing is armed."""
@@ -155,6 +283,10 @@ class Sandbox:
     def _select_cat(self, key):
         self.cat = key
         self.champ_sel = None
+        # the store has no mutation stock, so bounce the pool back if we came from
+        # equip with mutations showing
+        if key == 'store' and self.pool == 'mutation':
+            self.pool = 'weapon'
 
     def _select_item(self, value):
         if self.cat == 'boss':
@@ -165,6 +297,12 @@ class Sandbox:
             self.armed = ('pickup', value)
         elif self.cat == 'round':
             self.round_theme = value         # pick the theme; START fires it
+        elif self.cat == 'equip':
+            self._equip(self.pool, value)    # click grants it free, right away
+        elif self.cat == 'store':
+            tup = (self.pool, value)         # toggle it in the specific-store set
+            self.store_pick.discard(tup) if tup in self.store_pick \
+                else self.store_pick.add(tup)
         elif self.cat == 'champion':
             if self.champ_sel is None:
                 self.champ_sel = value           # first click picks the champion
@@ -227,20 +365,62 @@ class Sandbox:
         self.armed = None
         self.champ_sel = None
 
+    # ---- store control (SB5) -------------------------------------------- #
+    def _store_layout(self):
+        """Footer rects for the store controls; only live while ``cat == 'store'``.
+        Bottom-anchored like the round footer, so a long item list never collides."""
+        r = self.rect
+        x, w, bh = r.x + 14, r.width - 28, 28
+        clear_r = pygame.Rect(x, r.bottom - 14 - bh, w, bh)
+        rand_r = pygame.Rect(x, clear_r.y - 8 - bh, w, bh)
+        spec_r = pygame.Rect(x, rand_r.y - 8 - bh, w, bh)
+        ny = spec_r.y - 12 - bh
+        dec_r = pygame.Rect(x, ny, 34, bh)
+        inc_r = pygame.Rect(x + w - 34, ny, 34, bh)
+        n_r = pygame.Rect(dec_r.right + 4, ny, inc_r.left - dec_r.right - 8, bh)
+        return dict(dec=dec_r, inc=inc_r, n=n_r, spec=spec_r, rand=rand_r,
+                    clear=clear_r)
+
     # ---- layout (shared by draw + hit-test) ----------------------------- #
     def _layout(self):
-        """Return (cat_rects, item_rects); computed the same way for draw + clicks
-        so hit-testing never depends on a draw having run first."""
+        """Return (cat_rects, pool_rects, item_rects); computed the same way for
+        draw + clicks so hit-testing never depends on a draw having run first.
+
+        Categories wrap onto as many rows as the panel width needs (seven of them
+        now). ``pool_rects`` is the loadout pool sub-row, live only for equip/store;
+        equip/store items lay out in two columns so the longer pools still fit."""
         r = self.rect
-        bw, bh = 52, 28              # five categories now, so the buttons are tighter
-        by = r.y + 80
-        cat_rects = [(pygame.Rect(r.x + 14 + i * (bw + 2), by, bw, bh), key, lbl)
-                     for i, (key, lbl) in enumerate(CATEGORIES)]
-        iy = by + bh + 30                # leave a line for the breadcrumb/hint
-        item_rects = [(pygame.Rect(r.x + 14, iy + i * 26, r.width - 28, 24),
-                       value, lbl)
-                      for i, (value, lbl) in enumerate(self._items())]
-        return cat_rects, item_rects
+        bw, bh = 52, 28
+        x0, by = r.x + 14, r.y + 80
+        per_row = max(1, (r.width - 28 + 2) // (bw + 2))
+        cat_rects = []
+        for i, (key, lbl) in enumerate(CATEGORIES):
+            col, row = i % per_row, i // per_row
+            rect = pygame.Rect(x0 + col * (bw + 2), by + row * (bh + 4), bw, bh)
+            cat_rects.append((rect, key, lbl))
+        iy = cat_rects[-1][0].bottom + 30    # leave a line for the breadcrumb/hint
+
+        pool_rects = []
+        if self.cat in ('equip', 'store'):
+            pools = EQUIP_POOLS if self.cat == 'equip' else STORE_POOLS
+            pw = (r.width - 28 - (len(pools) - 1) * 2) // len(pools)
+            pool_rects = [(pygame.Rect(x0 + i * (pw + 2), iy, pw, 24), pk, pl)
+                          for i, (pk, pl) in enumerate(pools)]
+            iy += 24 + 8
+
+        rows = self._items()
+        if self.cat in ('equip', 'store'):   # two columns for the longer pools
+            cols = 2
+            cw = (r.width - 28 - (cols - 1) * 4) // cols
+            item_rects = []
+            for i, (value, lbl) in enumerate(rows):
+                col, row = i % cols, i // cols
+                item_rects.append((pygame.Rect(x0 + col * (cw + 4), iy + row * 24,
+                                                cw, 22), value, lbl))
+        else:
+            item_rects = [(pygame.Rect(x0, iy + i * 26, r.width - 28, 24),
+                           value, lbl) for i, (value, lbl) in enumerate(rows)]
+        return cat_rects, pool_rects, item_rects
 
     # ---- input ---------------------------------------------------------- #
     def handle_event(self, ev):
@@ -278,10 +458,14 @@ class Sandbox:
         return False
 
     def _click_panel(self, mp):
-        cat_rects, item_rects = self._layout()
+        cat_rects, pool_rects, item_rects = self._layout()
         for rect, key, _ in cat_rects:
             if rect.collidepoint(mp):
                 self._select_cat(key)
+                return
+        for rect, pk, _ in pool_rects:       # loadout pool sub-row (equip/store)
+            if rect.collidepoint(mp):
+                self.pool = pk
                 return
         if self.cat == 'round':
             rl = self._round_layout()
@@ -297,6 +481,24 @@ class Sandbox:
             if rl['reset'].collidepoint(mp):
                 self._reset_round()
                 return
+        if self.cat == 'store':
+            sl = self._store_layout()
+            if sl['dec'].collidepoint(mp):
+                self.store_n = max(1, self.store_n - 1)
+                return
+            if sl['inc'].collidepoint(mp):
+                self.store_n += 1
+                return
+            if sl['spec'].collidepoint(mp):
+                self._generate_store([self._wrap_entry(p, i)
+                                      for p, i in sorted(self.store_pick)])
+                return
+            if sl['rand'].collidepoint(mp):
+                self._generate_store(self._random_entries(self.store_n))
+                return
+            if sl['clear'].collidepoint(mp):
+                self.store_pick.clear()
+                return
         for rect, value, _ in item_rects:
             if rect.collidepoint(mp):
                 self._select_item(value)
@@ -310,6 +512,11 @@ class Sandbox:
         if label:
             ui.text(surf, self.font, f"[armado] {label}  -  dir/Esc cancela",
                     (C.WIDTH // 2, C.HEIGHT - 30), (255, 214, 110), align='center')
+        # transient loadout confirmation (equip / store), frame-clocked here
+        if self.msg_t > 0:
+            self.msg_t -= 1
+            ui.text(surf, self.font, self.msg, (C.WIDTH // 2, 8),
+                    (150, 240, 170), align='center')
         if not self.open:
             ui.text(surf, self.font, "` sandbox", (C.WIDTH - 12, 8), ui.DIM,
                     align='right')
@@ -320,18 +527,31 @@ class Sandbox:
         ui.text(surf, self.bigfont, "SANDBOX", (r.x + 16, r.y + 14), ui.TEXT)
         ui.text(surf, self.font, "` / F1 fecha", (r.x + 16, r.y + 52), ui.DIM)
 
-        cat_rects, item_rects = self._layout()
+        cat_rects, pool_rects, item_rects = self._layout()
         for rect, key, lbl in cat_rects:
             cur = (key == self.cat)
             pygame.draw.rect(surf, (40, 46, 70) if cur else (22, 24, 38), rect,
                              border_radius=8)
             pygame.draw.rect(surf, (120, 150, 220) if cur else ui.LINE, rect, 2,
                              border_radius=8)
-            ui.text(surf, self.font, lbl, (rect.centerx, rect.y + 4),
+            ui.text(surf, self.font, ui.fit(self.font, lbl, rect.width - 6),
+                    (rect.centerx, rect.y + 4),
+                    ui.TEXT if cur else ui.DIM, align='center')
+
+        mouse = display.mouse_logical()
+
+        # Loadout pool sub-row (equip/store): highlights the current pool.
+        for rect, pk, lbl in pool_rects:
+            cur = (pk == self.pool)
+            pygame.draw.rect(surf, (40, 46, 70) if cur else (22, 24, 38), rect,
+                             border_radius=6)
+            pygame.draw.rect(surf, (120, 150, 220) if cur else ui.LINE, rect, 2,
+                             border_radius=6)
+            ui.text(surf, self.font, lbl, (rect.centerx, rect.y + 2),
                     ui.TEXT if cur else ui.DIM, align='center')
 
         # Breadcrumb / hint line under the category row.
-        hy = cat_rects[0][0].bottom + 6
+        hy = cat_rects[-1][0].bottom + 6
         if self.cat == 'champion' and self.champ_sel is not None:
             ui.text(surf, self.font,
                     f"{champions.BY_ID[self.champ_sel].name} > especie:",
@@ -339,20 +559,25 @@ class Sandbox:
         else:
             hint = {'boss': 'escolha o chefe', 'champion': 'escolha o campeao',
                     'species': 'escolha a especie', 'pickup': 'escolha o item',
-                    'round': 'escolha o tema da onda'}
+                    'round': 'escolha o tema da onda',
+                    'equip': 'clique = equipa de graca',
+                    'store': 'clique = marca p/ loja'}
             ui.text(surf, self.font, hint[self.cat], (r.x + 14, hy), ui.DIM)
 
-        mouse = display.mouse_logical()
         for rect, value, lbl in item_rects:
             if rect.collidepoint(mouse):
                 pygame.draw.rect(surf, (44, 50, 76), rect, border_radius=6)
-            # in round mode the picked theme reads as selected
-            sel = (self.cat == 'round' and value == self.round_theme)
+            # in round mode the picked theme reads as selected; in store mode the
+            # entries staged for a "generate specific" store read as selected
+            sel = (self.cat == 'round' and value == self.round_theme) or \
+                  (self.cat == 'store' and (self.pool, value) in self.store_pick)
             ui.text(surf, self.font, ui.fit(self.font, lbl, rect.width - 8),
                     (rect.x + 6, rect.y + 2), (255, 214, 110) if sel else ui.TEXT)
 
         if self.cat == 'round':
             self._draw_round(surf, mouse)
+        elif self.cat == 'store':
+            self._draw_store(surf, mouse)
 
     def _draw_round(self, surf, mouse):
         """The round-control footer: wave scroller + START/RESET buttons."""
@@ -379,3 +604,28 @@ class Sandbox:
                            rl['start'].width - 12)
         button(rl['start'], start_lbl, (30, 60, 40))
         button(rl['reset'], 'RESET (limpa a cena)', (70, 34, 40))
+
+    def _draw_store(self, surf, mouse):
+        """The store footer: random-N scroller + generate/clear buttons."""
+        sl = self._store_layout()
+
+        def button(rect, label, col_on):
+            hot = rect.collidepoint(mouse)
+            pygame.draw.rect(surf, col_on if hot else (24, 26, 42), rect,
+                             border_radius=8)
+            pygame.draw.rect(surf, (120, 150, 220) if hot else ui.LINE, rect, 2,
+                             border_radius=8)
+            ui.text(surf, self.font, ui.fit(self.font, label, rect.width - 12),
+                    (rect.centerx, rect.y + 4), ui.TEXT, align='center')
+
+        button(sl['dec'], '-', (40, 46, 70))
+        button(sl['inc'], '+', (40, 46, 70))
+        nr = sl['n']
+        pygame.draw.rect(surf, (22, 24, 38), nr, border_radius=8)
+        pygame.draw.rect(surf, ui.LINE, nr, 2, border_radius=8)
+        ui.text(surf, self.font, f"random N = {self.store_n}",
+                (nr.centerx, nr.y + 4), ui.TEXT, align='center')
+        button(sl['spec'], f"GERAR SELECIONADOS ({len(self.store_pick)})",
+               (30, 60, 40))
+        button(sl['rand'], 'GERAR RANDOM N', (30, 60, 40))
+        button(sl['clear'], 'LIMPAR SELECAO', (70, 34, 40))
