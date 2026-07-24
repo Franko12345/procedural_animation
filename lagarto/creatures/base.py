@@ -86,6 +86,10 @@ class Lizard:
         self.horn_spring = SpringDamper(0.0, HORN_SPRING_STIFF, HORN_SPRING_DAMP)
         self.pupil_x = SpringDamper(0.0, PUPIL_SPRING_STIFF, PUPIL_SPRING_DAMP)
         self.pupil_y = SpringDamper(0.0, PUPIL_SPRING_STIFF, PUPIL_SPRING_DAMP)
+        self.crest_bias = 0.0    # anticipation hook, twin of squat_bias: extra
+                                 # degrees added to the plate/horn spring targets
+                                 # so crests bristle (boss body-telegraph, #13);
+                                 # decays back to 0 on its own in integrate()
         self._prev_vel = Vector2()
         self._prev_heading = angle_of(self.facing)
 
@@ -349,6 +353,7 @@ class Lizard:
         target_squash = (1.0 + clamp(spd / self.max_speed, 0, 1.6) * 0.16 / w) * self.squat_bias
         self.squash = approach(self.squash, target_squash, 9 / math.sqrt(w), dt)
         self.squat_bias = approach(self.squat_bias, 1.0, 6, dt)  # decays if no one re-asserts it
+        self.crest_bias = approach(self.crest_bias, 0.0, 6, dt)   # ditto (#13 telegraph)
         self.wobble += dt * 6
         self.hit_flash = decay(self.hit_flash, dt, 3)
         self.attack_cd = decay(self.attack_cd, dt)
@@ -373,12 +378,15 @@ class Lizard:
         if dt > 0:
             fwd = self.facing
             accel_fwd = (self.vel - self._prev_vel).dot(fwd) / dt
+            # #13: crest_bias bristles the crests on top of the motion lean --
+            # same springs, biased target, so the wind-up tell is spring-smoothed.
+            bristle = getattr(self, 'crest_bias', 0.0)
             self.plate_spring.target = clamp(accel_fwd * PLATE_TILT_GAIN,
-                                             -PLATE_TILT_MAX, PLATE_TILT_MAX)
+                                             -PLATE_TILT_MAX, PLATE_TILT_MAX) + bristle
             ang = angle_of(fwd)
             d_ang = (ang - self._prev_heading + 180) % 360 - 180
             self.horn_spring.target = clamp((d_ang / dt) * HORN_SWAY_GAIN,
-                                            -HORN_SWAY_MAX, HORN_SWAY_MAX)
+                                            -HORN_SWAY_MAX, HORN_SWAY_MAX) + bristle
             self._prev_vel = Vector2(self.vel)
             self._prev_heading = ang
         self.plate_spring.update(dt)

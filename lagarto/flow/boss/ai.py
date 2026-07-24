@@ -12,8 +12,19 @@ from ...core import palette
 from ...creatures.ai import burrow as burrow_ai
 from ...creatures.ai import grapple as grapple_ai
 from ...core.mathutil import safe_norm, vfrom_angle, clamp, decay, random_dir
+from ...creatures.base import TAIL_SPRING_STIFFNESS
 from .patterns import PATTERNS, _tick_barrage, _tick_spiral, default_phases
 from .personality import default_personality
+
+# --- #13 body telegraph: spring-driven tells fired DURING the windup. Each
+# scales with windup progress (0->1) and the mood's speed (angrier = snappier),
+# and biases a spring the body already animates -- nothing raw, nothing new to
+# draw. These are the tuning knobs. ---
+TELL_TAIL_RAISE = 1.1      # shockwave: extra tail-spring stiffness (x baseline)
+TELL_CREST_BRISTLE = 14.0  # radial: degrees of plate/horn bristle at full kick
+TELL_CREST_ENRAGED = 6.0   # steady crest bristle whenever enraged (x mood_speed)
+TELL_REAR_UP = 0.45        # summon: squat_bias rise -- head tilts back / rears up
+TELL_CROUCH = 0.4          # charge: squat_bias drop -- body lowers & squashes
 
 # --------------------------------------------------------------------------- #
 #  Rei Lagarto (plans/03, first authored boss, onda 5): CicatriZ mechanic --   #
@@ -220,6 +231,34 @@ class BossAI:
             return Vector2(), 0.0
 
         return Vector2(), 0.0
+
+    def apply_body_tell(self, dt):
+        """#13: spring-driven body telegraph during the windup. Biases the SAME
+        cosmetic springs the body already animates (tail stiffness, plate/horn
+        crest bristle, squat_bias) so each pattern reads distinctly BEFORE it
+        fires; magnitude scales with windup progress and the mood's speed. Runs
+        once per frame AFTER ``_apply_mood_pose`` so a shockwave tail-raise wins
+        over the mood baseline. Guards a body with no tail/crests by skipping
+        that channel (the bias just no-ops if the genome draws none)."""
+        b = self.boss
+        speed = self.personality.mood_speed.get(self.mood, 1.0)
+        # enraged bosses bristle their crests all the time, not just on radial
+        b.crest_bias = TELL_CREST_ENRAGED * speed if self.mood == 'enraged' else 0.0
+        if self.state != 'windup' or not self.pattern_id:
+            return
+        pat = PATTERNS[self.pattern_id]
+        windup = pat['windup'] * self.personality.windup_mult(self.mood)
+        prog = 1.0 - clamp(self.t / max(1e-4, windup), 0, 1)   # 0 -> 1
+        kick = clamp(prog, 0, 1) * speed
+        if pat.get('charge'):
+            b.squat_bias = 1.0 - TELL_CROUCH * kick            # lower & squash
+        elif pat['telegraph'] == 'shockwave':
+            if b.tail_spring is not None:                      # tail raises
+                b.tail_spring.stiffness = TAIL_SPRING_STIFFNESS * (1.0 + TELL_TAIL_RAISE * kick)
+        elif pat['telegraph'] == 'radial':
+            b.crest_bias += TELL_CREST_BRISTLE * kick          # crests bristle
+        elif pat['telegraph'] == 'horn':                       # summon
+            b.squat_bias = 1.0 + TELL_REAR_UP * kick           # head tilts back / rears
 
     # ---- drawing: the telegraph IS the pattern's real hitbox preview ------- #
     def draw(self, surf, cam):

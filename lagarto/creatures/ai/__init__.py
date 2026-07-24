@@ -205,6 +205,7 @@ class AILizard(Lizard):
                     # only it feeds the mood back into the tail spring
                     d, speed = self.boss_ai.tick(dt, game)
                     self._apply_mood_pose()
+                    self.boss_ai.apply_body_tell(dt)   # #13 windup body telegraph
                 else:
                     # posture BEFORE the tick, so a wind-up telegraph (lunge/spit
                     # crouch) still overrides the resting pose during its window
