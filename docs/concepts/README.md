@@ -70,6 +70,7 @@ wrong.
 ### Meta
 
 - [Balance](./balance.md) — the two balancing passes
+- [Sandbox](./sandbox.md) — dev-only debug overlay behind `--sandbox`
 
 ## When you add a concept file
 
