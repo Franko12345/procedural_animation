@@ -21,7 +21,8 @@ from .controllers import (make_controllers, describe_joysticks, Pad, MenuNav,
                           KeyboardMouseController, GamepadController)
 from .game import Game
 from .menu import run_menu
-from .sandbox import Sandbox
+from .sandbox import (Sandbox, preset_exists as sandbox_preset_exists,
+                      load_preset as load_sandbox_preset)
 
 
 def _init_joysticks():
@@ -158,6 +159,10 @@ def main():
         controllers = make_controllers(num, joysticks)
         game = Game(num, controllers, font, bigfont, mode=mode, chars=chars)
         sb = Sandbox(game, font, bigfont) if sandbox else None
+        if sb is not None and sandbox_preset_exists():
+            # A saved preset rebuilds the exact scene through the same spawn/grant
+            # path the overlay uses; no preset -> the sandbox opens idle (SB7).
+            sb.apply_preset(load_sandbox_preset())
         fade.start(0.35)                     # fade in from the menu
         prev_state = game.state
         acc = 0.0
