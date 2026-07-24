@@ -172,6 +172,12 @@ class Game:
     def __init__(self, num_players, controllers, font, bigfont, meta=None,
                  mode='normal', chars=None):
         self.mode = mode                     # 'normal' (ends at the final boss) | 'endless'
+        # Sandbox debug staples (SB6). Inert unless ``mode == 'sandbox'``: every
+        # read of these is guarded on the mode first, so a normal run never sees
+        # them change behaviour. The sandbox overlay flips them from its menu.
+        self.god_mode = False        # player ignores damage application (hurt early-out)
+        self.pause_ai = False        # freeze enemy/boss/prey/friend update; player still walks
+        self.step_once = False       # one-shot: advance the frozen AI exactly one tick
         self.meta = meta if meta is not None else progression.load()
         self.run_banked = False
         self.font = font
@@ -944,11 +950,20 @@ class Game:
         for p in self.players:
             if not p.dead:
                 p.update(dt, self)
+        # Sandbox pause-AI (SB6): while frozen, enemy/boss/prey/friend update is
+        # skipped so the player can still walk around and inspect a held pose. A
+        # queued Step lifts the freeze for exactly one tick, then re-arms it -- the
+        # frame-by-frame tool for procedural animation. On a normal run ``mode`` is
+        # never 'sandbox', so ``freeze_ai`` is always False and ``e.update`` runs
+        # every group exactly as before -- byte-identical behaviour.
+        freeze_ai = self.mode == 'sandbox' and self.pause_ai and not self.step_once
+        self.step_once = False
         for group in (self.enemies, self.prey, self.friends):
             for e in group:
                 if not e.dead:
                     e.on_screen = self.cam.visible(e.pos)
-                    e.update(dt, self)
+                    if not freeze_ai:
+                        e.update(dt, self)
         for pk in self.pickups:
             if not pk.dead:
                 pk.update(dt, self)

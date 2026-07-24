@@ -26,6 +26,7 @@ from pygame import Vector2
 from .core import config as C
 from .core.mathutil import random_dir
 from . import champions
+from . import characters
 from . import charms
 from . import display
 from . import evolution
@@ -46,9 +47,16 @@ TOGGLE_KEYS = (pygame.K_BACKQUOTE, pygame.K_F1)
 # the round-control footer (SB4).
 CATEGORIES = (('boss', 'Boss'), ('champion', 'Champ'),
               ('species', 'Spec'), ('pickup', 'Pick'), ('round', 'Rnd'),
-              ('equip', 'Equip'), ('store', 'Loja'))
+              ('equip', 'Equip'), ('store', 'Loja'),
+              ('debug', 'Dbg'), ('char', 'Pers'))
 PICKUP_KEYS = ('bug', 'fruit', 'egg')
 PICKUP_CTORS = {'bug': Bug, 'fruit': Fruit, 'egg': Egg}
+
+# Debug staples (SB6, plans/04 §11): the two toggles + two one-shot actions the
+# ``debug`` category lists as clickable rows. God/pause read live state so the
+# label shows ON/OFF; kill-all and step fire once per click. ``char`` is its own
+# category that lists CHARACTERS -- a click rebuilds the player as that one.
+DEBUG_ACTIONS = ('god', 'killall', 'pauseai', 'step')
 
 # The loadout pools (SB5). ``equip`` grants any of the four free; ``store`` wraps
 # the three purchasable kinds as shop entries (mutations are level-up cards, not
@@ -172,6 +180,10 @@ class Sandbox:
             # price rides in the label so it is visible in the picker itself
             return [(pid, f"{name}  {SANDBOX_STORE_COST}p")
                     for pid, name in self._pool_items(self.pool)]
+        if self.cat == 'debug':
+            return self._debug_items()
+        if self.cat == 'char':
+            return [(c.id, c.name) for c in characters.CHARACTERS]
         # champion: pick the champ first, then a species to apply it to
         if self.champ_sel is None:
             return [(cid, champions.BY_ID[cid].name) for cid in champions.BY_ID]
@@ -215,6 +227,85 @@ class Sandbox:
         elif pool == 'mutation':
             evolution.MUTATIONS[pid].apply(p, g)
         self._flash(f"equip: {pid}")
+
+    # ---- debug staples (SB6) -------------------------------------------- #
+    def _debug_items(self):
+        """(action, label) rows for the debug category; toggles show live state."""
+        g = self.game
+        return [('god', f"God mode: {'ON' if g.god_mode else 'OFF'}"),
+                ('killall', 'Kill-all (hostis)'),
+                ('pauseai', f"Pause-AI: {'ON' if g.pause_ai else 'OFF'}"),
+                ('step', 'Step +1 tick')]
+
+    def _debug_action(self, action):
+        """Dispatch a click on a debug row (plans/04 §11)."""
+        g = self.game
+        if action == 'god':
+            g.god_mode = not g.god_mode
+            self._flash(f"god mode: {'ON' if g.god_mode else 'OFF'}")
+        elif action == 'killall':
+            self._kill_all()
+        elif action == 'pauseai':
+            g.pause_ai = not g.pause_ai
+            self._flash(f"pause-AI: {'ON' if g.pause_ai else 'OFF'}")
+        elif action == 'step':
+            self._step()
+
+    def _step(self):
+        """Advance the frozen AI exactly one fixed tick (``C.DT``).
+
+        Sets the one-shot the game's ``step`` consumes on its next tick, which
+        lifts the pause for that tick only -- so the enemy/boss procedural
+        animation folheia one frame at a time (the key inspection feature). Turns
+        pause-AI on first, since stepping a running sim is meaningless.
+        """
+        g = self.game
+        g.pause_ai = True
+        g.step_once = True
+        self._flash("step +1 tick")
+
+    def _kill_all(self):
+        """Clear enemies + boss + hostile projectiles/puddles + nests; keep prey,
+        pickups, friends and the player (plans/04 §11).
+
+        The boss lives in ``enemies`` *and* is mirrored on ``rounds.boss``, so both
+        are cleared. Nests are enemy spawners -- left alone they would refill the
+        field, so a "kill all hostiles" that spares them would read as broken.
+        """
+        g = self.game
+        g.enemies = []
+        g.pending_enemies = []
+        g.projectiles = [p for p in g.projectiles if not p.hostile]
+        g.puddles = [p for p in g.puddles if not getattr(p, 'hostile', False)]
+        rm = g.rounds
+        rm.boss = None
+        rm.nests = []
+        rm.marks = []
+        # drop the hand-spawned hostiles from the registry, keep tracked survivors
+        survivors = {id(x) for x in (g.prey + g.pickups + g.friends)}
+        self.spawned = [e for e in self.spawned if id(e) in survivors]
+        self._flash("kill-all: hostis limpos")
+
+    def _swap_character(self, cid):
+        """Rebuild player 0 as a different Character -- own body + initial weapon.
+
+        Builds a fresh Player exactly as ``Game.__init__`` does (same slot,
+        controller and colourset, at the current position), so ``Player.__init__``
+        grants the character's starting weapon (``gain_weapon(char.weapon)``) and
+        runs ``char.apply`` -- the new silhouette comes from its genome. Meta
+        progression is re-applied to match the real build path.
+        """
+        from .lizard import Player
+        from . import progression
+        g = self.game
+        if not g.players:
+            return
+        old = g.players[0]
+        new = Player(Vector2(old.pos), old.ctrl, old.colorset, old.index,
+                     character=characters.get(cid))
+        progression.apply_to_player(g.meta, new)
+        g.players[0] = new
+        self._flash(f"swap: {characters.get(cid).name}")
 
     # ---- store (SB5) ---------------------------------------------------- #
     def _wrap_entry(self, pool, pid):
@@ -303,6 +394,10 @@ class Sandbox:
             tup = (self.pool, value)         # toggle it in the specific-store set
             self.store_pick.discard(tup) if tup in self.store_pick \
                 else self.store_pick.add(tup)
+        elif self.cat == 'debug':
+            self._debug_action(value)        # toggle / fire the debug staple
+        elif self.cat == 'char':
+            self._swap_character(value)      # rebuild the player as this character
         elif self.cat == 'champion':
             if self.champ_sel is None:
                 self.champ_sel = value           # first click picks the champion
@@ -428,6 +523,12 @@ class Sandbox:
         if ev.type == pygame.KEYDOWN:
             if ev.key in TOGGLE_KEYS:
                 self.open = not self.open
+                return True
+            # '.' steps one tick regardless of the panel being open -- the
+            # frame-by-frame animation tool wants a hotkey, not a menu round-trip.
+            # Consumed so it never reaches the live game (sandbox-only anyway).
+            if ev.key == pygame.K_PERIOD:
+                self._step()
                 return True
             # Esc cancels an armed spawn (sticky mode); only then, so a bare Esc
             # still reaches app.main's pause toggle when nothing is armed.
@@ -561,7 +662,9 @@ class Sandbox:
                     'species': 'escolha a especie', 'pickup': 'escolha o item',
                     'round': 'escolha o tema da onda',
                     'equip': 'clique = equipa de graca',
-                    'store': 'clique = marca p/ loja'}
+                    'store': 'clique = marca p/ loja',
+                    'debug': "clique alterna/dispara  ('.' = step)",
+                    'char': 'clique = troca o personagem'}
             ui.text(surf, self.font, hint[self.cat], (r.x + 14, hy), ui.DIM)
 
         for rect, value, lbl in item_rects:
