@@ -18,7 +18,21 @@ from .genome import basic_lizard
 from ..core.mathutil import clamp, lerp, approach, vfrom_angle, safe_norm, angle_of, decay
 from ..anim.spine import Spine, build_radii
 from ..anim.leg import Leg
-from ..anim.anim import Vector2Spring
+from ..anim.anim import Vector2Spring, SpringDamper
+
+# A3 secondary-motion springs (issue #6). All three are 1D SpringDampers whose
+# targets are re-set every sim step from body motion; the GAIN/MAX pairs are the
+# tuning knobs -- raw accel/turn-rate are spiky, the spring is what smooths them.
+PLATE_TILT_GAIN = 0.012         # forward-accel (px/s^2) -> chevron tilt degrees
+PLATE_TILT_MAX = 10.0           # cap so a dash doesn't flip the plates flat
+PLATE_SPRING_STIFF = 9.0
+PLATE_SPRING_DAMP = 0.9         # returns smoothly to flat when accel stops
+HORN_SWAY_GAIN = 0.012          # turn-rate (deg/s) -> horn sway degrees
+HORN_SWAY_MAX = 9.0
+HORN_SPRING_STIFF = 15.0        # bone-stiff: snaps to the sway and settles fast
+HORN_SPRING_DAMP = 0.9
+PUPIL_SPRING_STIFF = 7.0        # loose = a subtle drift/lag toward the target
+PUPIL_SPRING_DAMP = 0.85
 
 TAIL_SPRING_JOINTS = 4          # how many tail joints get cosmetic overshoot
 TAIL_SPRING_MAX_LAG = 0.45      # cap on overshoot, as a fraction of max_r -- a
@@ -67,6 +81,13 @@ class Lizard:
         self.rebuild_body(keep_pose=False)
         self.accel = 900.0
         self.target_dir = Vector2()
+        # A3 (#6): plates tilt on accel, horns sway on turns, pupils lag the target.
+        self.plate_spring = SpringDamper(0.0, PLATE_SPRING_STIFF, PLATE_SPRING_DAMP)
+        self.horn_spring = SpringDamper(0.0, HORN_SPRING_STIFF, HORN_SPRING_DAMP)
+        self.pupil_x = SpringDamper(0.0, PUPIL_SPRING_STIFF, PUPIL_SPRING_DAMP)
+        self.pupil_y = SpringDamper(0.0, PUPIL_SPRING_STIFF, PUPIL_SPRING_DAMP)
+        self._prev_vel = Vector2()
+        self._prev_heading = angle_of(self.facing)
 
     def rebuild_body(self, keep_pose=True):
         """Recompute everything derived from the genome -- and nothing else.
@@ -347,6 +368,27 @@ class Lizard:
             self.tail_spring.target = self.spine.joints[-1]
             self.tail_spring.update(dt)
 
+        # A3 (#6): acceleration = change in velocity this step; turn rate = change
+        # in heading. Both are derived locally from the previous-frame value.
+        if dt > 0:
+            fwd = self.facing
+            accel_fwd = (self.vel - self._prev_vel).dot(fwd) / dt
+            self.plate_spring.target = clamp(accel_fwd * PLATE_TILT_GAIN,
+                                             -PLATE_TILT_MAX, PLATE_TILT_MAX)
+            ang = angle_of(fwd)
+            d_ang = (ang - self._prev_heading + 180) % 360 - 180
+            self.horn_spring.target = clamp((d_ang / dt) * HORN_SWAY_GAIN,
+                                            -HORN_SWAY_MAX, HORN_SWAY_MAX)
+            self._prev_vel = Vector2(self.vel)
+            self._prev_heading = ang
+        self.plate_spring.update(dt)
+        self.horn_spring.update(dt)
+        look = self._pupil_dir()
+        self.pupil_x.target = look.x
+        self.pupil_y.target = look.y
+        self.pupil_x.update(dt)
+        self.pupil_y.update(dt)
+
     def reset_secondary_springs(self):
         """Snap every cosmetic spring to the current pose -- call after
         teleporting/repositioning a creature outside of normal movement, or
@@ -502,7 +544,7 @@ class Lizard:
             wig = math.sin(self.wobble * 3 + s) * 0.3
             tip = b + d * (r * 0.95) + perp * (s * r * (0.6 + wig))
             pygame.draw.line(surf, acol, cam.w2s(b), cam.w2s(tip), max(1, int(1.5 * cam.zoom)))
-        look = self._look_dir()
+        look = self._pupil_offset()
         for s in (-1, 1):                                   # eyes
             ep = head + d * (r * 0.2) + perp * (s * r * 0.46)
             pygame.draw.circle(surf, C.COL_WHITE, cam.w2s(ep), max(2, int(r * 0.3 * cam.zoom)))
@@ -561,7 +603,7 @@ class Lizard:
         d = self.spine.head_dir()
         perp = Vector2(-d.y, d.x)
         r = self.max_r
-        look = self._look_dir()
+        look = self._pupil_offset()
         for s in (-1, 1):
             ep = head + d * (r * 0.4) + perp * (s * r * 0.62)
             sp = cam.w2s(ep)
@@ -574,12 +616,30 @@ class Lizard:
             return self.facing
         return safe_norm(self.vel) if self.vel.length_squared() > 1 else self.spine.head_dir()
 
+    def _pupil_dir(self):
+        """Unit direction the pupils *want* to point: the creature's target
+        (aggro'd enemy for AI, tongue lock for the player) if there is one,
+        else where it's looking. Springs lag the pupils toward this (A3, #6)."""
+        tgt = getattr(self, 'aggro', None) or getattr(self, 'tongue_target', None)
+        if tgt is not None and not getattr(tgt, 'dead', False):
+            return safe_norm(tgt.pos - self.spine.joints[0])
+        return self._look_dir()
+
+    def _pupil_offset(self):
+        """Lagged pupil direction (magnitude < 1 while drifting) -- read where an
+        eye's pupil is drawn. Falls back to the instantaneous look if the springs
+        aren't built yet (previews built before __init__ finishes)."""
+        px = getattr(self, 'pupil_x', None)
+        if px is None:
+            return self._look_dir()
+        return Vector2(px.value, self.pupil_y.value)
+
     def _draw_head(self, surf, cam):
         head = self.spine.joints[0]
         d = self.spine.head_dir()
         perp = Vector2(-d.y, d.x)
         r = self.max_r
-        look = self._look_dir()
+        look = self._pupil_offset()
         eye_glow = getattr(self, 'glow_body', self.kind == 'player')
         for s in (-1, 1):
             ep = head + d * (r * 0.15) + perp * (s * r * 0.62)

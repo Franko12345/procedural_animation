@@ -62,8 +62,10 @@ def draw_plates(surf, cam, creature):
     rad = creature.spine.radii
     edge = palette.lighten(creature.color, 0.28)
     w = max(1, int((1 + g.plates) * cam.zoom))
+    ps = getattr(creature, 'plate_spring', None)     # A3 (#6): lean into accel
+    tilt = ps.value if ps is not None else 0.0
     for i in range(1, len(js) - 1):
-        fwd = safe_norm(js[i] - js[i + 1])
+        fwd = safe_norm(js[i] - js[i + 1]).rotate(tilt)
         perp = Vector2(-fwd.y, fwd.x)
         c = js[i]
         left = c + perp * rad[i] * 0.72
@@ -76,14 +78,16 @@ def draw_plates(surf, cam, creature):
 def draw_horns(surf, cam, creature):
     """Smooth, curved, tapered horns sweeping forward from the head.
 
-    Rigid on purpose (bone, not hair): no sway, no lag -- they move only
-    because the head they're attached to moves.
+    Bone-stiff, not hair: they sway a few degrees against a sharp turn (A3, #6)
+    via ``horn_spring`` and settle fast -- momentum of a rigid mass, not a
+    floppy lag.
     """
     g = creature.genome
     if g.horns <= 0:
         return
     head = creature.spine.joints[0]
-    d = creature.spine.head_dir()
+    hs = getattr(creature, 'horn_spring', None)
+    d = creature.spine.head_dir().rotate(hs.value if hs is not None else 0.0)
     perp = Vector2(-d.y, d.x)
     r = creature.max_r
     fill = palette.lighten(creature.color, 0.25)
@@ -202,7 +206,7 @@ def draw_extra_eyes(surf, cam, creature):
     d = creature.spine.head_dir()
     perp = Vector2(-d.y, d.x)
     r = creature.max_r
-    look = creature._look_dir()
+    look = creature._pupil_offset()
     for k in range(n):
         s = -1 if k % 2 == 0 else 1
         row = k // 2
