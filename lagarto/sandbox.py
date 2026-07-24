@@ -25,16 +25,18 @@ from . import display
 from . import species
 from . import ui
 from .pickups import Bug, Fruit, Egg
-from .rounds import BOSS_POOL, make_boss
+from .rounds import BOSS_POOL, THEMES, THEME_KEYS, make_boss
 
 
 # Keys that toggle the panel open/closed. Backtick is the classic dev-console key;
 # F1 is the fallback for keyboards where backtick is awkward.
 TOGGLE_KEYS = (pygame.K_BACKQUOTE, pygame.K_F1)
 
-# The four spawn categories, in panel order: (key, short label).
+# The spawn/round categories, in panel order: (key, short label). ``round`` is
+# not a spawn -- picking it swaps the item list for the theme picker and reveals
+# the round-control footer (SB4).
 CATEGORIES = (('boss', 'Boss'), ('champion', 'Champ'),
-              ('species', 'Spec'), ('pickup', 'Pick'))
+              ('species', 'Spec'), ('pickup', 'Pick'), ('round', 'Rnd'))
 PICKUP_KEYS = ('bug', 'fruit', 'egg')
 PICKUP_CTORS = {'bug': Bug, 'fruit': Fruit, 'egg': Egg}
 
@@ -69,6 +71,9 @@ class Sandbox:
         self.cat = 'boss'
         self.champ_sel = None            # champ_id awaiting a species to pair with
         self.armed = None                # (kind, key) once a target is chosen
+        # Round control (SB4): the theme + wave a manual start_round will fire.
+        self.round_theme = THEME_KEYS[0]
+        self.round_wave = 1
 
     # ---- registry ------------------------------------------------------- #
     def track(self, entity, kind, key):
@@ -126,6 +131,8 @@ class Sandbox:
             return [(k, k.upper()) for k in PICKUP_KEYS]
         if self.cat == 'species':
             return [(k, species.info(k)[0]) for k in species.SPECIES]
+        if self.cat == 'round':
+            return [(k, THEMES[k]['banner']) for k in THEME_KEYS]
         # champion: pick the champ first, then a species to apply it to
         if self.champ_sel is None:
             return [(cid, champions.BY_ID[cid].name) for cid in champions.BY_ID]
@@ -156,6 +163,8 @@ class Sandbox:
             self.armed = ('species', value)
         elif self.cat == 'pickup':
             self.armed = ('pickup', value)
+        elif self.cat == 'round':
+            self.round_theme = value         # pick the theme; START fires it
         elif self.cat == 'champion':
             if self.champ_sel is None:
                 self.champ_sel = value           # first click picks the champion
@@ -163,12 +172,67 @@ class Sandbox:
                 self.armed = ('champion', f'{self.champ_sel}:{value}')
                 self.champ_sel = None
 
+    # ---- round control (SB4) -------------------------------------------- #
+    def _round_layout(self):
+        """Footer rects for the round controls; only live while ``cat == 'round'``.
+        Computed the same for draw + hit-test so clicks never depend on a draw."""
+        r = self.rect
+        x, w, bh = r.x + 14, r.width - 28, 28
+        reset_r = pygame.Rect(x, r.bottom - 14 - bh, w, bh)
+        start_r = pygame.Rect(x, reset_r.y - 8 - bh, w, bh)
+        wy = start_r.y - 12 - bh
+        dec_r = pygame.Rect(x, wy, 34, bh)
+        inc_r = pygame.Rect(x + w - 34, wy, 34, bh)
+        wave_r = pygame.Rect(dec_r.right + 4, wy, inc_r.left - dec_r.right - 8, bh)
+        return dict(dec=dec_r, inc=inc_r, wave=wave_r, start=start_r, reset=reset_r)
+
+    def _start_round(self):
+        """Fire the chosen theme+wave through the REAL wave machine.
+
+        ``start_round`` does ``wave += 1`` and rolls a boss on ``wave % 5 == 0``,
+        so setting ``wave = round_wave - 1`` first lands it exactly on the picked
+        wave with the right budget/tier. Called directly (not via the frozen
+        ``RoundManager.update`` sandbox path) so the manual start still runs.
+        """
+        rm = self.game.rounds
+        rm.wave = self.round_wave - 1
+        rm.start_round(self.round_theme)
+
+    def _reset_round(self):
+        """Clear the scene and zero the RoundManager -- but never touch the player.
+
+        Empties the entity lists + the round's nests/marks/boss and returns the
+        machine to a fresh intermission (plans/04 §8). The player's position, hp,
+        loadout, and level are the test subject, so they are left alone.
+        """
+        g = self.game
+        g.enemies = []
+        g.pending_enemies = []       # drains into enemies each step -- clear too
+        g.prey = []
+        g.projectiles = []
+        g.pickups = []
+        g.friends = []
+        g.puddles = []               # leftover ground hazards are scene, not subject
+        rm = g.rounds
+        rm.boss = None
+        rm.nests = []
+        rm.marks = []
+        rm.wave = 0
+        rm.state = 'intermission'
+        rm.is_boss_round = False
+        rm.is_final = False
+        rm.budget = 0
+        g.wave = 0                   # HUD mirror of rm.wave (start_round re-syncs it)
+        self.spawned = []            # the hand-spawned registry is gone with the scene
+        self.armed = None
+        self.champ_sel = None
+
     # ---- layout (shared by draw + hit-test) ----------------------------- #
     def _layout(self):
         """Return (cat_rects, item_rects); computed the same way for draw + clicks
         so hit-testing never depends on a draw having run first."""
         r = self.rect
-        bw, bh = 66, 28
+        bw, bh = 52, 28              # five categories now, so the buttons are tighter
         by = r.y + 80
         cat_rects = [(pygame.Rect(r.x + 14 + i * (bw + 2), by, bw, bh), key, lbl)
                      for i, (key, lbl) in enumerate(CATEGORIES)]
@@ -219,6 +283,20 @@ class Sandbox:
             if rect.collidepoint(mp):
                 self._select_cat(key)
                 return
+        if self.cat == 'round':
+            rl = self._round_layout()
+            if rl['dec'].collidepoint(mp):
+                self.round_wave = max(1, self.round_wave - 1)
+                return
+            if rl['inc'].collidepoint(mp):
+                self.round_wave += 1
+                return
+            if rl['start'].collidepoint(mp):
+                self._start_round()
+                return
+            if rl['reset'].collidepoint(mp):
+                self._reset_round()
+                return
         for rect, value, _ in item_rects:
             if rect.collidepoint(mp):
                 self._select_item(value)
@@ -260,12 +338,44 @@ class Sandbox:
                     (r.x + 14, hy), (255, 214, 110))
         else:
             hint = {'boss': 'escolha o chefe', 'champion': 'escolha o campeao',
-                    'species': 'escolha a especie', 'pickup': 'escolha o item'}
+                    'species': 'escolha a especie', 'pickup': 'escolha o item',
+                    'round': 'escolha o tema da onda'}
             ui.text(surf, self.font, hint[self.cat], (r.x + 14, hy), ui.DIM)
 
         mouse = display.mouse_logical()
-        for rect, _, lbl in item_rects:
+        for rect, value, lbl in item_rects:
             if rect.collidepoint(mouse):
                 pygame.draw.rect(surf, (44, 50, 76), rect, border_radius=6)
+            # in round mode the picked theme reads as selected
+            sel = (self.cat == 'round' and value == self.round_theme)
             ui.text(surf, self.font, ui.fit(self.font, lbl, rect.width - 8),
-                    (rect.x + 6, rect.y + 2), ui.TEXT)
+                    (rect.x + 6, rect.y + 2), (255, 214, 110) if sel else ui.TEXT)
+
+        if self.cat == 'round':
+            self._draw_round(surf, mouse)
+
+    def _draw_round(self, surf, mouse):
+        """The round-control footer: wave scroller + START/RESET buttons."""
+        rl = self._round_layout()
+
+        def button(rect, label, col_on):
+            hot = rect.collidepoint(mouse)
+            pygame.draw.rect(surf, col_on if hot else (24, 26, 42), rect,
+                             border_radius=8)
+            pygame.draw.rect(surf, (120, 150, 220) if hot else ui.LINE, rect, 2,
+                             border_radius=8)
+            ui.text(surf, self.font, label, (rect.centerx, rect.y + 4),
+                    ui.TEXT, align='center')
+
+        button(rl['dec'], '-', (40, 46, 70))
+        button(rl['inc'], '+', (40, 46, 70))
+        wr = rl['wave']
+        pygame.draw.rect(surf, (22, 24, 38), wr, border_radius=8)
+        pygame.draw.rect(surf, ui.LINE, wr, 2, border_radius=8)
+        boss = '  (chefe)' if self.round_wave % 5 == 0 else ''
+        ui.text(surf, self.font, f"onda {self.round_wave}{boss}",
+                (wr.centerx, wr.y + 4), ui.TEXT, align='center')
+        start_lbl = ui.fit(self.font, f"START -> {THEMES[self.round_theme]['banner']}",
+                           rl['start'].width - 12)
+        button(rl['start'], start_lbl, (30, 60, 40))
+        button(rl['reset'], 'RESET (limpa a cena)', (70, 34, 40))
