@@ -63,8 +63,8 @@ the test, so they are left alone.
 The **Dbg** category lists the debug staples:
 
 - **God mode** (toggle) — the player ignores damage.
-- **Kill-all** — clears enemies, boss, and hostile projectiles/puddles;
-  keeps prey, pickups, friends, and the player.
+- **Kill-all** — clears enemies, boss, hostile projectiles/puddles, and
+  the round's nests/marks; keeps prey, pickups, friends, and the player.
 - **Pause-AI** (toggle) + **Step** — freezes enemy/boss updates so you can
   walk around and inspect a pose. Step advances the whole sim exactly one
   fixed tick, to leaf through the procedural animation frame by frame.
