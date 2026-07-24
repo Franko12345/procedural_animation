@@ -260,6 +260,17 @@ class RoundManager:
         self.boss = None
         self.is_boss_round = False
         self.is_final = False
+        self._boss_bag = {}     # pool -> shuffled bag; sample bosses without replacement
+
+    def _draw_boss_id(self, pool_ids):
+        """Sorteia sem reposição: esvazia o saco antes de repetir qualquer chefe."""
+        key = tuple(pool_ids)
+        bag = self._boss_bag.get(key)
+        if not bag:
+            bag = list(pool_ids)
+            random.shuffle(bag)
+            self._boss_bag[key] = bag
+        return bag.pop()
 
     # ---- lifecycle ------------------------------------------------------ #
     def start_round(self, theme=None):
@@ -310,7 +321,7 @@ class RoundManager:
             named = BOSS_POOL[BOSS_FINAL]
         else:
             pool_ids = _boss_pool_for_tier(tier)
-            named = BOSS_POOL[random.choice(pool_ids)] if pool_ids else None
+            named = BOSS_POOL[self._draw_boss_id(pool_ids)] if pool_ids else None
         if named:
             key = named['species']
         else:
