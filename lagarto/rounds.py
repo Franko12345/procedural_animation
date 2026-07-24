@@ -414,6 +414,10 @@ class RoundManager:
     # ---- per-frame ------------------------------------------------------ #
     def update(self, dt):
         g = self.game
+        # Sandbox freezes the wave machine: nothing auto-starts or advances a round.
+        # The dev drives spawns/rounds by hand from the overlay instead (SB later).
+        if g.mode == 'sandbox':
+            return
         self.banner_t = decay(self.banner_t, dt)
         self.nests = [n for n in self.nests if not n.dead]
 
