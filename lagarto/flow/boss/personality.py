@@ -130,3 +130,19 @@ def eye_personality():
                     'frustrated': 0.25, 'cornered': 0.2})
     p.tell_mult = {}
     return p
+
+
+def wall_personality():
+    """Implacavel: voce nao passa. A arena foi feita pra voce morrer aqui.
+    Sem estado de frustracao: so calmo e enraivecido, sem meio-termo.
+    Fase 3 e tudo ao mesmo tempo."""
+    return BossPersonality(
+        pattern_weights={
+            'fire_breath': {'enraged': 2.0, 'calm': 1.2},
+            'hand_slam': {'enraged': 1.8},
+            'bouncing_bullets': {'enraged': 1.5},
+            'grid_of_fire': {'enraged': 1.8},
+        },
+        mood_speed={'calm': 1.0, 'agitated': 1.0, 'enraged': 1.5,
+                    'frustrated': 1.0, 'cornered': 1.0}
+    )

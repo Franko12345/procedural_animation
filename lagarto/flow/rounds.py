@@ -121,18 +121,23 @@ BOSS_POOL = {
                          # setup: liga a piscada (mecanica do Olho) + o tick por frame
                          setup=bossai.eye_setup,
                          overrides=dict(hue=280, sat=0.75, val=0.8)),
+    'muralha': dict(species='horned', name='A MURALHA',
+                     emblem='boss_muralha',
+                     phases=lambda: bossai.muralha_phases(),
+                     personality=lambda: bossai.wall_personality(),
+                     scar=None,
+                     overrides=dict(hue=0, sat=0.3, val=0.45, spikes=0,
+                                   horns=0, plates=0, tail=None, plan='fixed')),
 }
 
 # tier (wave // BOSS_EVERY) -> which pool ids can be rolled there. Ranges,
 # not single tiers, so late/infinite tiers can share a pool without listing
 # every tier by hand. `range` end is exclusive, same as normal Python ranges.
 BOSS_TIER_POOLS = [
-    (range(1, 5), ['rei_lagarto', 'centopeiadeira', 'kraken_mor']),   # onda 5/10/15/20
-    (range(5, 6), ['mae_escaravelho', 'aranha_rei', 'serpente_cristal',
-                   'terror_alado', 'olho_sismico']),   # onda 25: banda tier-5
-    (range(6, 10_000), ['mae_escaravelho', 'aranha_rei', 'serpente_cristal',
-                        'terror_alado']),      # onda 30+ (so infinito) -- cresce
-                                               # conforme mais chefes entram (#74/#75)
+    (range(1, 4), ['rei_lagarto', 'centopeiadeira', 'kraken_mor']),   # onda 5/10/15
+    (range(4, 6), ['mae_escaravelho', 'aranha_rei', 'serpente_cristal',
+                   'terror_alado', 'olho_sismico']),                  # onda 20/25 (so infinito)
+    (range(6, 10_000), ['muralha']),                                    # tier 6+ (onda 30+)
 ]
 BOSS_FINAL = 'primordial'   # is_final always this one -- the run's fixed climax,
                            # not part of the roll (matches Isaac's true-final-boss)
