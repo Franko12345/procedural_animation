@@ -584,31 +584,49 @@ class Sandbox:
         if not isinstance(data, dict):
             return
         g = self.game
+
+        def _try(what, fn):
+            # A preset is dev-authored and may outlive the ids it names (a
+            # weapon/species/character removed after the save). Skip a stale
+            # entry with a warning instead of crashing the whole --sandbox
+            # launch — the preset is a convenience, not a contract.
+            try:
+                fn()
+            except Exception as exc:                    # noqa: BLE001
+                print(f'[sandbox] preset: skipped {what}: {exc}')
+
         cid = data.get('character')
         if cid:
-            self._swap_character(cid)
+            _try(f'character {cid!r}', lambda: self._swap_character(cid))
         p = g.players[0] if g.players else None
         load = data.get('loadout') or {}
         if p is not None:
             weps = load.get('weapons') or {}
             for wid in weps:
-                p.gain_weapon(wid)
-                for _ in range(int(weps[wid]) - 1):   # replay the earned levels
-                    p.level_weapon(wid)
+                if wid not in weapons.WEAPONS:   # gain_weapon half-mutates then
+                    print(f'[sandbox] preset: skipped weapon {wid!r}: unknown')
+                    continue                     # crashes later at draw — reject up front
+                def _wep(wid=wid):
+                    p.gain_weapon(wid)
+                    for _ in range(int(weps[wid]) - 1):   # replay the earned levels
+                        p.level_weapon(wid)
+                _try(f'weapon {wid!r}', _wep)
             for iid in load.get('items') or []:
-                items.give(p, items.ITEMS.get(iid), g)
+                _try(f'item {iid!r}', lambda iid=iid: items.give(p, items.ITEMS.get(iid), g))
             for ch in load.get('charms') or []:
-                p.gain_charm(ch, g)
+                if ch not in charms.CHARMS:
+                    print(f'[sandbox] preset: skipped charm {ch!r}: unknown')
+                    continue
+                _try(f'charm {ch!r}', lambda ch=ch: p.gain_charm(ch, g))
         for ent in data.get('entities') or []:
-            kind, key, pos = ent
-            self.spawn(kind, key, pos)
+            _try(f'entity {ent!r}', lambda ent=ent: self.spawn(ent[0], ent[1], ent[2]))
         rnd = data.get('round')
         if rnd:
             self.round_theme, self.round_wave = rnd[0], int(rnd[1])
-            self._start_round()
+            _try(f'round {rnd!r}', self._start_round)
         store = data.get('store') or []
         if store:
-            self._generate_store([(pool, pid) for pool, pid in store])
+            _try('store', lambda: self._generate_store([(pool, pid) for pool, pid in store]))
         tg = data.get('toggles') or {}
         g.god_mode = bool(tg.get('god_mode', False))
         g.pause_ai = bool(tg.get('pause_ai', False))
