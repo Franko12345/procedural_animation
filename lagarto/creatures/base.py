@@ -126,6 +126,10 @@ class Lizard:
             n = 4
             maxr = 26 * g.size * g.girth
             link = maxr * 0.3             # tiny link so the joints cluster into a ball
+        elif plan == 'fixed':             # Muralha: wall - wide, short chain
+            n = 5
+            maxr = 35 * g.size * g.girth
+            link = maxr * 0.8
         else:
             n = max(6, int(11 * g.size * g.length))
             maxr = 17 * g.size * g.girth
@@ -155,7 +159,7 @@ class Lizard:
 
     def _build_legs(self, g, n, maxr):
         plan = getattr(g, 'plan', 'normal')
-        if plan in ('tentacle', 'orbital'):   # arms/tentacles are not IK legs
+        if plan in ('tentacle', 'orbital', 'fixed'):   # arms/tentacles are not IK legs
             return []
         if g.leg_count <= 0:
             return []
@@ -473,6 +477,9 @@ class Lizard:
         if plan == 'orbital':
             self._draw_orbital(surf, cam)
             return
+        if plan == 'fixed':
+            self._draw_fixed(surf, cam)
+            return
         if plan == 'segmented':
             self._draw_segmented(surf, cam)
             return
@@ -685,6 +692,121 @@ class Lizard:
         if getattr(self, 'eye_shielded', False):
             pygame.draw.circle(surf, palette.darken(base, 0.55), sc, R)
             pygame.draw.circle(surf, C.COL_INK, sc, R, ink_w)
+
+    def _draw_fixed(self, surf, cam):
+        """A Muralha (plan='fixed'): a wall occupying right side of arena.
+        Central mouth with stalactite teeth, multiple independent eyes,
+        pulsing veins from mouth to edges, 2 stone hands with spring-damper.
+        Damage shows as falling stone chunks and surface cracks."""
+        base = self.color
+        if self.hit_flash > 0:
+            base = palette.lighten(base, self.hit_flash)
+        ink_w = max(1, int(2 * cam.zoom))
+        js = self.spine.joints
+        head = js[0]  # mouth center
+        r = self.max_r
+
+        # Phase for veins/animation
+        phase_i = self.boss_ai.phase_i if getattr(self, 'boss_ai', None) is not None else 0
+        hp_frac = self.hp / max(1, self.max_hp) if hasattr(self, 'max_hp') else 1.0
+
+        # Wall body: large rect on right side
+        wall_w = int(r * 3.5 * cam.zoom)
+        wall_h = int(r * 6 * cam.zoom)
+        hw = cam.w2s(head)
+        wall_rect = pygame.Rect(hw[0] - wall_w // 2, hw[1] - wall_h // 2, wall_w, wall_h)
+
+        # Base wall color - stone/flesh mix
+        wall_col = palette.darken(base, 0.15)
+        pygame.draw.rect(surf, wall_col, wall_rect, border_radius=max(2, int(6 * cam.zoom)))
+
+        # Rim light on left edge (facing arena)
+        rim_col = palette.lighten(base, 0.4)
+        pygame.draw.line(surf, rim_col,
+                         (wall_rect.left, wall_rect.top),
+                         (wall_rect.left, wall_rect.bottom),
+                         max(2), max(1, int(3 * cam.zoom)))
+
+        # Pulsing veins from mouth outward
+        vein_col = palette.mix((180, 60, 60), (255, 20, 20), min(1.0, phase_i / 2 + (1 - hp_frac) * 0.5))
+        beat = 0.5 + 0.5 * math.sin(self.wobble * (2.5 + phase_i * 1.5) + (1 - hp_frac) * 3)
+        nveins = 7 + phase_i * 2 + int((1 - hp_frac) * 5)
+        for i in range(nveins):
+            a = math.radians((180 / nveins) * i - 90 + self.wobble * 2)
+            vx = math.cos(a)
+            vy = math.sin(a)
+            vx = abs(vx)  # veins go leftward (toward player)
+            p0 = hw
+            p1 = (int(hw[0] - vx * r * 2.5), int(hw[1] + vy * r * 2.5))
+            w = max(1, int((1 + beat * 0.5) * cam.zoom))
+            pygame.draw.line(surf, vein_col, cam.w2s(p0), cam.w2s(p1), w)
+
+        # Mouth - central, opens/closes
+        mouth_open = getattr(self, 'mouth_open', 0.5)  # 0=closed, 1=fully open
+        mouth_w = int(r * 1.2 * cam.zoom)
+        mouth_h = int(r * 1.8 * cam.zoom * (0.3 + 0.7 * mouth_open))
+        mouth_rect = pygame.Rect(hw[0] - mouth_w // 2, hw[1] - mouth_h // 2, mouth_w, mouth_h)
+        pygame.draw.ellipse(surf, (20, 10, 10), mouth_rect)  # throat
+        pygame.draw.ellipse(surf, C.COL_INK, mouth_rect, max(2, int(3 * cam.zoom)))
+
+        # Stalactite teeth on upper/lower lip
+        nteeth = 6
+        for i in range(nteeth):
+            tx = hw[0] - mouth_w // 2 + (i + 0.5) * mouth_w / nteeth
+            # Upper teeth
+            ttop = (int(tx), int(hw[1] - mouth_h // 2 - 4 * cam.zoom))
+            ttip = (int(tx), int(hw[1] - mouth_h // 2 - 18 * cam.zoom * (0.8 + 0.2 * math.sin(self.wobble * 2 + i))))
+            pygame.draw.line(surf, palette.lighten(base, 0.2), cam.w2s(ttop), cam.w2s(ttip), max(1, int(2 * cam.zoom)))
+            # Lower teeth
+            tbot = (int(tx), int(hw[1] + mouth_h // 2 + 4 * cam.zoom))
+            ttip2 = (int(tx), int(hw[1] + mouth_h // 2 + 18 * cam.zoom * (0.8 + 0.2 * math.sin(self.wobble * 2 + i + 1))))
+            pygame.draw.line(surf, palette.lighten(base, 0.2), cam.w2s(tbot), cam.w2s(ttip2), max(1, int(2 * cam.zoom)))
+
+        # Multiple independent eyes - they open where player is
+        player_dir = getattr(self, '_player_dir', Vector2(-1, 0))  # default left
+        for i in range(8 + phase_i * 2):
+            eye_ang = math.radians(-70 + (140 / (7 + phase_i * 2)) * i)
+            eye_dir = Vector2(math.cos(eye_ang), math.sin(eye_ang))
+            # Eye opens if facing player direction
+            eye_open = max(0.1, eye_dir.dot(-player_dir))  # player is to the left
+            if eye_open > 0.3:
+                ex = int(hw[0] + eye_dir.x * r * 1.3)
+                ey = int(hw[1] + eye_dir.y * r * 1.3)
+                er = max(2, int(r * 0.35 * eye_open * cam.zoom))
+                esp = (ex, ey)
+                pygame.draw.circle(surf, (240, 240, 250), esp, er)
+                pygame.draw.circle(surf, C.COL_INK, esp, er, max(1, int(2 * cam.zoom)))
+                # Pupil
+                px = int(ex + -player_dir.x * er * 0.4)
+                py = int(ey + -player_dir.y * er * 0.4)
+                pygame.draw.circle(surf, C.COL_INK, (px, py), max(1, int(er * 0.3)))
+
+        # Stone hands (spring-damper) - stored on boss
+        if hasattr(self, 'hand_springs'):
+            for side, spring in self.hand_springs.items():
+                hand_pos = cam.w2s(spring.value)
+                hr = max(4, int(r * 0.7 * cam.zoom))
+                pygame.draw.circle(surf, palette.darken(base, 0.3), hand_pos, hr)
+                pygame.draw.circle(surf, C.COL_INK, hand_pos, hr, max(2, int(3 * cam.zoom)))
+                # Fingers
+                for f in range(4):
+                    fa = math.radians(-60 + f * 40)
+                    fx = int(hand_pos[0] + math.cos(fa) * hr * 1.3)
+                    fy = int(hand_pos[1] + math.sin(fa) * hr * 1.3)
+                    pygame.draw.line(surf, C.COL_INK, hand_pos, (fx, fy), max(2, int(3 * cam.zoom)))
+
+        # Damage cracks - more visible as hp decreases
+        if hp_frac < 1.0:
+            crack_col = palette.mix(C.COL_INK, (100, 100, 100), 0.5)
+            ncracks = int((1 - hp_frac) * 12)
+            for i in range(ncracks):
+                cx = hw[0] - r * 1.2 + random.uniform(-r, r)
+                cy = hw[1] - r * 2.5 + random.uniform(-r * 2, r * 2)
+                ca = random.uniform(0, math.pi * 2)
+                cl = r * random.uniform(0.3, 0.8)
+                c0 = (int(cx), int(cy))
+                c1 = (int(cx + math.cos(ca) * cl), int(cy + math.sin(ca) * cl))
+                pygame.draw.line(surf, crack_col, cam.w2s(c0), cam.w2s(c1), max(1, int(2 * cam.zoom)))
 
     def _look_dir(self):
         if self.kind == 'player':

@@ -13,7 +13,7 @@ from ...creatures.ai import burrow as burrow_ai
 from ...creatures.ai import grapple as grapple_ai
 from ...core.mathutil import safe_norm, vfrom_angle, clamp, decay, random_dir
 from ...creatures.base import TAIL_SPRING_STIFFNESS
-from .patterns import PATTERNS, _tick_barrage, _tick_spiral, default_phases
+from .patterns import PATTERNS, _tick_barrage, _tick_spiral, _tick_fire_breath, default_phases
 from .personality import default_personality
 
 # --- #13 body telegraph: spring-driven tells fired DURING the windup. Each
@@ -113,6 +113,7 @@ class BossAI:
         game.dt_last = dt          # aimed_barrage's/spiral's per-frame tick reads this
         _tick_barrage(b, game)
         _tick_spiral(b, game)
+        _tick_fire_breath(b, game)
         self.summon_cd = decay(self.summon_cd, dt)
         self._maybe_advance_phase()
         if self.scar_thresholds:

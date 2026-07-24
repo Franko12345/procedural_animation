@@ -112,6 +112,14 @@ SPECIES = {
                                        speed=0.6, behavior='chase', hp=12, diet=(),
                                        angular_damping=0.9, linear_damping=0.85, weight=4.0)),
 
+    # A MURALHA (B10): plan='fixed' - static wall occupying right side of arena.
+    # Only ever spawned as boss (B10, tier 6). No locomotion.
+    'muralha': dict(role='enemy', xp=15, score=120, grants=None,
+                    genome=Genome(name='muralha', plan='fixed', size=1.2,
+                                  leg_count=0, hue=15, sat=0.6, val=0.4,
+                                  speed=0.0, behavior='chase', hp=15, diet=(),
+                                  angular_damping=0.9, linear_damping=0.9, weight=10.0)),
+
     # ---- extra prey ------------------------------------------------------- #
     'frog': dict(role='prey', xp=3, score=18, grants=None,
                  genome=Genome(name='frog', size=0.7, leg_count=4, length=0.6, girth=1.3,

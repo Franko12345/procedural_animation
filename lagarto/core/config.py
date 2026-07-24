@@ -397,8 +397,8 @@ EYE_BLINK_DMG_MULT = 0.25       # golpe durante a piscada = 75% menos dano
 # do <33% e abrupto (a fase 3 pisca sem parar), casando com eye_personality.
 EYE_BLINK_INTERVAL = ((3.5, 5.0), (2.0, 3.2), (0.45, 0.9))
 EYE_GAZE_WINDUP = 0.6           # iris brilha 0.6s * 60 = 36 frames (> 27); a
-                                # eye_personality zera o encurtamento de tell, entao
-                                # o gaze fica 36 frames em TODO mood (regra do telegrafo)
+                                 # eye_personality zera o encurtamento de tell, entao
+                                 # o gaze fica 36 frames em TODO mood (regra do telegrafo)
 EYE_GAZE_SHOTS = 22
 EYE_GAZE_GAP = 0.04
 EYE_GAZE_TURN = 9               # varredura lenta (graus por tiro) -- "varre lentamente"
@@ -416,3 +416,44 @@ EYE_BULLET_TURN = 33
 EYE_BULLET_GAP = 0.035
 EYE_BULLET_SPEED = 200
 EYE_BULLET_DMG = 12
+
+# A Muralha (B10, tier 6) -- plan='fixed', arena corridor
+# Fire breath: sweeping cone from mouth
+MURALHA_FIRE_WINDUP = 0.7
+MURALHA_FIRE_DURATION = 2.0
+MURALHA_FIRE_DMG = 12
+MURALHA_FIRE_TICK = 0.15
+MURALHA_FIRE_SPEED = 220
+MURALHA_FIRE_SPREAD = 60       # degrees
+# Fire breath per-tick settings (fire_breath pattern uses tick-based)
+MURALHA_BREATH_SHOTS = 12       # shots per breath burst
+MURALHA_BREATH_GAP = 0.12       # gap between bursts
+MURALHA_BREATH_SPEED = 220
+MURALHA_BREATH_DMG = 12
+# Hand slam: stone hands from sides
+MURALHA_HAND_WINDUP = 0.5
+MURALHA_HAND_DMG = 22
+MURALHA_HAND_RADIUS = 80
+MURALHA_HAND_SPRING_STIFF = 8.0
+MURALHA_HAND_SPRING_DAMP = 0.7
+# Eye laser (beam barrage): multiple eyes firing beams
+MURALHA_EYE_WINDUP = 0.6
+MURALHA_EYE_BEAMS = 3
+MURALHA_EYE_SPEED = 400
+MURALHA_EYE_DMG = 10
+MURALHA_EYE_GAP = 0.08
+# Bouncing bullets (ricochete)
+MURALHA_BOUNCE_WINDUP = 0.5
+MURALHA_BOUNCE_COUNT = 5
+MURALHA_BOUNCE_SPEED = 280
+MURALHA_BOUNCE_DMG = 14
+MURALHA_BOUNCE_BOUNCES = 3
+# Grid of fire (ground hazard)
+MURALHA_GRID_WINDUP = 0.8
+MURALHA_GRID_CELL = 80
+MURALHA_GRID_DMG = 8
+MURALHA_GRID_TICK = 0.3
+MURALHA_GRID_LIFE = 4.0
+# Arena fire pushes player
+MURALHA_FIRE_PUSH = 350        # px/s push toward wall
+MURALHA_FIRE_DMG = 6           # dps from ground fire
